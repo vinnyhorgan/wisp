@@ -90,6 +90,28 @@ function DocView:get_scrollable_size()
     return self:get_line_height() * (#self.doc.lines - 1) + self.size.y
 end
 
+-- measuring every line to find the widest is too slow to repeat per
+-- frame, so the result is cached until the doc reports a change
+function DocView:get_widest_line_width()
+    if self.widest_change_count ~= self.doc.change_count then
+        local font = self:get_font()
+        font:set_tab_width(font:get_width(" ") * config.indent_size)
+        local widest = 0
+        for _, line in ipairs(self.doc.lines) do
+            widest = math.max(widest, font:get_width(line))
+        end
+        self.widest_line_width = widest
+        self.widest_change_count = self.doc.change_count
+    end
+    return self.widest_line_width
+end
+
+function DocView:get_h_scrollable_size()
+    -- the gutter plus the widest line, with the same breathing room that
+    -- scroll_to_make_visible leaves past the caret
+    return self:get_gutter_width() + self:get_widest_line_width() + self.size.x / 5
+end
+
 function DocView:get_font()
     return style[self.font]
 end

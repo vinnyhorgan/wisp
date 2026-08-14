@@ -375,11 +375,75 @@ fn wheel_scrolls_the_document() {
         before.len()
     );
 
-    // a purely horizontal wheel is delivered as an extra value that the
-    // stock lua layer ignores; it must be harmless
+    // a horizontal wheel at the left edge has nowhere to go; it must be
+    // clamped and harmless
     editor.push_event(Event::MouseWheel(3.0, 0.0));
     editor.run_steps(200);
     assert_eq!(editor.exited, None);
+}
+
+#[test]
+fn horizontal_wheel_pans_long_lines_and_clamps() {
+    let mut editor = boot();
+    // an unfocused window draws no caret, so frames compare exactly
+    editor.set_focus(false);
+
+    // a fresh doc with a single very long line; typing leaves the view
+    // scrolled right, following the caret to the end of the line
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    press(&editor, "n");
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(50);
+    editor.push_event(Event::TextInput(format!("start {}", "wide ".repeat(200))));
+    editor.run_steps(500);
+    let (right_end, w, h) = editor.last_frame();
+
+    // wheel routing needs the mouse over the docview first
+    editor.push_event(Event::MouseMoved(w / 2, h / 2, 0, 0));
+    editor.run_steps(50);
+
+    // pan all the way back to the start of the line: positive x scrolls
+    // left (the winit convention, mirroring positive y scrolling up)
+    for _ in 0..10 {
+        editor.push_event(Event::MouseWheel(50.0, 0.0));
+        editor.run_steps(50);
+    }
+    editor.run_steps(1000);
+    let (line_start, _, _) = editor.last_frame();
+    assert_ne!(
+        right_end, line_start,
+        "horizontal wheel did not pan the view"
+    );
+
+    // overshoot right by ~25000px, then wheel left by only ~10000px:
+    // clamped to the widest line (~8000px) this lands back at 0 exactly;
+    // unclamped it would strand the view in the void past the text
+    for _ in 0..10 {
+        editor.push_event(Event::MouseWheel(-50.0, 0.0));
+        editor.run_steps(50);
+    }
+    for _ in 0..4 {
+        editor.push_event(Event::MouseWheel(50.0, 0.0));
+        editor.run_steps(50);
+    }
+    editor.run_steps(1000);
+    let (after, _, _) = editor.last_frame();
+    assert_eq!(editor.exited, None);
+    assert_eq!(
+        line_start, after,
+        "horizontal scroll is not clamped to the content"
+    );
+
+    // shift turns a vertical wheel into a horizontal one; the doc is a
+    // single line, so on a lua layer without the translation this wheel
+    // would scroll vertically, which clamps to nothing and changes nothing
+    editor.push_event(Event::KeyPressed("left shift".into()));
+    editor.push_event(Event::MouseWheel(0.0, -50.0));
+    editor.run_steps(50);
+    editor.push_event(Event::KeyReleased("left shift".into()));
+    editor.run_steps(1000);
+    let (shifted, _, _) = editor.last_frame();
+    assert_ne!(line_start, shifted, "shift+wheel did not scroll sideways");
 }
 
 #[test]

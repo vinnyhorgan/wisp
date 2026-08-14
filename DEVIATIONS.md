@@ -96,6 +96,21 @@ message in the status bar. Files passed on the command line get the same
 treatment (wrapped in `core.try`), so `wisp some.bin` starts the editor
 with a message instead of dying.
 
+## 8. Horizontal scrolling
+
+**Files:** `data/core/view.lua`, `data/core/docview.lua`,
+`data/core/doc/init.lua`, `data/core/init.lua`
+
+lite had no horizontal scrolling: the wheel's x axis was dropped by the C
+core and the lua layer only handled y. wisp's core always delivered both
+axes; now the lua layer uses them. A view opts in by reporting its content
+width through `get_h_scrollable_size()` (default 0: no sideways scrolling),
+and the docview reports its widest line -- measured once and cached against
+a new `Doc.change_count`, bumped on every edit, since measuring every line
+per frame would be too slow. Horizontal scroll is clamped to the content on
+both ends, like the vertical fix in §6. Shift turns a vertical wheel into a
+horizontal one, as in most editors.
+
 ## Core behavior notes (rust core vs lite's c core)
 
 The core fixes lite's bugs instead of reproducing them. The observable

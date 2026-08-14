@@ -341,7 +341,13 @@ function core.on_event(type, ...)
     elseif type == "mousereleased" then
         core.root_view:on_mouse_released(...)
     elseif type == "mousewheel" then
-        core.root_view:on_mouse_wheel(...)
+        local y, x = ...
+        -- shift turns a vertical wheel into a horizontal one; hardware
+        -- that scrolls sideways already delivers x directly
+        if keymap.modkeys["shift"] then
+            y, x = x or 0, y
+        end
+        core.root_view:on_mouse_wheel(y, x)
     elseif type == "filedropped" then
         local filename, mx, my = ...
         local info = system.get_file_info(filename)

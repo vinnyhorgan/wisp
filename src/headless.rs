@@ -164,6 +164,13 @@ impl Headless {
         self.with_platform(|p| p.title.clone())
     }
 
+    /// focuses or unfocuses the virtual window, like alt-tabbing would;
+    /// an unfocused editor draws no caret, which lets tests compare
+    /// frames without accounting for the blink phase
+    pub fn set_focus(&self, focus: bool) {
+        self.with_platform(|p| p.focus = focus);
+    }
+
     /// resumes the editor coroutine once and advances the virtual clock as
     /// dictated by the yield; returns false once the editor has exited
     pub fn step(&mut self) -> bool {

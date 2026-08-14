@@ -40,6 +40,8 @@ function Doc:new(filename)
 end
 
 function Doc:reset()
+    -- bumped on every content change; views key their caches on it
+    self.change_count = (self.change_count or 0) + 1
     self.lines = { "\n" }
     self.selection = { a = { line = 1, col = 1 }, b = { line = 1, col = 1 } }
     self.undo_stack = { idx = 1 }
@@ -259,6 +261,7 @@ function Doc:raw_insert(line, col, text, undo_stack, time)
 
     -- splice lines into line array
     splice(self.lines, line, 1, lines)
+    self.change_count = self.change_count + 1
 
     -- push undo
     local line2, col2 = self:position_offset(line, col, #text)
@@ -282,6 +285,7 @@ function Doc:raw_remove(line1, col1, line2, col2, undo_stack, time)
 
     -- splice line into line array
     splice(self.lines, line1, line2 - line1 + 1, { before .. after })
+    self.change_count = self.change_count + 1
 
     -- update highlighter and assure selection is in bounds
     self.highlighter:invalidate(line1)

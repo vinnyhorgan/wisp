@@ -41,6 +41,12 @@ function View:get_scrollable_size()
     return math.huge
 end
 
+-- content width for horizontal scrolling; views that cannot know their
+-- width report 0 and simply do not scroll sideways
+function View:get_h_scrollable_size()
+    return 0
+end
+
 function View:get_scrollbar_rect()
     local sz = self:get_scrollable_size()
     if sz <= self.size.y or sz == math.huge then
@@ -81,9 +87,10 @@ function View:on_text_input(text)
     -- no-op
 end
 
-function View:on_mouse_wheel(y)
+function View:on_mouse_wheel(y, x)
     if self.scrollable then
         self.scroll.to.y = self.scroll.to.y + y * -config.mouse_wheel_scroll
+        self.scroll.to.x = self.scroll.to.x + (x or 0) * -config.mouse_wheel_scroll
     end
 end
 
@@ -102,6 +109,12 @@ end
 function View:clamp_scroll_position()
     local max = self:get_scrollable_size() - self.size.y
     self.scroll.to.y = common.clamp(self.scroll.to.y, 0, max)
+    -- measuring content width can be costly, so skip it entirely in the
+    -- common case of a view that is not scrolled sideways
+    if self.scroll.to.x ~= 0 then
+        max = self:get_h_scrollable_size() - self.size.x
+        self.scroll.to.x = common.clamp(self.scroll.to.x, 0, math.max(0, max))
+    end
 end
 
 function View:update()
