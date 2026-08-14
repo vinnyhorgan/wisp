@@ -38,13 +38,16 @@ icons. The icons are Nerd Font glyphs living in the font's private use area,
 named once in `style.icons` and referenced by name at every call site instead
 of lite's single-letter mappings ("f", "d", "g", ...).
 
-## 4. Everforest dark color scheme
+## 4. Catppuccin mocha color scheme, green accent
 
 **File:** `data/core/style.lua`
 
-The default theme is everforest dark (medium) instead of lite's grayscale:
-grey-green backgrounds, warm parchment foreground, green caret and
-selection. Same palette structure as lite's, only the values changed.
+The default theme is catppuccin mocha instead of lite's grayscale. Colors
+come from the official palette (catppuccin/palette) and the syntax roles
+follow the official style guide (keywords mauve, strings green, numbers
+peach, functions blue, operators sky, comments overlay2, selection overlay2
+at 25%). The accent is green: caret and highlighted UI text. Same palette
+structure as lite's, only the values changed.
 
 ## Core behavior notes (rust core vs lite's c core)
 

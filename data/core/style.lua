@@ -24,32 +24,32 @@ style.icons = {
   warn      = "\xEF\x81\xB1",  -- U+F071 warning triangle
 }
 
--- everforest dark (medium), sunset in the pines
-style.background = { common.color "#2D353B" }
-style.background2 = { common.color "#232A2E" }
-style.background3 = { common.color "#232A2E" }
-style.text = { common.color "#9DA9A0" }
-style.caret = { common.color "#A7C080" }
-style.accent = { common.color "#D3C6AA" }
-style.dim = { common.color "#56635F" }
-style.divider = { common.color "#1E2326" }
-style.selection = { common.color "#425047" }
-style.line_number = { common.color "#56635F" }
-style.line_number2 = { common.color "#859289" }
-style.line_highlight = { common.color "#343F44" }
-style.scrollbar = { common.color "#475258" }
-style.scrollbar2 = { common.color "#56635F" }
+-- catppuccin mocha (official palette), green as the accent
+style.background = { common.color "#1e1e2e" }   -- base
+style.background2 = { common.color "#181825" }  -- mantle
+style.background3 = { common.color "#181825" }  -- mantle
+style.text = { common.color "#a6adc8" }         -- subtext0
+style.caret = { common.color "#a6e3a1" }        -- green
+style.accent = { common.color "#a6e3a1" }       -- green
+style.dim = { common.color "#6c7086" }          -- overlay0
+style.divider = { common.color "#11111b" }      -- crust
+style.selection = { common.color "rgba(147, 153, 178, 0.25)" }  -- overlay2, per the style guide
+style.line_number = { common.color "#7f849c" }  -- overlay1
+style.line_number2 = { common.color "#b4befe" } -- lavender
+style.line_highlight = { common.color "#313244" }  -- surface0
+style.scrollbar = { common.color "#45475a" }    -- surface1
+style.scrollbar2 = { common.color "#585b70" }   -- surface2
 
 style.syntax = {}
-style.syntax["normal"] = { common.color "#D3C6AA" }
-style.syntax["symbol"] = { common.color "#D3C6AA" }
-style.syntax["comment"] = { common.color "#7A8478" }
-style.syntax["keyword"] = { common.color "#E67E80" }
-style.syntax["keyword2"] = { common.color "#E69875" }
-style.syntax["number"] = { common.color "#D699B6" }
-style.syntax["literal"] = { common.color "#D699B6" }
-style.syntax["string"] = { common.color "#A7C080" }
-style.syntax["operator"] = { common.color "#E69875" }
-style.syntax["function"] = { common.color "#83C092" }
+style.syntax["normal"] = { common.color "#cdd6f4" }    -- text
+style.syntax["symbol"] = { common.color "#cdd6f4" }    -- text
+style.syntax["comment"] = { common.color "#9399b2" }   -- overlay2
+style.syntax["keyword"] = { common.color "#cba6f7" }   -- mauve
+style.syntax["keyword2"] = { common.color "#f9e2af" }  -- yellow (types)
+style.syntax["number"] = { common.color "#fab387" }    -- peach
+style.syntax["literal"] = { common.color "#fab387" }   -- peach
+style.syntax["string"] = { common.color "#a6e3a1" }    -- green
+style.syntax["operator"] = { common.color "#89dceb" }  -- sky
+style.syntax["function"] = { common.color "#89b4fa" }  -- blue
 
 return style
