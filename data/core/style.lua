@@ -7,10 +7,10 @@ style.scrollbar_size = common.round(4 * SCALE)
 style.caret_width = common.round(2 * SCALE)
 style.tab_width = common.round(170 * SCALE)
 
-style.font = renderer.font.load(EXEDIR .. "/data/fonts/jetbrainsmono.ttf", 14 * SCALE)
-style.big_font = renderer.font.load(EXEDIR .. "/data/fonts/jetbrainsmono.ttf", 34 * SCALE)
-style.icon_font = renderer.font.load(EXEDIR .. "/data/fonts/jetbrainsmono.ttf", 16 * SCALE)
-style.code_font = renderer.font.load(EXEDIR .. "/data/fonts/jetbrainsmono.ttf", 13.5 * SCALE)
+style.font = renderer.font.load(EXEDIR .. "/data/jetbrainsmono.ttf", 14 * SCALE)
+style.big_font = renderer.font.load(EXEDIR .. "/data/jetbrainsmono.ttf", 34 * SCALE)
+style.icon_font = renderer.font.load(EXEDIR .. "/data/jetbrainsmono.ttf", 16 * SCALE)
+style.code_font = renderer.font.load(EXEDIR .. "/data/jetbrainsmono.ttf", 13.5 * SCALE)
 
 -- nerd font icons, utf-8 encoded private use area codepoints
 style.icons = {
