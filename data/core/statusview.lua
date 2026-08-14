@@ -124,7 +124,7 @@ function StatusView:get_items()
             #dv.doc.lines,
             " lines",
             self.separator,
-            dv.doc.crlf and "CRLF" or "LF",
+            dv.doc.crlf and "crlf" or "lf",
         }
     end
 

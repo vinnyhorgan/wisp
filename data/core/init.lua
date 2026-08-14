@@ -167,9 +167,9 @@ function core.quit(force)
     if dirty_count > 0 then
         local text
         if dirty_count == 1 then
-            text = string.format('"%s" has unsaved changes. Quit anyway?', dirty_name)
+            text = string.format('"%s" has unsaved changes. quit anyway?', dirty_name)
         else
-            text = string.format("%d docs have unsaved changes. Quit anyway?", dirty_count)
+            text = string.format("%d docs have unsaved changes. quit anyway?", dirty_count)
         end
         core.command_view:enter(text, function(answer)
             if answer:lower():find("^y") then
@@ -190,7 +190,7 @@ function core.load_plugins()
         local modname = "plugins." .. filename:gsub(".lua$", "")
         local ok = core.try(require, modname)
         if ok then
-            core.log_quiet("Loaded plugin %q", modname)
+            core.log_quiet("loaded plugin %q", modname)
         else
             no_errors = false
         end
@@ -204,10 +204,10 @@ function core.load_project_module()
         return core.try(function()
             local fn, err = loadfile(filename)
             if not fn then
-                error("Error when loading project module:\n\t" .. err)
+                error("error when loading project module:\n\t" .. err)
             end
             fn()
-            core.log_quiet("Loaded project module")
+            core.log_quiet("loaded project module")
         end)
     end
     return true
@@ -270,7 +270,7 @@ function core.open_doc(filename)
     -- no existing doc for filename; create new
     local doc = Doc(filename)
     table.insert(core.docs, doc)
-    core.log_quiet(filename and 'Opened doc "%s"' or "Opened new doc", filename)
+    core.log_quiet(filename and 'opened doc "%s"' or "opened new doc", filename)
     return doc
 end
 
@@ -405,7 +405,7 @@ function core.step()
         local doc = core.docs[i]
         if #core.get_views_referencing_doc(doc) == 0 then
             table.remove(core.docs, i)
-            core.log_quiet('Closed doc "%s"', doc:get_name())
+            core.log_quiet('closed doc "%s"', doc:get_name())
         end
     end
 
@@ -475,7 +475,7 @@ end
 function core.on_error(err)
     -- write error to file
     local fp = io.open(EXEDIR .. "/error.txt", "wb")
-    fp:write("Error: " .. tostring(err) .. "\n")
+    fp:write("error: " .. tostring(err) .. "\n")
     fp:write(debug.traceback(nil, 4))
     fp:close()
     -- save copy of all unsaved documents

@@ -12,7 +12,7 @@ function LogView:new()
 end
 
 function LogView:get_name()
-    return "Log"
+    return "log"
 end
 
 function LogView:update()

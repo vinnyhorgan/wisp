@@ -21,10 +21,10 @@ command.add(nil, {
     end,
 
     ["core:reload-module"] = function()
-        core.command_view:enter("Reload Module", function(text, item)
+        core.command_view:enter("reload module", function(text, item)
             local text = item and item.text or text
             core.reload_module(text)
-            core.log("Reloaded module %q", text)
+            core.log("reloaded module %q", text)
         end, function(text)
             local items = {}
             for name in pairs(package.loaded) do
@@ -36,7 +36,7 @@ command.add(nil, {
 
     ["core:find-command"] = function()
         local commands = command.get_all_valid()
-        core.command_view:enter("Do Command", function(text, item)
+        core.command_view:enter("do command", function(text, item)
             if item then
                 command.perform(item.command)
             end
@@ -54,7 +54,7 @@ command.add(nil, {
     end,
 
     ["core:find-file"] = function()
-        core.command_view:enter("Open File From Project", function(text, item)
+        core.command_view:enter("open file from project", function(text, item)
             text = item and item.text or text
             core.root_view:open_doc(core.open_doc(text))
         end, function(text)
@@ -73,7 +73,7 @@ command.add(nil, {
     end,
 
     ["core:open-file"] = function()
-        core.command_view:enter("Open File", function(text)
+        core.command_view:enter("open file", function(text)
             core.root_view:open_doc(core.open_doc(text))
         end, common.path_suggest)
     end,

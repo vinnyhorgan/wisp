@@ -40,16 +40,16 @@ command.add(predicate, {
             state = "recording"
             event_buffer = {}
             modkeys = clone(keymap.modkeys)
-            core.log("Recording macro...")
+            core.log("recording macro...")
         else
             state = "stopped"
-            core.log("Stopped recording macro (%d events)", #event_buffer)
+            core.log("stopped recording macro (%d events)", #event_buffer)
         end
     end,
 
     ["macro:play"] = function()
         state = "playing"
-        core.log("Playing macro... (%d events)", #event_buffer)
+        core.log("playing macro... (%d events)", #event_buffer)
         local mk = keymap.modkeys
         keymap.modkeys = clone(modkeys)
         for _, ev in ipairs(event_buffer) do

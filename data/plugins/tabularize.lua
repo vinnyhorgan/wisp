@@ -38,7 +38,7 @@ end
 
 command.add("core.docview", {
     ["tabularize:tabularize"] = function()
-        core.command_view:enter("Tabularize On Delimiter", function(delim)
+        core.command_view:enter("tabularize on delimiter", function(delim)
             if delim == "" then
                 delim = " "
             end

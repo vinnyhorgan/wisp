@@ -51,7 +51,7 @@ function TreeView:get_cached(item)
 end
 
 function TreeView:get_name()
-    return "Project"
+    return "project"
 end
 
 function TreeView:get_item_height()

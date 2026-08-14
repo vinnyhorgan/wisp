@@ -50,7 +50,7 @@ end
 
 local function save(filename)
     doc():save(filename)
-    core.log('Saved "%s"', doc().filename)
+    core.log('saved "%s"', doc().filename)
 end
 
 local commands = {
@@ -263,10 +263,10 @@ local commands = {
             end
         end
 
-        core.command_view:enter("Go To Line", function(text, item)
+        core.command_view:enter("go to line", function(text, item)
             local line = item and item.line or tonumber(text)
             if not line then
-                core.error("Invalid line number or unmatched string")
+                core.error("invalid line number or unmatched string")
                 return
             end
             dv.doc:set_selection(line, 1)
@@ -287,7 +287,7 @@ local commands = {
         if doc().filename then
             core.command_view:set_text(doc().filename)
         end
-        core.command_view:enter("Save As", function(filename)
+        core.command_view:enter("save as", function(filename)
             save(filename)
         end, common.path_suggest)
     end,
@@ -303,13 +303,13 @@ local commands = {
     ["doc:rename"] = function()
         local old_filename = doc().filename
         if not old_filename then
-            core.error("Cannot rename unsaved doc")
+            core.error("cannot rename unsaved doc")
             return
         end
         core.command_view:set_text(old_filename)
-        core.command_view:enter("Rename", function(filename)
+        core.command_view:enter("rename", function(filename)
             doc():save(filename)
-            core.log('Renamed "%s" to "%s"', old_filename, filename)
+            core.log('renamed "%s" to "%s"', old_filename, filename)
             if filename ~= old_filename then
                 os.remove(old_filename)
             end

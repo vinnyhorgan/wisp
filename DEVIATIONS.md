@@ -111,6 +111,18 @@ per frame would be too slow. Horizontal scroll is clamped to the content on
 both ends, like the vertical fix in §6. Shift turns a vertical wheel into a
 horizontal one, as in most editors.
 
+## 9. All user-facing text is lowercase
+
+**Files:** `data/core/init.lua`, `data/core/docview.lua`,
+`data/core/logview.lua`, `data/core/statusview.lua`,
+`data/core/commands/*.lua`, `data/plugins/*.lua`
+
+rxi's lowercase style covers lite's code and prose, but its UI strings were
+Title Case ("Open File From Project", "Save As", "Project"). wisp commits
+fully: command view prompts, suggestions, log and error messages, view
+names and the status bar ("crlf"/"lf") are all lowercase. Internal assert
+messages (only ever visible on a bug) were left as lite wrote them.
+
 ## Core behavior notes (rust core vs lite's c core)
 
 The core fixes lite's bugs instead of reproducing them. The observable

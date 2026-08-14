@@ -15,7 +15,7 @@ function ResultsView:new(text, fn)
 end
 
 function ResultsView:get_name()
-    return "Search Results"
+    return "search results"
 end
 
 local function find_all_matches_in_file(t, filename, fn)
@@ -155,7 +155,7 @@ function ResultsView:draw()
     local text
     if self.searching then
         text = string.format(
-            "Searching %d%% (%d of %d files, %d matches) for %q...",
+            "searching %d%% (%d of %d files, %d matches) for %q...",
             per * 100,
             self.last_file_idx,
             #core.project_files,
@@ -163,7 +163,7 @@ function ResultsView:draw()
             self.query
         )
     else
-        text = string.format("Found %d matches for %q", #self.results, self.query)
+        text = string.format("found %d matches for %q", #self.results, self.query)
     end
     local color = common.lerp(style.text, style.accent, self.brightness / 100)
     renderer.draw_text(style.font, text, x, y, color)
@@ -198,7 +198,7 @@ end
 
 local function begin_search(text, fn)
     if text == "" then
-        core.error("Expected non-empty string")
+        core.error("expected non-empty string")
         return
     end
     local rv = ResultsView(text, fn)
@@ -207,7 +207,7 @@ end
 
 command.add(nil, {
     ["project-search:find"] = function()
-        core.command_view:enter("Find Text In Project", function(text)
+        core.command_view:enter("find text in project", function(text)
             text = text:lower()
             begin_search(text, function(line_text)
                 return line_text:lower():find(text, nil, true)
@@ -216,7 +216,7 @@ command.add(nil, {
     end,
 
     ["project-search:find-pattern"] = function()
-        core.command_view:enter("Find Pattern In Project", function(text)
+        core.command_view:enter("find pattern in project", function(text)
             begin_search(text, function(line_text)
                 return line_text:find(text)
             end)
@@ -224,7 +224,7 @@ command.add(nil, {
     end,
 
     ["project-search:fuzzy-find"] = function()
-        core.command_view:enter("Fuzzy Find Text In Project", function(text)
+        core.command_view:enter("fuzzy find text in project", function(text)
             begin_search(text, function(line_text)
                 return common.fuzzy_match(line_text, text) and 1
             end)

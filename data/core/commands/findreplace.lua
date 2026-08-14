@@ -39,7 +39,7 @@ local function find(label, search_fn)
             previous_finds = {}
             push_previous_find(dv.doc, sel)
         else
-            core.error("Couldn't find %q", text)
+            core.error("couldn't find %q", text)
             dv.doc:set_selection(table.unpack(sel))
             dv:scroll_to_make_visible(sel[1], sel[2])
         end
@@ -64,15 +64,15 @@ end
 local function replace(kind, default, fn)
     core.command_view:set_text(default, true)
 
-    core.command_view:enter("Find To Replace " .. kind, function(old)
+    core.command_view:enter("find to replace " .. kind, function(old)
         core.command_view:set_text(old, true)
 
-        local s = string.format("Replace %s %q With", kind, old)
+        local s = string.format("replace %s %q with", kind, old)
         core.command_view:enter(s, function(new)
             local n = doc():replace(function(text)
                 return fn(text, old, new)
             end)
-            core.log("Replaced %d instance(s) of %s %q with %q", n, kind, old, new)
+            core.log("replaced %d instance(s) of %s %q with %q", n, kind, old, new)
         end)
     end)
 end
@@ -94,14 +94,14 @@ command.add(has_selection, {
 
 command.add("core.docview", {
     ["find-replace:find"] = function()
-        find("Find Text", function(doc, line, col, text)
+        find("find text", function(doc, line, col, text)
             local opt = { wrap = true, no_case = true }
             return search.find(doc, line, col, text, opt)
         end)
     end,
 
     ["find-replace:find-pattern"] = function()
-        find("Find Text Pattern", function(doc, line, col, text)
+        find("find text pattern", function(doc, line, col, text)
             local opt = { wrap = true, no_case = true, pattern = true }
             return search.find(doc, line, col, text, opt)
         end)
@@ -109,7 +109,7 @@ command.add("core.docview", {
 
     ["find-replace:repeat-find"] = function()
         if not last_fn then
-            core.error("No find to continue from")
+            core.error("no find to continue from")
         else
             local line, col = doc():get_selection()
             local line1, col1, line2, col2 = last_fn(doc(), line, col, last_text)
@@ -124,7 +124,7 @@ command.add("core.docview", {
     ["find-replace:previous-find"] = function()
         local sel = table.remove(previous_finds)
         if not sel or doc() ~= last_doc then
-            core.error("No previous finds")
+            core.error("no previous finds")
             return
         end
         doc():set_selection(table.unpack(sel))
@@ -132,13 +132,13 @@ command.add("core.docview", {
     end,
 
     ["find-replace:replace"] = function()
-        replace("Text", "", function(text, old, new)
+        replace("text", "", function(text, old, new)
             return text:gsub(old:gsub("%W", "%%%1"), new:gsub("%%", "%%%%"), nil)
         end)
     end,
 
     ["find-replace:replace-pattern"] = function()
-        replace("Pattern", "", function(text, old, new)
+        replace("pattern", "", function(text, old, new)
             return text:gsub(old, new)
         end)
     end,
@@ -149,7 +149,7 @@ command.add("core.docview", {
             local text = doc():get_text(doc():get_selection())
             first = text:match(config.symbol_pattern) or ""
         end
-        replace("Symbol", first, function(text, old, new)
+        replace("symbol", first, function(text, old, new)
             local n = 0
             local res = text:gsub(config.symbol_pattern, function(sym)
                 if old == sym then
