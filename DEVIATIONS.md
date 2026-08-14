@@ -83,6 +83,17 @@ scrolled past its last item into the void forever. wisp's treeview reports
 the real height of its visible items, so scrolling stops at the bottom
 like every other editor.
 
+## 7. Binary files are refused
+
+**Files:** `data/core/doc/init.lua`, `data/core/init.lua`
+
+lite loaded any file into a docview, rendering binaries as garbage text
+(and risking corrupting them on save). wisp checks the first 4096 bytes on
+load: a null byte means binary, and the open is refused with an error
+message in the status bar. Files passed on the command line get the same
+treatment (wrapped in `core.try`), so `wisp some.bin` starts the editor
+with a message instead of dying.
+
 ## Core behavior notes (rust core vs lite's c core)
 
 The core fixes lite's bugs instead of reproducing them. The observable

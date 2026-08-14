@@ -60,6 +60,14 @@ end
 
 function Doc:load(filename)
     local fp = assert(io.open(filename, "rb"))
+    -- a null byte near the start means binary, not text: refuse instead
+    -- of loading garbage into a docview
+    local chunk = fp:read(4096)
+    if chunk and chunk:find("\0", 1, true) then
+        fp:close()
+        error(string.format("%q is a binary file", filename), 0)
+    end
+    fp:seek("set")
     self:reset()
     self.filename = filename
     self.lines = {}

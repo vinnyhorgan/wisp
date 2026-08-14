@@ -115,11 +115,17 @@ function core.init()
     local got_user_error = not core.try(require, "user")
     local got_project_error = not core.load_project_module()
 
+    local got_file_error = false
     for _, filename in ipairs(files) do
-        core.root_view:open_doc(core.open_doc(filename))
+        -- an unopenable file (binary, unreadable, ...) must not take the
+        -- whole editor down with it
+        local ok = core.try(function()
+            core.root_view:open_doc(core.open_doc(filename))
+        end)
+        got_file_error = got_file_error or not ok
     end
 
-    if got_plugin_error or got_user_error or got_project_error then
+    if got_plugin_error or got_user_error or got_project_error or got_file_error then
         command.perform("core:open-log")
     end
 end

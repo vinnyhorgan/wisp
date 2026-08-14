@@ -296,6 +296,32 @@ fn treeview_scrolling_is_clamped_to_its_content() {
 }
 
 #[test]
+fn binary_files_are_refused() {
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("binary");
+    std::fs::create_dir_all(&dir).unwrap();
+    let blob = dir.join("blob.bin");
+    std::fs::write(&blob, b"\x7fELF\x02\x01\x01\0\0\0\0\0\0\0\0\0\x03\0").unwrap();
+
+    let mut editor = boot();
+    // ctrl+o, type the absolute path, return
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    press(&editor, "o");
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(100);
+    editor.push_event(Event::TextInput(blob.display().to_string()));
+    editor.run_steps(100);
+    press(&editor, "return");
+    editor.run_steps(500);
+
+    assert_eq!(editor.exited, None, "refusing a binary file must not exit");
+    assert_eq!(
+        editor.window_title(),
+        "wisp",
+        "a binary file must not open as a document"
+    );
+}
+
+#[test]
 fn wheel_scrolls_the_document() {
     let mut editor = boot();
     editor.push_event(Event::KeyPressed("left ctrl".into()));
