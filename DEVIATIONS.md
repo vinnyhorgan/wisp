@@ -15,3 +15,32 @@ box on top of the editor. wisp's core does not expose an OS dialog API at all.
 The quit confirmation is routed through `core.command_view:enter()` with
 yes/no suggestions instead, so the editor confirms with its own UI, in its own
 theme. Type `y`/`yes` to quit, anything else (or escape) to cancel.
+
+## Core behavior notes (rust core vs lite's c core)
+
+The core fixes lite's bugs instead of reproducing them. The observable
+differences, all deliberate:
+
+- Invalid UTF-8 renders as the replacement character; lite's decoder walked
+  out of bounds on malformed input.
+- `SCALE` defaults to the real display scale factor; lite detected DPI only
+  on Windows and hardcoded 1.0 elsewhere. `LITE_SCALE` still overrides it
+  (desktop only; headless boots ignore it so tests render identically on
+  every machine).
+- The mousewheel event carries the horizontal axis as an extra value after
+  the vertical one; stock Lua ignores it.
+- Rapid clicks cycle caret, word, line, caret, ...; SDL counted up forever.
+  Observable only from the fifth rapid click onward.
+- Numpad navigation keys with num lock off report their meaning ("home",
+  "end", ...); SDL reported "keypad 7" and friends, which no keymap binds.
+- Keys are named by their unshifted character (SDL behavior), and synthetic
+  key presses on focus gain are dropped (the alt-tab bug lite patched
+  around SDL).
+- File-drop coordinates are the last known cursor position; winit does not
+  report the pointer during a drag, so a drop may land in another split.
+  The file opens either way.
+- `system.sleep` and `system.wait_event` are coroutine yields; calling them
+  inside a `core.add_thread` coroutine is unsupported (stock Lua never
+  does, third-party plugins should not either).
+- The `renderer.show_debug` overlay tints the whole dirty rect; lite drew
+  it under the frame's last clip, which could hide part of the overlay.
