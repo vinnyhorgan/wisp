@@ -287,6 +287,15 @@ mod tests {
     }
 
     proptest! {
+        // seeds of past failures are kept in tests/regressions and replayed
+        // before any new random cases
+        #![proptest_config(ProptestConfig {
+            failure_persistence: Some(Box::new(
+                proptest::test_runner::FileFailurePersistence::Direct("tests/regressions/renderer.txt"),
+            )),
+            ..ProptestConfig::default()
+        })]
+
         // any rect with any clip must never panic, and must never write a
         // single pixel outside the clip region
         #[test]

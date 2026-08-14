@@ -445,6 +445,15 @@ mod tests {
     }
 
     proptest! {
+        // seeds of past failures are kept in tests/regressions and replayed
+        // before any new random cases
+        #![proptest_config(ProptestConfig {
+            failure_persistence: Some(Box::new(
+                proptest::test_runner::FileFailurePersistence::Direct("tests/regressions/rencache.txt"),
+            )),
+            ..ProptestConfig::default()
+        })]
+
         // the whole point of the cache: rendering frame b after any frame a
         // must produce pixels identical to rendering frame b from scratch.
         // if this holds for arbitrary command sequences (including alpha
