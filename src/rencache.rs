@@ -243,9 +243,13 @@ impl RenCache {
         // redraw updated regions
         for &r in &rects {
             fb.set_clip(r);
+            let mut cr = r;
             for cmd in &commands {
                 match cmd {
-                    Command::SetClip { rect } => fb.set_clip(rect.intersect(r)),
+                    Command::SetClip { rect } => {
+                        cr = rect.intersect(r);
+                        fb.set_clip(cr);
+                    }
                     Command::DrawRect { rect, color } => fb.draw_rect(*rect, *color),
                     Command::DrawText {
                         font,
@@ -254,8 +258,15 @@ impl RenCache {
                         color,
                         tab_advance,
                     } => {
+                        // glyph ink can escape the font's metrics (nerd font
+                        // icons fill the em box), but the command was hashed
+                        // into the cells this rect overlaps -- painting
+                        // outside it would leave stale pixels the cache can
+                        // never invalidate
+                        fb.set_clip(rect.intersect(cr));
                         font.set_tab_advance(*tab_advance);
                         fb.draw_text(font, text, rect.x, rect.y, *color);
+                        fb.set_clip(cr);
                     }
                 }
             }
