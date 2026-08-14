@@ -140,10 +140,10 @@ end
 function TreeView:draw()
   self:draw_background(style.background2)
 
-  local icon_width = style.icon_font:get_width(style.icons.dir)
-  -- three spaces, not lite's two: the folder icons ink a little past
-  -- their advance, so the labels need extra room to breathe
-  local spacing = style.font:get_width(" ") * 3
+  -- nerd font icons advance one cell but ink up to two (the open folder
+  -- is 16px wide at a 8px advance), so reserve a two-cell slot for them
+  local icon_width = style.icon_font:get_width(style.icons.dir) * 2
+  local spacing = style.font:get_width(" ")
 
   local doc = core.active_view.doc
   local active_filename = doc and system.absolute_path(doc.filename or "")
