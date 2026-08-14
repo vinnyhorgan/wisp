@@ -24,31 +24,32 @@ style.icons = {
   warn      = "\xEF\x81\xB1",  -- U+F071 warning triangle
 }
 
-style.background = { common.color "#2e2e32" }
-style.background2 = { common.color "#252529" }
-style.background3 = { common.color "#252529" }
-style.text = { common.color "#97979c" }
-style.caret = { common.color "#93DDFA" }
-style.accent = { common.color "#e1e1e6" }
-style.dim = { common.color "#525257" }
-style.divider = { common.color "#202024" }
-style.selection = { common.color "#48484f" }
-style.line_number = { common.color "#525259" }
-style.line_number2 = { common.color "#83838f" }
-style.line_highlight = { common.color "#343438" }
-style.scrollbar = { common.color "#414146" }
-style.scrollbar2 = { common.color "#4b4b52" }
+-- everforest dark (medium), sunset in the pines
+style.background = { common.color "#2D353B" }
+style.background2 = { common.color "#232A2E" }
+style.background3 = { common.color "#232A2E" }
+style.text = { common.color "#9DA9A0" }
+style.caret = { common.color "#A7C080" }
+style.accent = { common.color "#D3C6AA" }
+style.dim = { common.color "#56635F" }
+style.divider = { common.color "#1E2326" }
+style.selection = { common.color "#425047" }
+style.line_number = { common.color "#56635F" }
+style.line_number2 = { common.color "#859289" }
+style.line_highlight = { common.color "#343F44" }
+style.scrollbar = { common.color "#475258" }
+style.scrollbar2 = { common.color "#56635F" }
 
 style.syntax = {}
-style.syntax["normal"] = { common.color "#e1e1e6" }
-style.syntax["symbol"] = { common.color "#e1e1e6" }
-style.syntax["comment"] = { common.color "#676b6f" }
-style.syntax["keyword"] = { common.color "#E58AC9" }
-style.syntax["keyword2"] = { common.color "#F77483" }
-style.syntax["number"] = { common.color "#FFA94D" }
-style.syntax["literal"] = { common.color "#FFA94D" }
-style.syntax["string"] = { common.color "#f7c95c" }
-style.syntax["operator"] = { common.color "#93DDFA" }
-style.syntax["function"] = { common.color "#93DDFA" }
+style.syntax["normal"] = { common.color "#D3C6AA" }
+style.syntax["symbol"] = { common.color "#D3C6AA" }
+style.syntax["comment"] = { common.color "#7A8478" }
+style.syntax["keyword"] = { common.color "#E67E80" }
+style.syntax["keyword2"] = { common.color "#E69875" }
+style.syntax["number"] = { common.color "#D699B6" }
+style.syntax["literal"] = { common.color "#D699B6" }
+style.syntax["string"] = { common.color "#A7C080" }
+style.syntax["operator"] = { common.color "#E69875" }
+style.syntax["function"] = { common.color "#83C092" }
 
 return style

@@ -38,6 +38,14 @@ icons are Nerd Font glyphs living in the private use area of the code font,
 named once in `style.icons` and referenced by name at every call site instead
 of lite's single-letter mappings ("f", "d", "g", ...).
 
+## 4. Everforest dark color scheme
+
+**File:** `data/core/style.lua`
+
+The default theme is everforest dark (medium) instead of lite's grayscale:
+grey-green backgrounds, warm parchment foreground, green caret and
+selection. Same palette structure as lite's, only the values changed.
+
 ## Core behavior notes (rust core vs lite's c core)
 
 The core fixes lite's bugs instead of reproducing them. The observable
