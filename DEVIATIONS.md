@@ -74,6 +74,15 @@ treeview does. Dividers that nothing can resize (command view, status bar)
 no longer show the resize cursor at all -- the cursor only promises what a
 drag can deliver.
 
+## 6. Treeview scrolling is clamped to its content
+
+**File:** `data/plugins/treeview.lua`
+
+lite's base view reports an infinite scrollable size, so the treeview
+scrolled past its last item into the void forever. wisp's treeview reports
+the real height of its visible items, so scrolling stops at the bottom
+like every other editor.
+
 ## Core behavior notes (rust core vs lite's c core)
 
 The core fixes lite's bugs instead of reproducing them. The observable

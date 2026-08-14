@@ -270,6 +270,32 @@ fn dragging_the_divider_resizes_the_treeview() {
 }
 
 #[test]
+fn treeview_scrolling_is_clamped_to_its_content() {
+    // stock lite scrolls the treeview into the void forever
+    // (View:get_scrollable_size is math.huge); wisp clamps it
+    let mut editor = boot();
+    for _ in 0..2000 {
+        assert!(editor.step(), "editor exited while settling");
+    }
+    let (before, _, _) = editor.last_frame();
+    editor.push_event(Event::MouseMoved(100, 300, 0, 0));
+    editor.run_steps(50);
+    for _ in 0..10 {
+        editor.push_event(Event::MouseWheel(0.0, -50.0));
+        editor.run_steps(50);
+    }
+    editor.run_steps(1000);
+    let (after, _, _) = editor.last_frame();
+    assert_eq!(editor.exited, None);
+    // with the scroll clamped, wheeling down cannot move the (fully
+    // visible) items, so the treeview must look exactly as before
+    assert_eq!(
+        before, after,
+        "treeview scrolled into the void below its content"
+    );
+}
+
+#[test]
 fn wheel_scrolls_the_document() {
     let mut editor = boot();
     editor.push_event(Event::KeyPressed("left ctrl".into()));

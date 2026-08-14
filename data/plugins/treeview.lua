@@ -58,6 +58,17 @@ function TreeView:get_item_height()
     return style.font:get_height() + style.padding.y
 end
 
+-- the view base class reports math.huge (it cannot know its content),
+-- which let the treeview scroll into the void forever; report the real
+-- height of the visible items so scrolling clamps to them
+function TreeView:get_scrollable_size()
+    local count = 0
+    for _ in self:each_item() do
+        count = count + 1
+    end
+    return style.padding.y * 2 + count * self:get_item_height()
+end
+
 function TreeView:check_cache()
     -- invalidate cache's skip values if project_files has changed
     if core.project_files ~= self.last_project_files then
