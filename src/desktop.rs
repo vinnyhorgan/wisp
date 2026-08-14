@@ -185,6 +185,41 @@ enum Parked {
     Done,
 }
 
+/// turns raw button presses into lite's click counts. repeat presses of
+/// the same button within half a second and 8 pixels count up, and the
+/// count cycles after a triple click so mashing goes caret, word, line,
+/// caret, ... instead of counting up forever like sdl did
+struct ClickCounter {
+    time: f64,
+    button: &'static str,
+    pos: (f64, f64),
+    clicks: i32,
+}
+
+impl ClickCounter {
+    fn new() -> ClickCounter {
+        ClickCounter {
+            time: -1.0,
+            button: "?",
+            pos: (0.0, 0.0),
+            clicks: 0,
+        }
+    }
+
+    fn press(&mut self, button: &'static str, now: f64, pos: (f64, f64)) -> i32 {
+        let near = (pos.0 - self.pos.0).abs() < 8.0 && (pos.1 - self.pos.1).abs() < 8.0;
+        if button == self.button && now - self.time < 0.5 && near {
+            self.clicks = self.clicks % 3 + 1;
+        } else {
+            self.clicks = 1;
+        }
+        self.time = now;
+        self.button = button;
+        self.pos = pos;
+        self.clicks
+    }
+}
+
 struct App {
     engine: Shared,
     exedir: String,
@@ -193,10 +228,7 @@ struct App {
     parked: Parked,
     mods: ModifiersState,
     cursor: (f64, f64),
-    click_time: f64,
-    click_button: &'static str,
-    click_pos: (f64, f64),
-    clicks: i32,
+    clicks: ClickCounter,
 }
 
 impl App {
@@ -322,18 +354,8 @@ impl ApplicationHandler for App {
                 let (x, y) = (self.cursor.0 as i32, self.cursor.1 as i32);
                 match state {
                     ElementState::Pressed => {
-                        let now = self.now();
-                        let near = (self.cursor.0 - self.click_pos.0).abs() < 8.0
-                            && (self.cursor.1 - self.click_pos.1).abs() < 8.0;
-                        if name == self.click_button && now - self.click_time < 0.5 && near {
-                            self.clicks += 1;
-                        } else {
-                            self.clicks = 1;
-                        }
-                        self.click_time = now;
-                        self.click_button = name;
-                        self.click_pos = self.cursor;
-                        self.push(Event::MousePressed(name, x, y, self.clicks));
+                        let clicks = self.clicks.press(name, self.now(), self.cursor);
+                        self.push(Event::MousePressed(name, x, y, clicks));
                     }
                     ElementState::Released => {
                         self.push(Event::MouseReleased(name, x, y));
@@ -432,10 +454,44 @@ pub fn run() {
         parked: Parked::Start,
         mods: ModifiersState::empty(),
         cursor: (0.0, 0.0),
-        click_time: -1.0,
-        click_button: "?",
-        click_pos: (0.0, 0.0),
-        clicks: 0,
+        clicks: ClickCounter::new(),
     };
     event_loop.run_app(&mut app).expect("event loop error");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ClickCounter;
+
+    #[test]
+    fn rapid_clicks_cycle_through_caret_word_line() {
+        let mut c = ClickCounter::new();
+        let counts: Vec<i32> = (0..7)
+            .map(|i| c.press("left", i as f64 * 0.1, (5.0, 5.0)))
+            .collect();
+        assert_eq!(counts, [1, 2, 3, 1, 2, 3, 1]);
+    }
+
+    #[test]
+    fn slow_clicks_do_not_count_up() {
+        let mut c = ClickCounter::new();
+        assert_eq!(c.press("left", 0.0, (5.0, 5.0)), 1);
+        assert_eq!(c.press("left", 0.6, (5.0, 5.0)), 1);
+    }
+
+    #[test]
+    fn moving_the_mouse_resets_the_count() {
+        let mut c = ClickCounter::new();
+        assert_eq!(c.press("left", 0.0, (5.0, 5.0)), 1);
+        assert_eq!(c.press("left", 0.1, (20.0, 5.0)), 1);
+        assert_eq!(c.press("left", 0.2, (20.0, 7.0)), 2);
+    }
+
+    #[test]
+    fn changing_button_resets_the_count() {
+        let mut c = ClickCounter::new();
+        assert_eq!(c.press("left", 0.0, (5.0, 5.0)), 1);
+        assert_eq!(c.press("left", 0.1, (5.0, 5.0)), 2);
+        assert_eq!(c.press("right", 0.2, (5.0, 5.0)), 1);
+    }
 }
