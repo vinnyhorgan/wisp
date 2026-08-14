@@ -267,6 +267,28 @@ fn dragging_the_divider_resizes_the_treeview() {
         treeview_bg,
         "treeview must widen to cover the dragged-over area"
     );
+
+    // dragging past the window edge must not swallow the whole window:
+    // the width caps below it so the divider stays grabbable (80px at
+    // scale 1, so from a 900px window the divider stops at 820)
+    editor.push_event(Event::MousePressed("left", 300, 300, 1));
+    editor.run_steps(20);
+    editor.push_event(Event::MouseMoved(890, 300, 590, 0));
+    editor.run_steps(20);
+    editor.push_event(Event::MouseReleased("left", 890, 300));
+    editor.run_steps(500);
+
+    let (pixels, _, _) = editor.last_frame();
+    assert_eq!(
+        probe(&pixels, 800, 300),
+        treeview_bg,
+        "treeview must still widen toward the cap"
+    );
+    assert_eq!(
+        probe(&pixels, 860, 300),
+        docview_bg,
+        "the docview strip past the cap must survive an overdrag"
+    );
 }
 
 #[test]

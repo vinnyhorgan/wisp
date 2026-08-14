@@ -138,8 +138,12 @@ function TreeView:on_mouse_pressed(button, x, y)
 end
 
 function TreeView:update()
-    -- update width
-    local dest = self.visible and self.target_size or 0
+    -- update width; cap it below the window width so the divider always
+    -- stays on screen and can be grabbed again
+    local dest = 0
+    if self.visible then
+        dest = common.clamp(self.target_size, 80 * SCALE, core.root_view.size.x - 80 * SCALE)
+    end
     if self.init_size then
         self.size.x = dest
         self.init_size = false

@@ -72,7 +72,9 @@ width every frame anyway. wisp adds a small protocol: a locked view may
 implement `set_target_size(axis, value)` to accept divider drags, and the
 treeview does. Dividers that nothing can resize (command view, status bar)
 no longer show the resize cursor at all -- the cursor only promises what a
-drag can deliver.
+drag can deliver. The width is clamped on both ends (80px minimum, 80px
+short of the window at most) so the divider always stays on screen and
+can be grabbed again.
 
 ## 6. Treeview scrolling is clamped to its content
 
