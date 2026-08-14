@@ -10,8 +10,10 @@ local View = require "core.view"
 
 local StatusView = View:extend()
 
-StatusView.separator  = "      "
-StatusView.separator2 = "   |   "
+-- lite sized these for a proportional ui font with ~3.5px spaces; our
+-- mono spaces are 8px wide, so fewer of them keep the same visual rhythm
+StatusView.separator  = "   "
+StatusView.separator2 = " | "
 
 
 function StatusView:new()
