@@ -39,7 +39,7 @@ return function()
     -- the env override is desktop-only: headless boots must render the
     -- same pixels on every machine, whatever the environment exports
     if not headless then
-      SCALE = tonumber(os.getenv("LITE_SCALE")) or SCALE
+      SCALE = tonumber(os.getenv("WISP_SCALE")) or SCALE
     end
     core = require('core')
     core.init()

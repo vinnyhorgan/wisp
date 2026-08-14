@@ -16,6 +16,16 @@ The quit confirmation is routed through `core.command_view:enter()` with
 yes/no suggestions instead, so the editor confirms with its own UI, in its own
 theme. Type `y`/`yes` to quit, anything else (or escape) to cancel.
 
+## 2. Branding says wisp, not lite
+
+**Files:** `data/core/init.lua`, `data/core/rootview.lua`,
+`data/core/commands/core.lua`
+
+The editor is called wisp everywhere the user can see the name: the window
+title (`"file - wisp"`), the wordmark on the empty view, the project module
+(`.wisp_project.lua`), and the temp file prefix (`.wisp_temp_*`). The scale
+override env var is `WISP_SCALE` (was `LITE_SCALE`).
+
 ## Core behavior notes (rust core vs lite's c core)
 
 The core fixes lite's bugs instead of reproducing them. The observable
@@ -24,7 +34,7 @@ differences, all deliberate:
 - Invalid UTF-8 renders as the replacement character; lite's decoder walked
   out of bounds on malformed input.
 - `SCALE` defaults to the real display scale factor; lite detected DPI only
-  on Windows and hardcoded 1.0 elsewhere. `LITE_SCALE` still overrides it
+  on Windows and hardcoded 1.0 elsewhere. `WISP_SCALE` still overrides it
   (desktop only; headless boots ignore it so tests render identically on
   every machine).
 - The mousewheel event carries the horizontal axis as an extra value after

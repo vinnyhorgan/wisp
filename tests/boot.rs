@@ -63,7 +63,7 @@ fn editor_boots_and_draws_a_frame() {
         non_bg > pixels.len() / 100,
         "only {non_bg} non-background pixels (bg {bg:#08x})"
     );
-    assert_eq!(editor.window_title(), "lite");
+    assert_eq!(editor.window_title(), "wisp");
 }
 
 #[test]
@@ -153,7 +153,7 @@ fn clicking_the_treeview_opens_the_file() {
             break;
         }
     }
-    assert_eq!(editor.window_title(), "hello.txt - lite");
+    assert_eq!(editor.window_title(), "hello.txt - wisp");
 }
 
 #[test]
@@ -194,7 +194,7 @@ fn typing_in_a_new_doc_appears_on_screen() {
         frame_empty_doc, frame_typed,
         "typing must change the screen"
     );
-    assert_eq!(editor.window_title(), "unsaved* - lite");
+    assert_eq!(editor.window_title(), "unsaved* - wisp");
 }
 
 #[test]
