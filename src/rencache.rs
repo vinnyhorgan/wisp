@@ -50,6 +50,11 @@ enum Command {
     DrawText {
         font: Rc<Font>,
         text: String,
+        /// pen origin: top-left of the line box, where drawing starts
+        x: i32,
+        y: i32,
+        /// covers the metric box and all glyph ink; the cells this rect
+        /// overlaps are the ones the command is hashed into
         rect: Rect,
         color: Color,
         tab_advance: i32,
@@ -80,12 +85,16 @@ impl Command {
             Command::DrawText {
                 font,
                 text,
+                x,
+                y,
                 color,
                 tab_advance,
                 ..
             } => {
                 h.write(&[2, color.r, color.g, color.b, color.a]);
                 h.write(&(Rc::as_ptr(font) as usize).to_le_bytes());
+                h.write_i32(*x);
+                h.write_i32(*y);
                 h.write_i32(*tab_advance);
                 h.write(text.as_bytes());
             }
@@ -172,17 +181,31 @@ impl RenCache {
     }
 
     pub fn draw_text(&mut self, font: &Rc<Font>, text: &str, x: i32, y: i32, color: Color) -> i32 {
-        let rect = Rect::new(x, y, font.width_of(text), font.height());
+        let width = font.width_of(text);
+        let mut rect = Rect::new(x, y, width, font.height());
+        // the command is hashed into the cells this rect overlaps, so it
+        // must cover every pixel the text can ink -- grow it by the true
+        // ink box when glyphs escape their metrics (nerd font icons)
+        if let Some((ix, iy, iw, ih)) = font.ink_box_of(text) {
+            rect = rect.merge(Rect::new(
+                x.saturating_add(ix),
+                y.saturating_add(iy),
+                iw,
+                ih,
+            ));
+        }
         if self.screen.overlaps(rect) {
             self.commands.push(Command::DrawText {
                 font: Rc::clone(font),
                 text: text.to_owned(),
+                x,
+                y,
                 rect,
                 color,
                 tab_advance: font.tab_advance(),
             });
         }
-        x.saturating_add(rect.width)
+        x.saturating_add(width)
     }
 
     fn update_overlapping_cells(&mut self, r: Rect, h: u32) {
@@ -254,18 +277,18 @@ impl RenCache {
                     Command::DrawText {
                         font,
                         text,
+                        x,
+                        y,
                         rect,
                         color,
                         tab_advance,
                     } => {
-                        // glyph ink can escape the font's metrics (nerd font
-                        // icons fill the em box), but the command was hashed
-                        // into the cells this rect overlaps -- painting
-                        // outside it would leave stale pixels the cache can
-                        // never invalidate
+                        // painting outside the hashed rect would leave stale
+                        // pixels the cache can never invalidate; the rect
+                        // covers all ink, so this clip is normally invisible
                         fb.set_clip(rect.intersect(cr));
                         font.set_tab_advance(*tab_advance);
-                        fb.draw_text(font, text, rect.x, rect.y, *color);
+                        fb.draw_text(font, text, *x, *y, *color);
                         fb.set_clip(cr);
                     }
                 }

@@ -147,6 +147,36 @@ impl Font {
         }
         x.clamp(i32::MIN as i64, i32::MAX as i64) as i32
     }
+
+    /// ink bounding box of `text` as (x, y, width, height) relative to the
+    /// draw origin (top-left of the line box), or none for invisible text.
+    /// ink can escape the metric box: nerd font icons fill the em square
+    /// and overhang their advance, accents can rise above the ascent
+    pub fn ink_box_of(&self, text: &str) -> Option<(i32, i32, i32, i32)> {
+        let (mut pen, mut b): (i64, Option<[i64; 4]>) = (0, None);
+        for ch in text.chars() {
+            if ch == '\t' {
+                pen += self.tab_advance.get() as i64;
+                continue;
+            }
+            let g = self.glyph(ch);
+            if g.width > 0 && !g.mask.is_empty() {
+                let h = g.mask.len() as i64 / g.width as i64;
+                let x0 = pen + g.left as i64;
+                let y0 = (self.ascent - g.top) as i64;
+                let (x1, y1) = (x0 + g.width as i64, y0 + h);
+                b = Some(match b {
+                    None => [x0, y0, x1, y1],
+                    Some(p) => [p[0].min(x0), p[1].min(y0), p[2].max(x1), p[3].max(y1)],
+                });
+            }
+            pen += g.advance as i64;
+        }
+        b.map(|[x0, y0, x1, y1]| {
+            let c = |v: i64| v.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+            (c(x0), c(y0), c(x1 - x0), c(y1 - y0))
+        })
+    }
 }
 
 #[cfg(test)]
@@ -227,6 +257,25 @@ mod tests {
         assert!(!Rc::ptr_eq(&a, &b));
         assert!(font.glyphs.borrow().contains_key(&'\u{10400}'));
         assert!(font.glyphs.borrow().contains_key(&'\u{0400}'));
+    }
+
+    #[test]
+    fn ink_box_reports_glyphs_escaping_their_metrics() {
+        let font = Font::load(&font_path(), 14.0).unwrap();
+        assert!(font.ink_box_of("").is_none());
+        assert!(font.ink_box_of("\t").is_none());
+        let (_, _, w, h) = font.ink_box_of("A").unwrap();
+        assert!(w > 0 && h > 0);
+        // at least one of the icons the editor uses inks outside its
+        // metric box (advance x height); the render cache depends on
+        // ink_box_of reporting that overhang
+        let icons = "\u{F016}\u{F07B}\u{F07C}\u{F054}\u{F078}\u{F013}\u{F05A}\u{F071}";
+        let escapes = icons.chars().any(|ch| {
+            let s = ch.to_string();
+            let (ix, iy, iw, ih) = font.ink_box_of(&s).unwrap();
+            ix < 0 || iy < 0 || ix + iw > font.width_of(&s) || iy + ih > font.height()
+        });
+        assert!(escapes, "expected some icon ink outside the metric box");
     }
 
     #[test]
