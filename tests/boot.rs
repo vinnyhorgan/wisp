@@ -155,6 +155,45 @@ fn quit_with_unsaved_changes_asks_in_the_editor() {
 }
 
 #[test]
+fn wheel_scrolls_the_document() {
+    let mut editor = boot();
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    press(&editor, "n");
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(50);
+    editor.push_event(Event::TextInput("line\n".repeat(200)));
+    editor.run_steps(200);
+    let (before, w, h) = editor.last_frame();
+
+    // the wheel is routed to whichever view was under the mouse on the
+    // previous step (lite coalesces mouse moves and dispatches them at
+    // the end of each step), so move first and let it settle. typing
+    // left the view at the bottom of the doc, so scroll up (positive y,
+    // the sdl convention lite was written against)
+    editor.push_event(Event::MouseMoved(w / 2, h / 2, 0, 0));
+    editor.run_steps(50);
+    editor.push_event(Event::MouseWheel(0.0, 20.0));
+    editor.run_steps(200);
+    assert_eq!(editor.exited, None, "editor died on a wheel event");
+    let (after, _, _) = editor.last_frame();
+
+    // scrolling must repaint a large part of the view; a blinking caret
+    // alone only touches a sliver, so this cannot pass by accident
+    let changed = before.iter().zip(&after).filter(|(a, b)| a != b).count();
+    assert!(
+        changed > before.len() / 20,
+        "wheel changed only {changed} of {} pixels",
+        before.len()
+    );
+
+    // a purely horizontal wheel is delivered as an extra value that the
+    // stock lua layer ignores; it must be harmless
+    editor.push_event(Event::MouseWheel(3.0, 0.0));
+    editor.run_steps(200);
+    assert_eq!(editor.exited, None);
+}
+
+#[test]
 fn clipboard_round_trips_through_the_editor() {
     // ctrl+n, type, select all, copy: the platform clipboard must hold
     // exactly what was typed

@@ -104,7 +104,10 @@ fn event_to_multi(lua: &Lua, event: Event) -> mlua::Result<MultiValue> {
         }
         Event::MouseReleased(b, x, y) => ("mousereleased", b, x, y).into_lua_multi(lua),
         Event::MouseMoved(x, y, dx, dy) => ("mousemoved", x, y, dx, dy).into_lua_multi(lua),
-        Event::MouseWheel(y) => ("mousewheel", y).into_lua_multi(lua),
+        // y comes first: lite's api only had a vertical wheel, so the
+        // horizontal axis rides along as an extra value that stock lua
+        // ignores until the editor learns to side-scroll
+        Event::MouseWheel(x, y) => ("mousewheel", y, x).into_lua_multi(lua),
     }
 }
 

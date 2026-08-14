@@ -24,7 +24,8 @@ pub enum Event {
     MousePressed(&'static str, i32, i32, i32),
     MouseReleased(&'static str, i32, i32),
     MouseMoved(i32, i32, i32, i32),
-    MouseWheel(f64),
+    /// horizontal then vertical scroll, in lines
+    MouseWheel(f64, f64),
 }
 
 pub trait Platform {

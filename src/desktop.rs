@@ -341,12 +341,12 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::MouseWheel { delta, .. } => {
-                let y = match delta {
-                    MouseScrollDelta::LineDelta(_, y) => y as f64,
-                    MouseScrollDelta::PixelDelta(pos) => pos.y / 40.0,
+                let (x, y) = match delta {
+                    MouseScrollDelta::LineDelta(x, y) => (x as f64, y as f64),
+                    MouseScrollDelta::PixelDelta(pos) => (pos.x / 40.0, pos.y / 40.0),
                 };
-                if y != 0.0 {
-                    self.push(Event::MouseWheel(y));
+                if x != 0.0 || y != 0.0 {
+                    self.push(Event::MouseWheel(x, y));
                 }
             }
             WindowEvent::DroppedFile(path) => {
