@@ -19,6 +19,7 @@ use winit::dpi::PhysicalSize;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::ModifiersState;
+use winit::platform::modifier_supplement::KeyEventExtModifierSupplement;
 use winit::window::{CursorIcon, Fullscreen, Window, WindowId};
 
 use crate::api::{Engine, Shared};
@@ -182,7 +183,7 @@ enum Parked {
     Start,
     Wait { deadline: f64 },
     Sleep { deadline: f64 },
-    Done,
+    Done(i32),
 }
 
 /// turns raw button presses into lite's click counts. repeat presses of
@@ -288,7 +289,7 @@ impl ApplicationHandler for App {
             p.surface = Some(surface);
         });
 
-        let args: Vec<String> = std::env::args().collect();
+        let args: Vec<std::ffi::OsString> = std::env::args_os().collect();
         let exefile = std::env::current_exe()
             .map(|p| p.display().to_string())
             .unwrap_or_else(|_| format!("{}/wisp", self.exedir));
@@ -307,13 +308,31 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => self.push(Event::Quit),
             WindowEvent::Resized(size) => {
-                self.push(Event::Resized(size.width as i32, size.height as i32));
+                // minimized windows report 0x0; lite never saw those from
+                // sdl, so the lua layer is not built to lay out at zero
+                if size.width > 0 && size.height > 0 {
+                    self.push(Event::Resized(size.width as i32, size.height as i32));
+                }
             }
             WindowEvent::RedrawRequested => self.push(Event::Exposed),
             WindowEvent::Focused(focus) => self.with_platform(|p| p.focus = focus),
             WindowEvent::ModifiersChanged(mods) => self.mods = mods.state(),
-            WindowEvent::KeyboardInput { event, .. } => {
-                let name = keys::key_name(&event.logical_key, event.location);
+            WindowEvent::KeyboardInput {
+                event,
+                is_synthetic,
+                ..
+            } => {
+                // x11 synthesizes presses for every held key when focus
+                // returns; forwarding them would type a tab on alt-tab
+                // (the exact sdl bug lite worked around). releases still
+                // pass so held modifiers unstick
+                if is_synthetic && event.state == ElementState::Pressed {
+                    return;
+                }
+                // name keys by their unshifted character, like sdl did:
+                // the stock keymap binds "ctrl+shift+[", not "ctrl+shift+{"
+                let key = event.key_without_modifiers();
+                let name = keys::key_name(&key, event.location);
                 match event.state {
                     ElementState::Pressed => {
                         if let Some(name) = name {
@@ -335,14 +354,13 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
-                let (dx, dy) = (position.x - self.cursor.0, position.y - self.cursor.1);
+                // deltas are differences of truncated positions, so a
+                // stream of sub-pixel moves still sums to the true travel
+                // (truncating each fractional delta would drift to zero)
+                let (x, y) = (position.x as i32, position.y as i32);
+                let (dx, dy) = (x - self.cursor.0 as i32, y - self.cursor.1 as i32);
                 self.cursor = (position.x, position.y);
-                self.push(Event::MouseMoved(
-                    position.x as i32,
-                    position.y as i32,
-                    dx as i32,
-                    dy as i32,
-                ));
+                self.push(Event::MouseMoved(x, y, dx, dy));
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 let name = match button {
@@ -372,8 +390,12 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::DroppedFile(path) => {
+                // winit reports no cursor motion during a drag, so these
+                // coordinates are the last known position, not the drop
+                // point; the file still opens, it may just land in another
+                // split. sdl could do better, winit has no drop position
                 self.push(Event::FileDropped(
-                    path.display().to_string(),
+                    path,
                     self.cursor.0 as i32,
                     self.cursor.1 as i32,
                 ));
@@ -385,10 +407,17 @@ impl ApplicationHandler for App {
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         let Some((_, thread)) = &self.lua else { return };
         let thread = thread.clone();
-        loop {
+        // resume the editor at most a handful of times before returning to
+        // winit: consecutive slow frames would otherwise never let the os
+        // deliver events (sdl pumped its own queue; winit only pumps when
+        // we return)
+        for _ in 0..4 {
             let now = self.now();
             let resume_arg = match self.parked {
-                Parked::Done => {
+                Parked::Done(code) => {
+                    if code != 0 {
+                        std::process::exit(code);
+                    }
                     event_loop.exit();
                     return;
                 }
@@ -424,9 +453,10 @@ impl ApplicationHandler for App {
                 Yield::Sleep(t) => Parked::Sleep {
                     deadline: self.now() + t.max(0.0),
                 },
-                Yield::Exit(_) => Parked::Done,
+                Yield::Exit(code) => Parked::Done(code),
             };
         }
+        event_loop.set_control_flow(ControlFlow::Poll);
     }
 }
 

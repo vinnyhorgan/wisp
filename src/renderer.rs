@@ -104,7 +104,7 @@ impl Framebuffer {
     pub fn new(width: i32, height: i32) -> Framebuffer {
         let (width, height) = (width.max(1), height.max(1));
         Framebuffer {
-            pixels: vec![0; (width * height) as usize],
+            pixels: vec![0; width as usize * height as usize],
             width,
             height,
             clip: Rect::new(0, 0, width, height),
@@ -119,7 +119,7 @@ impl Framebuffer {
         self.width = width;
         self.height = height;
         self.pixels.clear();
-        self.pixels.resize((width * height) as usize, 0);
+        self.pixels.resize(width as usize * height as usize, 0);
         self.clip = Rect::new(0, 0, width, height);
     }
 

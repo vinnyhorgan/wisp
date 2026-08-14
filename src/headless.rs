@@ -24,6 +24,7 @@ pub struct HeadlessPlatform {
     pub title: String,
     pub frame_count: usize,
     pub last_frame: Vec<u32>,
+    last_frame_size: (i32, i32),
 }
 
 impl HeadlessPlatform {
@@ -37,6 +38,7 @@ impl HeadlessPlatform {
             title: String::new(),
             frame_count: 0,
             last_frame: Vec::new(),
+            last_frame_size: (0, 0),
         }
     }
 }
@@ -77,6 +79,7 @@ impl Platform for HeadlessPlatform {
     fn present(&mut self, fb: &Framebuffer, _rects: &[Rect]) {
         self.frame_count += 1;
         self.last_frame.clone_from(&fb.pixels);
+        self.last_frame_size = (fb.width, fb.height);
     }
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
@@ -99,16 +102,16 @@ impl Headless {
     /// `project_dir` becomes the editor's project directory; keep it stable
     /// and minimal, its listing is rendered by the treeview. the editor
     /// finds data/ via this crate's manifest dir
-    pub fn boot(project_dir: &str, width: i32, height: i32) -> Headless {
+    pub fn boot(project_dir: &str, width: i32, height: i32, scale: f64) -> Headless {
         let exedir = env!("CARGO_MANIFEST_DIR").to_owned();
         let engine = Engine::shared(Box::new(HeadlessPlatform::new(width, height)));
-        let args = vec!["wisp".to_owned(), project_dir.to_owned()];
+        let args = vec!["wisp".into(), std::ffi::OsString::from(project_dir)];
         let (lua, thread) = boot::init_lua(
             &engine,
             &exedir,
             &format!("{exedir}/wisp"),
             &args,
-            1.0,
+            scale,
             true,
         )
         .expect("lua boot failed");
@@ -140,8 +143,21 @@ impl Headless {
     }
 
     pub fn last_frame(&self) -> (Vec<u32>, i32, i32) {
-        let (w, h) = self.with_platform(|p| p.size);
-        (self.with_platform(|p| p.last_frame.clone()), w, h)
+        // dimensions are captured with the pixels at present time, so they
+        // agree even if the window was resized since
+        self.with_platform(|p| {
+            let (w, h) = p.last_frame_size;
+            (p.last_frame.clone(), w, h)
+        })
+    }
+
+    /// resizes the virtual window: updates the reported size and delivers
+    /// the resized event, like a real windowing system would
+    pub fn resize(&self, width: i32, height: i32) {
+        self.with_platform(|p| {
+            p.size = (width, height);
+            p.queue.push_back(Event::Resized(width, height));
+        });
     }
 
     pub fn window_title(&self) -> String {

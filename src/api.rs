@@ -27,8 +27,8 @@ use crate::renderer::{Color, Framebuffer, Rect};
 /// the draw-command cache
 pub struct Engine {
     pub platform: Box<dyn Platform>,
-    pub fb: Framebuffer,
-    pub cache: RenCache,
+    pub(crate) fb: Framebuffer,
+    pub(crate) cache: RenCache,
 }
 
 pub type Shared = Rc<RefCell<Engine>>;
@@ -95,7 +95,11 @@ fn event_to_multi(lua: &Lua, event: Event) -> mlua::Result<MultiValue> {
         Event::Quit => ("quit",).into_lua_multi(lua),
         Event::Resized(w, h) => ("resized", w, h).into_lua_multi(lua),
         Event::Exposed => ("exposed",).into_lua_multi(lua),
-        Event::FileDropped(file, x, y) => ("filedropped", file, x, y).into_lua_multi(lua),
+        Event::FileDropped(file, x, y) => {
+            // the path goes to lua as raw bytes so non-utf8 names survive
+            let file = lua.create_string(file.as_os_str().as_bytes())?;
+            ("filedropped", file, x, y).into_lua_multi(lua)
+        }
         Event::KeyPressed(key) => ("keypressed", key).into_lua_multi(lua),
         Event::KeyReleased(key) => ("keyreleased", key).into_lua_multi(lua),
         Event::TextInput(text) => ("textinput", text).into_lua_multi(lua),
@@ -191,7 +195,10 @@ pub fn register(lua: &Lua, engine: &Shared) -> mlua::Result<()> {
     let eng = engine.clone();
     system.set(
         "set_window_title",
-        lua.create_function(move |_, title: String| {
+        lua.create_function(move |_, title: LuaString| {
+            // titles are built from file names, which are raw bytes; a
+            // latin-1 name must not error the whole editor out of core.step
+            let title = String::from_utf8_lossy(&title.as_bytes()).into_owned();
             eng.borrow_mut().platform.set_window_title(&title);
             Ok(())
         })?,
@@ -280,7 +287,9 @@ pub fn register(lua: &Lua, engine: &Shared) -> mlua::Result<()> {
     let eng = engine.clone();
     system.set(
         "set_clipboard",
-        lua.create_function(move |_, text: String| {
+        lua.create_function(move |_, text: LuaString| {
+            // docs hold raw file bytes; copying non-utf8 text must not fail
+            let text = String::from_utf8_lossy(&text.as_bytes()).into_owned();
             eng.borrow_mut().platform.set_clipboard(&text);
             Ok(())
         })?,
@@ -315,9 +324,10 @@ pub fn register(lua: &Lua, engine: &Shared) -> mlua::Result<()> {
     renderer.set(
         "show_debug",
         lua.create_function(move |_, enable: Value| {
-            eng.borrow_mut()
-                .cache
-                .show_debug(enable.as_boolean().unwrap_or(false));
+            // lua truthiness, like lite's lua_toboolean: everything except
+            // nil and false enables the overlay
+            let enable = !matches!(enable, Value::Nil | Value::Boolean(false));
+            eng.borrow_mut().cache.show_debug(enable);
             Ok(())
         })?,
     )?;
@@ -391,7 +401,10 @@ pub fn register(lua: &Lua, engine: &Shared) -> mlua::Result<()> {
                 Option<Table>,
             )| {
                 let font = font.borrow::<LuaFont>()?;
-                let text = String::from_utf8_lossy(&text.as_bytes()).into_owned();
+                // borrow as utf-8, replacing invalid bytes; the rencache
+                // makes the single owned copy it needs for its command
+                let bytes = text.as_bytes();
+                let text = String::from_utf8_lossy(&bytes);
                 let x = eng.borrow_mut().cache.draw_text(
                     &font.0,
                     &text,

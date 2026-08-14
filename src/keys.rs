@@ -46,11 +46,11 @@ pub fn key_name(key: &Key, location: KeyLocation) -> Option<String> {
                 NamedKey::ArrowLeft => "left",
                 NamedKey::ArrowRight => "right",
                 NamedKey::CapsLock => "capslock",
-                NamedKey::NumLock => "numlockclear",
+                NamedKey::NumLock => "numlock",
                 NamedKey::ScrollLock => "scrolllock",
                 NamedKey::PrintScreen => "printscreen",
                 NamedKey::Pause => "pause",
-                NamedKey::ContextMenu => "menu",
+                NamedKey::ContextMenu => "application",
                 NamedKey::F1 => "f1",
                 NamedKey::F2 => "f2",
                 NamedKey::F3 => "f3",
@@ -111,9 +111,28 @@ mod tests {
         assert_eq!(named(NamedKey::ArrowDown), "down");
         assert_eq!(named(NamedKey::ArrowLeft), "left");
         assert_eq!(named(NamedKey::ArrowRight), "right");
-        assert_eq!(named(NamedKey::F3), "f3");
-        assert_eq!(named(NamedKey::F11), "f11");
+        let fkeys = [
+            (NamedKey::F1, "f1"),
+            (NamedKey::F2, "f2"),
+            (NamedKey::F3, "f3"),
+            (NamedKey::F4, "f4"),
+            (NamedKey::F5, "f5"),
+            (NamedKey::F6, "f6"),
+            (NamedKey::F7, "f7"),
+            (NamedKey::F8, "f8"),
+            (NamedKey::F9, "f9"),
+            (NamedKey::F10, "f10"),
+            (NamedKey::F11, "f11"),
+            (NamedKey::F12, "f12"),
+        ];
+        for (key, name) in fkeys {
+            assert_eq!(named(key), name);
+        }
         assert_eq!(named(NamedKey::Space), "space");
+        // sdl vocabulary for keys user keymaps may bind
+        assert_eq!(named(NamedKey::NumLock), "numlock");
+        assert_eq!(named(NamedKey::ContextMenu), "application");
+        assert_eq!(named(NamedKey::CapsLock), "capslock");
         for c in "abcdefghijklmnopqrstuvwxyz0123456789[]/\\-=".chars() {
             assert_eq!(ch(&c.to_string()), c.to_string());
         }

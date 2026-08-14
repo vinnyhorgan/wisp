@@ -15,12 +15,12 @@ use std::rc::Rc;
 use crate::font::Font;
 use crate::renderer::{Color, Framebuffer, Rect};
 
-pub const CELL_SIZE: i32 = 96;
+const CELL_SIZE: i32 = 96;
 
 const HASH_INITIAL: u32 = 2166136261;
 
 /// 32-bit fnv-1a, same as lite; a fixed function keeps frames deterministic
-/// across runs, which the golden tests depend on
+/// across runs, which the pixel-comparing tests depend on
 struct Fnv(u32);
 
 impl Fnv {
@@ -150,7 +150,7 @@ impl RenCache {
             self.screen = Rect::new(0, 0, width, height);
             self.grid_w = width / CELL_SIZE + 1;
             self.grid_h = height / CELL_SIZE + 1;
-            let n = (self.grid_w * self.grid_h) as usize;
+            let n = self.grid_w as usize * self.grid_h as usize;
             self.cells.clear();
             self.cells.resize(n, HASH_INITIAL);
             self.cells_prev.clear();
@@ -267,6 +267,9 @@ impl RenCache {
                     b: (n >> 16) as u8,
                     a: 50,
                 };
+                // unlike lite, reset the clip first so the tint always
+                // covers the whole dirty rect; lite drew it under the
+                // frame's last clip, which could hide part of the overlay
                 fb.set_clip(r);
                 fb.draw_rect(r, color);
             }

@@ -17,7 +17,7 @@ pub enum Event {
     Quit,
     Resized(i32, i32),
     Exposed,
-    FileDropped(String, i32, i32),
+    FileDropped(std::path::PathBuf, i32, i32),
     KeyPressed(String),
     KeyReleased(String),
     TextInput(String),

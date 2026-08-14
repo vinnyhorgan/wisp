@@ -36,7 +36,11 @@ end
 return function()
   local core
   xpcall(function()
-    SCALE = tonumber(os.getenv("LITE_SCALE")) or SCALE
+    -- the env override is desktop-only: headless boots must render the
+    -- same pixels on every machine, whatever the environment exports
+    if not headless then
+      SCALE = tonumber(os.getenv("LITE_SCALE")) or SCALE
+    end
     core = require('core')
     core.init()
     core.run()
@@ -85,7 +89,7 @@ pub fn init_lua(
     engine: &Shared,
     exedir: &str,
     exefile: &str,
-    args: &[String],
+    args: &[std::ffi::OsString],
     scale: f64,
     headless: bool,
 ) -> mlua::Result<(Lua, Thread)> {
@@ -93,7 +97,14 @@ pub fn init_lua(
     api::register(&lua, engine)?;
 
     let globals = lua.globals();
-    globals.set("ARGS", lua.create_sequence_from(args.iter().cloned())?)?;
+    // args are raw bytes: lua strings hold them as-is, so files with
+    // non-utf8 names open fine (lite pushed raw argv the same way)
+    let args_table = lua.create_table()?;
+    for arg in args {
+        use std::os::unix::ffi::OsStrExt;
+        args_table.push(lua.create_string(arg.as_bytes())?)?;
+    }
+    globals.set("ARGS", args_table)?;
     globals.set("VERSION", "1.11")?;
     globals.set(
         "PLATFORM",
@@ -132,7 +143,7 @@ pub fn resume(thread: &Thread, arg: Resume) -> Yield {
     }
     let mut iter = values.into_iter();
     let kind = match iter.next() {
-        Some(Value::String(s)) => s.to_string_lossy().to_string(),
+        Some(Value::String(s)) => s.to_string_lossy(),
         other => {
             eprintln!("unexpected yield from editor coroutine: {other:?}");
             return Yield::Exit(1);
@@ -151,5 +162,60 @@ pub fn resume(thread: &Thread, arg: Resume) -> Yield {
             eprintln!("unexpected yield kind from editor coroutine: {other:?}");
             Yield::Exit(1)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// loads a chunk that returns a function, runs it as a coroutine and
+    /// reports the first thing the protocol sees
+    fn first_yield(chunk: &str) -> Yield {
+        let lua = Lua::new();
+        let f: Function = lua.load(chunk).eval().unwrap();
+        let thread = lua.create_thread(f).unwrap();
+        resume(&thread, Resume::Start)
+    }
+
+    #[test]
+    fn wait_sleep_and_exit_yields_are_parsed() {
+        assert!(matches!(
+            first_yield("return function() coroutine.yield('wait', 0.25) end"),
+            Yield::Wait(t) if t == 0.25
+        ));
+        // lua integers must coerce like numbers
+        assert!(matches!(
+            first_yield("return function() coroutine.yield('sleep', 2) end"),
+            Yield::Sleep(t) if t == 2.0
+        ));
+        assert!(matches!(
+            first_yield("return function() coroutine.yield('exit', 3) end"),
+            Yield::Exit(3)
+        ));
+    }
+
+    #[test]
+    fn a_finished_coroutine_exits_cleanly() {
+        assert!(matches!(
+            first_yield("return function() end"),
+            Yield::Exit(0)
+        ));
+    }
+
+    #[test]
+    fn errors_and_garbage_yields_exit_with_failure() {
+        assert!(matches!(
+            first_yield("return function() error('boom') end"),
+            Yield::Exit(1)
+        ));
+        assert!(matches!(
+            first_yield("return function() coroutine.yield('bogus') end"),
+            Yield::Exit(1)
+        ));
+        assert!(matches!(
+            first_yield("return function() coroutine.yield(42) end"),
+            Yield::Exit(1)
+        ));
     }
 }

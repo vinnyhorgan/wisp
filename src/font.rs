@@ -221,9 +221,12 @@ mod tests {
         let font = Font::load(&font_path(), 14.0).unwrap();
         let a = font.glyph('\u{10400}');
         let b = font.glyph('\u{0400}');
+        // under lite's aliasing these were literally the same glyph slot;
+        // ours must be independent allocations, each cached under its own
+        // codepoint
+        assert!(!Rc::ptr_eq(&a, &b));
         assert!(font.glyphs.borrow().contains_key(&'\u{10400}'));
         assert!(font.glyphs.borrow().contains_key(&'\u{0400}'));
-        let _ = (a.advance, b.advance);
     }
 
     #[test]

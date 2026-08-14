@@ -6,16 +6,21 @@ use wisp::headless::Headless;
 use wisp::platform::Event;
 
 /// a minimal, stable project directory (its listing is rendered by the
-/// treeview, so it must not change between runs)
+/// treeview, so it must not change between runs). written exactly once:
+/// tests run concurrently and editors scan this directory while others
+/// boot, so rewriting it mid-run would race
 fn project_dir() -> String {
+    static ONCE: std::sync::Once = std::sync::Once::new();
     let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("project");
-    std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(dir.join("hello.txt"), "hello wisp\n").unwrap();
+    ONCE.call_once(|| {
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("hello.txt"), "hello wisp\n").unwrap();
+    });
     dir.display().to_string()
 }
 
 fn boot() -> Headless {
-    let mut editor = Headless::boot(&project_dir(), 900, 600);
+    let mut editor = Headless::boot(&project_dir(), 900, 600, 1.0);
     editor.run_until_frames(1, 10_000);
     editor
 }
@@ -63,8 +68,8 @@ fn editor_boots_and_draws_a_frame() {
 
 #[test]
 fn boot_is_deterministic() {
-    // same events, same virtual clock, same pixels -- twice. this is the
-    // foundation every golden test stands on
+    // same events, same virtual clock, same pixels -- twice. every
+    // pixel-comparing test in this file stands on this property
     let a = boot();
     let b = boot();
     assert_eq!(
@@ -72,6 +77,83 @@ fn boot_is_deterministic() {
         b.last_frame().0,
         "two boots drew different first frames"
     );
+}
+
+#[test]
+fn boot_is_deterministic_at_2x_scale() {
+    // the scale global reaches every style metric and font size; hidpi
+    // must be just as reproducible as 1x, and actually different from it
+    let mut a = Headless::boot(&project_dir(), 900, 600, 2.0);
+    a.run_until_frames(1, 10_000);
+    let mut b = Headless::boot(&project_dir(), 900, 600, 2.0);
+    b.run_until_frames(1, 10_000);
+    assert_eq!(
+        a.last_frame().0,
+        b.last_frame().0,
+        "two 2x boots drew different first frames"
+    );
+    assert_ne!(
+        a.last_frame().0,
+        boot().last_frame().0,
+        "2x boot must not render the 1x layout"
+    );
+}
+
+#[test]
+fn resizing_redraws_at_the_new_size() {
+    let mut editor = boot();
+    let before = editor.frame_count();
+    editor.resize(600, 400);
+    editor.run_until_frames(before + 1, 10_000);
+    let (pixels, w, h) = editor.last_frame();
+    assert_eq!((w, h), (600, 400));
+    assert_eq!(pixels.len(), 600 * 400);
+    // and the smaller frame is still a real editor, not a stale crop
+    let distinct: std::collections::HashSet<u32> = pixels.iter().copied().collect();
+    assert!(distinct.len() > 16, "resized frame looks blank");
+}
+
+#[test]
+fn exposed_event_repaints_identical_pixels() {
+    // an expose must invalidate the cache and present a full frame, and
+    // that frame must be exactly what was on screen before
+    let mut editor = boot();
+    for _ in 0..2000 {
+        assert!(editor.step(), "editor exited while settling");
+    }
+    let settled = editor.frame_count();
+    let (before, _, _) = editor.last_frame();
+    editor.push_event(Event::Exposed);
+    editor.run_steps(200);
+    assert!(
+        editor.frame_count() > settled,
+        "exposed must force a present"
+    );
+    assert_eq!(
+        before,
+        editor.last_frame().0,
+        "exposed repaint changed the pixels"
+    );
+}
+
+#[test]
+fn clicking_the_treeview_opens_the_file() {
+    // hello.txt is the only row in the treeview; probe downward until the
+    // click lands on it (its exact y depends on style metrics, which this
+    // test deliberately does not hardcode)
+    let mut editor = boot();
+    for row in 0..8 {
+        let y = 8 + row * 12;
+        editor.push_event(Event::MouseMoved(40, y, 0, 0));
+        editor.run_steps(50);
+        editor.push_event(Event::MousePressed("left", 40, y, 1));
+        editor.push_event(Event::MouseReleased("left", 40, y));
+        editor.run_steps(100);
+        if editor.window_title().starts_with("hello.txt") {
+            break;
+        }
+    }
+    assert_eq!(editor.window_title(), "hello.txt - lite");
 }
 
 #[test]
