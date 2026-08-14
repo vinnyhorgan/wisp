@@ -2,17 +2,29 @@
 name = "wisp"
 version = "0.1.0"
 edition = "2024"
+description = "what lite could really be"
+repository = "https://github.com/vinnyhorgan/wisp"
 
 [dependencies]
+# lua 5.2 vendored: same interpreter lite shipped, the only c we compile
 mlua = { version = "0.12", features = ["lua52", "vendored"] }
+# pure-rust windowing and cpu-buffer presentation
 winit = "0.30"
 softbuffer = "0.4"
+# hinted glyph rasterization, pure rust
 swash = "0.2"
+# clipboard, with wayland support
 arboard = { version = "3", features = ["wayland-data-control"] }
 
 [dev-dependencies]
 proptest = "1"
 
+[lints.rust]
+# the single exception is documented in boot.rs (lua's debug library)
+unsafe_code = "deny"
+
 [profile.release]
 lto = true
+codegen-units = 1
 panic = "abort"
+strip = true
