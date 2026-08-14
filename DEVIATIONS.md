@@ -34,9 +34,13 @@ override env var is `WISP_SCALE` (was `LITE_SCALE`).
 lite's three fonts (`font.ttf`, `monospace.ttf`, `icons.ttf`) are replaced by
 a single `jetbrainsmono.ttf`: JetBrains Mono Regular patched by Nerd Fonts
 (release v3.5.0, OFL), loaded at different sizes for UI, wordmark, code and
-icons. The icons are Nerd Font glyphs living in the font's private use area,
-named once in `style.icons` and referenced by name at every call site instead
-of lite's single-letter mappings ("f", "d", "g", ...).
+icons. It is the *Mono* flavor of the patch, where icons are drawn to fit
+exactly one cell: their ink matches their advance, so everything the lua
+layer measures with `get_width` is truthful and layouts need no fudge. The
+icon font is simply loaded bigger (16px vs 14px UI) to keep the icons from
+looking squeezed. The icons are Nerd Font glyphs living in the font's
+private use area, named once in `style.icons` and referenced by name at
+every call site instead of lite's single-letter mappings ("f", "d", "g", ...).
 
 ## 4. Catppuccin mocha color scheme, green accent
 

@@ -140,9 +140,7 @@ end
 function TreeView:draw()
   self:draw_background(style.background2)
 
-  -- nerd font icons advance one cell but ink up to two (the open folder
-  -- is 16px wide at a 8px advance), so reserve a two-cell slot for them
-  local icon_width = style.icon_font:get_width(style.icons.dir) * 2
+  local icon_width = style.icon_font:get_width(style.icons.dir)
   local spacing = style.font:get_width(" ")
 
   local doc = core.active_view.doc
