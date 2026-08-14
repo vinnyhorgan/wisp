@@ -1,0 +1,18 @@
+[package]
+name = "wisp"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+mlua = { version = "0.12", features = ["lua52", "vendored"] }
+winit = "0.30"
+softbuffer = "0.4"
+swash = "0.2"
+arboard = { version = "3", features = ["wayland-data-control"] }
+
+[dev-dependencies]
+proptest = "1"
+
+[profile.release]
+lto = true
+panic = "abort"
