@@ -1,11 +1,14 @@
-//! A cache over the software renderer -- all drawing operations are stored
-//! as commands when issued. At the end of the frame the commands are hashed
+//! a cache over the software renderer -- all drawing operations are stored
+//! as commands when issued. at the end of the frame the commands are hashed
 //! into a grid of cells; cells that changed since the previous frame are
 //! merged into dirty rectangles and only those regions are redrawn.
 //!
-//! This is a faithful port of lite's rencache.c with the fixed-size buffers
-//! replaced by growable ones (no more dropped commands on huge frames, no
-//! out-of-bounds cells on displays wider than 7680px).
+//! this is a faithful port of lite's rencache.c with the fixed-size buffers
+//! replaced by growable ones: no more dropped commands on huge frames, no
+//! out-of-bounds cells on displays wider than 7680px. lite's deferred
+//! free-font command queue is gone entirely -- commands hold an `Rc<Font>`,
+//! so a font freed by lua mid-frame lives exactly until the commands
+//! referencing it are dropped.
 
 use std::rc::Rc;
 
@@ -16,7 +19,8 @@ pub const CELL_SIZE: i32 = 96;
 
 const HASH_INITIAL: u32 = 2166136261;
 
-#[derive(Default)]
+/// 32-bit fnv-1a, same as lite; a fixed function keeps frames deterministic
+/// across runs, which the golden tests depend on
 struct Fnv(u32);
 
 impl Fnv {
@@ -90,7 +94,7 @@ impl Command {
     }
 }
 
-/// Tiny deterministic xorshift; only used to color the debug overlay.
+/// tiny deterministic xorshift; only used to color the debug overlay
 struct XorShift(u32);
 
 impl XorShift {
@@ -178,7 +182,7 @@ impl RenCache {
                 tab_advance: font.tab_advance(),
             });
         }
-        x + rect.width
+        x.saturating_add(rect.width)
     }
 
     fn update_overlapping_cells(&mut self, r: Rect, h: u32) {
@@ -196,28 +200,21 @@ impl RenCache {
         }
     }
 
-    /// Replays the frame's commands into `fb` over each dirty region and
-    /// returns the dirty rectangles that need presenting.
+    /// replays the frame's commands into `fb` over each dirty region and
+    /// returns the dirty rectangles that need presenting
     pub fn end_frame(&mut self, fb: &mut Framebuffer) -> Vec<Rect> {
-        // update cells from commands
+        let commands = std::mem::take(&mut self.commands);
+
+        // hash every command into the cells it touches
         let mut cr = self.screen;
-        let updates: Vec<(Rect, u32)> = self
-            .commands
-            .iter()
-            .filter_map(|cmd| {
-                if let Command::SetClip { rect } = cmd {
-                    cr = *rect;
-                }
-                let r = cmd.rect().intersect(cr);
-                if r.is_empty() {
-                    None
-                } else {
-                    Some((r, cmd.hash()))
-                }
-            })
-            .collect();
-        for (r, h) in updates {
-            self.update_overlapping_cells(r, h);
+        for cmd in &commands {
+            if let Command::SetClip { rect } = cmd {
+                cr = *rect;
+            }
+            let r = cmd.rect().intersect(cr);
+            if !r.is_empty() {
+                self.update_overlapping_cells(r, cmd.hash());
+            }
         }
 
         // push a rect for each cell changed since the last frame, merging
@@ -246,7 +243,7 @@ impl RenCache {
         // redraw updated regions
         for &r in &rects {
             fb.set_clip(r);
-            for cmd in &self.commands {
+            for cmd in &commands {
                 match cmd {
                     Command::SetClip { rect } => fb.set_clip(rect.intersect(r)),
                     Command::DrawRect { rect, color } => fb.draw_rect(*rect, *color),
@@ -275,11 +272,9 @@ impl RenCache {
             }
         }
 
-        // swap cell buffers, drop this frame's commands (any font kept alive
-        // only by a command is released here -- lite needed an explicit
-        // FREE_FONT command queue for this; Rc does it for us)
+        // swap cell buffers; dropping `commands` here releases any font that
+        // was kept alive only by this frame
         std::mem::swap(&mut self.cells, &mut self.cells_prev);
-        self.commands.clear();
         rects
     }
 }
@@ -297,15 +292,7 @@ fn push_rect(rects: &mut Vec<Rect>, r: Rect) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn frame(cache: &mut RenCache, fb: &mut Framebuffer, draws: &[(Rect, Color)]) -> Vec<Rect> {
-        cache.begin_frame(fb.width, fb.height);
-        cache.set_clip_rect(Rect::new(0, 0, fb.width, fb.height));
-        for &(r, c) in draws {
-            cache.draw_rect(r, c);
-        }
-        cache.end_frame(fb)
-    }
+    use proptest::prelude::*;
 
     const WHITE: Color = Color {
         r: 255,
@@ -319,6 +306,15 @@ mod tests {
         b: 0,
         a: 255,
     };
+
+    fn frame(cache: &mut RenCache, fb: &mut Framebuffer, draws: &[(Rect, Color)]) -> Vec<Rect> {
+        cache.begin_frame(fb.width, fb.height);
+        cache.set_clip_rect(Rect::new(0, 0, fb.width, fb.height));
+        for &(r, c) in draws {
+            cache.draw_rect(r, c);
+        }
+        cache.end_frame(fb)
+    }
 
     #[test]
     fn identical_frames_produce_no_dirty_rects() {
@@ -400,5 +396,87 @@ mod tests {
         cache.draw_rect(Rect::new(200, 200, 50, 50), WHITE);
         let rects = cache.end_frame(&mut fb);
         assert!(rects.is_empty(), "fully clipped draw dirtied {rects:?}");
+    }
+
+    // a frame's worth of random draw commands
+    #[derive(Debug, Clone)]
+    enum Cmd {
+        Clip(Rect),
+        Fill(Rect, Color),
+    }
+
+    fn arb_rect() -> impl Strategy<Value = Rect> {
+        (-40..340i32, -40..240i32, 0..200i32, 0..160i32)
+            .prop_map(|(x, y, w, h)| Rect::new(x, y, w, h))
+    }
+
+    fn arb_cmd() -> impl Strategy<Value = Cmd> {
+        prop_oneof![
+            1 => arb_rect().prop_map(Cmd::Clip),
+            4 => (arb_rect(), any::<(u8, u8, u8, u8)>())
+                .prop_map(|(r, (cr, cg, cb, ca))| Cmd::Fill(r, Color { r: cr, g: cg, b: cb, a: ca })),
+        ]
+    }
+
+    // the cache's contract, inherited from lite: every frame fully paints
+    // the screen (lite's rootview always fills the background first). the
+    // cache only replays a frame's commands over dirty regions, so a pixel
+    // no command covers keeps its old content -- exactly like lite. apply()
+    // honors the contract with an opaque background fill, like the editor
+    fn apply(cache: &mut RenCache, fb: &mut Framebuffer, cmds: &[Cmd]) -> Vec<Rect> {
+        cache.begin_frame(fb.width, fb.height);
+        cache.set_clip_rect(Rect::new(0, 0, fb.width, fb.height));
+        cache.draw_rect(
+            Rect::new(0, 0, fb.width, fb.height),
+            Color {
+                r: 30,
+                g: 30,
+                b: 34,
+                a: 255,
+            },
+        );
+        for cmd in cmds {
+            match *cmd {
+                Cmd::Clip(r) => cache.set_clip_rect(r),
+                Cmd::Fill(r, c) => cache.draw_rect(r, c),
+            }
+        }
+        cache.end_frame(fb)
+    }
+
+    proptest! {
+        // the whole point of the cache: rendering frame b after any frame a
+        // must produce pixels identical to rendering frame b from scratch.
+        // if this holds for arbitrary command sequences (including alpha
+        // blending and overlapping dirty regions), partial redraws are
+        // invisible to the user
+        #[test]
+        fn cache_is_invisible(
+            a in proptest::collection::vec(arb_cmd(), 0..12),
+            b in proptest::collection::vec(arb_cmd(), 0..12),
+        ) {
+            let mut cache = RenCache::new();
+            let mut fb = Framebuffer::new(320, 200);
+            apply(&mut cache, &mut fb, &a);
+            apply(&mut cache, &mut fb, &b);
+
+            let mut fresh_cache = RenCache::new();
+            let mut fresh_fb = Framebuffer::new(320, 200);
+            apply(&mut fresh_cache, &mut fresh_fb, &b);
+
+            prop_assert_eq!(&fb.pixels, &fresh_fb.pixels);
+        }
+
+        // unchanged frames must never produce dirty rects, whatever the frame
+        #[test]
+        fn repeating_any_frame_is_free(
+            cmds in proptest::collection::vec(arb_cmd(), 0..12),
+        ) {
+            let mut cache = RenCache::new();
+            let mut fb = Framebuffer::new(320, 200);
+            apply(&mut cache, &mut fb, &cmds);
+            let rects = apply(&mut cache, &mut fb, &cmds);
+            prop_assert!(rects.is_empty(), "identical frame redrew {:?}", rects);
+        }
     }
 }

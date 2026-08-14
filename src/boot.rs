@@ -1,10 +1,10 @@
-//! Lua state creation and the coroutine protocol.
+//! lua state creation and the coroutine protocol.
 //!
-//! The entire editor runs inside one Lua coroutine. lite's two blocking
+//! the entire editor runs inside one lua coroutine. lite's two blocking
 //! calls -- `system.wait_event(timeout)` and `system.sleep(secs)` -- are
 //! redefined in the bootstrap prelude as `coroutine.yield`, so whoever
 //! drives the thread (the winit loop or the headless test driver) decides
-//! how time passes and when events are available. The Lua layer runs
+//! how time passes and when events are available. the lua layer runs
 //! byte-identical to lite and never knows it is being suspended.
 
 use mlua::thread::ThreadStatus;
@@ -51,30 +51,36 @@ return function()
 end
 "#;
 
-/// What the editor coroutine asked for when it yielded.
+/// what the editor coroutine asked for when it yielded
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Yield {
     /// `system.wait_event(timeout)`: wake me when an event arrives or the
-    /// timeout elapses, and resume me with whether an event is available.
+    /// timeout elapses, and resume me with whether an event is available
     Wait(f64),
-    /// `system.sleep(secs)`: wake me after this long.
+    /// `system.sleep(secs)`: wake me after this long
     Sleep(f64),
-    /// The editor is done (os.exit in headless mode, coroutine finished,
-    /// or a Lua error escaped).
+    /// the editor is done: os.exit in headless mode, coroutine finished,
+    /// or a lua error escaped
     Exit(i32),
 }
 
-/// What to resume the editor coroutine with.
+/// what to resume the editor coroutine with
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Resume {
-    /// First resume, or waking from sleep: no values.
+    /// first resume, or waking from sleep: no values
     Start,
-    /// Waking from `wait_event`: whether an event is available.
+    /// waking from wait_event: whether an event is available
     EventAvailable(bool),
 }
 
-/// Creates the Lua state, registers wisp's API, sets lite's globals and
+/// creates the lua state, registers wisp's api, sets lite's globals and
 /// returns the editor coroutine, ready for its first resume.
+///
+/// this is the one place in wisp that needs `unsafe`: lite opens all lua
+/// standard libraries including debug (the bootstrap error handler uses
+/// debug.traceback), and mlua rightly gates the debug library behind an
+/// unsafe constructor
+#[allow(unsafe_code)]
 pub fn init_lua(
     engine: &Shared,
     exedir: &str,
@@ -83,8 +89,6 @@ pub fn init_lua(
     scale: f64,
     headless: bool,
 ) -> mlua::Result<(Lua, Thread)> {
-    // lite opens all standard libraries, including debug (the bootstrap
-    // error handler and core.on_error use debug.traceback)
     let lua = unsafe { Lua::unsafe_new_with(StdLib::ALL, LuaOptions::default()) };
     api::register(&lua, engine)?;
 
@@ -110,7 +114,7 @@ pub fn init_lua(
     Ok((lua, thread))
 }
 
-/// Resumes the editor coroutine once and interprets what it yielded.
+/// resumes the editor coroutine once and interprets what it yielded
 pub fn resume(thread: &Thread, arg: Resume) -> Yield {
     let result = match arg {
         Resume::Start => thread.resume::<MultiValue>(()),

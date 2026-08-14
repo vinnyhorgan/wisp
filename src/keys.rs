@@ -1,10 +1,10 @@
-//! Translates winit keys into wisp's key names.
+//! translates winit keys into wisp's key names.
 //!
-//! The names are wisp's spec, inherited verbatim from lite (which got them
-//! from SDL_GetKeyName, lowercased): the keymap in data/ matches on strings
-//! like "left ctrl", "return", "keypad enter". Changing any name here
+//! the names are wisp's spec, inherited verbatim from lite (which got them
+//! from sdl_getkeyname, lowercased): the keymap in data/ matches on strings
+//! like "left ctrl", "return", "keypad enter". changing any name here
 //! silently breaks a keybinding, so the full vocabulary the stock keymap
-//! uses is pinned by the test below.
+//! uses is pinned by the tests below.
 
 use winit::keyboard::{Key, KeyLocation, NamedKey};
 
@@ -23,9 +23,7 @@ pub fn key_name(key: &Key, location: KeyLocation) -> Option<String> {
                 NamedKey::Shift => return side("left shift", "right shift"),
                 NamedKey::Alt => return side("left alt", "right alt"),
                 NamedKey::AltGraph => "right alt",
-                NamedKey::Super | NamedKey::Meta => {
-                    return side("left gui", "right gui");
-                }
+                NamedKey::Super | NamedKey::Meta => return side("left gui", "right gui"),
                 NamedKey::Enter => {
                     if location == KeyLocation::Numpad {
                         "keypad enter"

@@ -1,12 +1,12 @@
-//! End-to-end tests: the real, unmodified editor Lua booting and running
-//! on a headless wisp core with a virtual clock. No window, no display,
+//! end-to-end tests: the real, unmodified editor lua booting and running
+//! on a headless wisp core with a virtual clock. no window, no display,
 //! fully deterministic.
 
 use wisp::headless::Headless;
 use wisp::platform::Event;
 
-/// A minimal, stable project directory (its listing is rendered by the
-/// treeview, so it must not change between runs).
+/// a minimal, stable project directory (its listing is rendered by the
+/// treeview, so it must not change between runs)
 fn project_dir() -> String {
     let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("project");
     std::fs::create_dir_all(&dir).unwrap();
@@ -20,6 +20,21 @@ fn boot() -> Headless {
     editor
 }
 
+fn press(editor: &Headless, key: &str) {
+    editor.push_event(Event::KeyPressed(key.into()));
+    editor.push_event(Event::KeyReleased(key.into()));
+}
+
+/// ctrl+n, then type some text into the fresh doc
+fn open_dirty_doc(editor: &mut Headless) {
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    press(editor, "n");
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(50);
+    editor.push_event(Event::TextInput("hello".into()));
+    editor.run_steps(50);
+}
+
 #[test]
 fn editor_boots_and_draws_a_frame() {
     let editor = boot();
@@ -27,7 +42,7 @@ fn editor_boots_and_draws_a_frame() {
     assert_eq!(pixels.len(), (w * h) as usize);
 
     // the frame must actually look like an editor: a dominant background
-    // color plus a meaningful amount of text/UI pixels
+    // color plus a meaningful amount of text and ui pixels
     let mut counts = std::collections::HashMap::new();
     for &px in &pixels {
         *counts.entry(px).or_insert(0usize) += 1;
@@ -47,12 +62,25 @@ fn editor_boots_and_draws_a_frame() {
 }
 
 #[test]
+fn boot_is_deterministic() {
+    // same events, same virtual clock, same pixels -- twice. this is the
+    // foundation every golden test stands on
+    let a = boot();
+    let b = boot();
+    assert_eq!(
+        a.last_frame().0,
+        b.last_frame().0,
+        "two boots drew different first frames"
+    );
+}
+
+#[test]
 fn idle_editor_stops_redrawing() {
     // lite's most beloved property, enforced by machine: once quiescent
-    // (caret blinking aside, there is no caret without an open doc), the
-    // editor must present no new frames.
+    // (no open doc, so no blinking caret), the editor must present no
+    // new frames at all
     let mut editor = boot();
-    // let it settle: run plenty of steps for threads and blinking to quiesce
+    // let it settle: plenty of steps for background threads to quiesce
     for _ in 0..2000 {
         if !editor.step() {
             panic!("editor exited while settling");
@@ -62,17 +90,14 @@ fn idle_editor_stops_redrawing() {
     for _ in 0..2000 {
         editor.step();
     }
-    let after = editor.frame_count();
-    assert_eq!(settled, after, "idle editor kept redrawing");
+    assert_eq!(settled, editor.frame_count(), "idle editor kept redrawing");
 }
 
 #[test]
 fn typing_in_a_new_doc_appears_on_screen() {
     let mut editor = boot();
-    // ctrl+n -> core:new-doc
     editor.push_event(Event::KeyPressed("left ctrl".into()));
-    editor.push_event(Event::KeyPressed("n".into()));
-    editor.push_event(Event::KeyReleased("n".into()));
+    press(&editor, "n");
     editor.push_event(Event::KeyReleased("left ctrl".into()));
     let before = editor.frame_count();
     editor.run_until_frames(before + 1, 10_000);
@@ -94,14 +119,52 @@ fn typing_in_a_new_doc_appears_on_screen() {
 fn quit_event_exits_cleanly() {
     let mut editor = boot();
     editor.push_event(Event::Quit);
-    for _ in 0..10_000 {
-        if !editor.step() {
-            break;
-        }
-    }
+    editor.run_steps(10_000);
     assert_eq!(
         editor.exited,
         Some(0),
         "quit with no unsaved docs must exit 0"
     );
+}
+
+#[test]
+fn quit_with_unsaved_changes_asks_in_the_editor() {
+    // wisp's one deviation from lite (see DEVIATIONS.md): the unsaved
+    // changes confirmation is a commandview prompt, not an os dialog
+    let mut editor = boot();
+    open_dirty_doc(&mut editor);
+
+    // asking to quit must not exit -- the editor is waiting for an answer
+    editor.push_event(Event::Quit);
+    editor.run_steps(200);
+    assert_eq!(editor.exited, None, "dirty editor must ask before quitting");
+
+    // answering anything but yes cancels
+    editor.push_event(Event::TextInput("no".into()));
+    press(&editor, "return");
+    editor.run_steps(200);
+    assert_eq!(editor.exited, None, "answering no must cancel the quit");
+
+    // asking again and answering yes quits
+    editor.push_event(Event::Quit);
+    editor.run_steps(200);
+    editor.push_event(Event::TextInput("yes".into()));
+    press(&editor, "return");
+    editor.run_steps(2000);
+    assert_eq!(editor.exited, Some(0), "answering yes must quit");
+}
+
+#[test]
+fn clipboard_round_trips_through_the_editor() {
+    // ctrl+n, type, select all, copy: the platform clipboard must hold
+    // exactly what was typed
+    let mut editor = boot();
+    open_dirty_doc(&mut editor);
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    press(&editor, "a");
+    press(&editor, "c");
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(200);
+    let clipboard = editor.engine.borrow_mut().platform.get_clipboard();
+    assert_eq!(clipboard.as_deref(), Some("hello"));
 }

@@ -1,6 +1,11 @@
-//! The headless platform: a scripted event queue, a virtual clock, and a
-//! captured framebuffer. It runs the real, unmodified editor Lua with zero
-//! windowing -- this is how wisp tests the whole editor in CI.
+//! the headless platform: a scripted event queue, a virtual clock, and a
+//! captured framebuffer. it runs the real, unmodified editor lua with zero
+//! windowing -- this is how wisp tests the whole editor.
+//!
+//! time only passes when the editor asks it to (wait_event and sleep
+//! advance the virtual clock), so every frame is bit-for-bit reproducible:
+//! caret blinks, double clicks and background threads all behave the same
+//! on every run.
 
 use std::any::Any;
 use std::collections::VecDeque;
@@ -79,20 +84,21 @@ impl Platform for HeadlessPlatform {
     }
 }
 
-/// Boots the real editor on a headless platform and drives its coroutine,
-/// advancing the virtual clock through every wait/sleep yield.
+/// boots the real editor on a headless platform and drives its coroutine,
+/// advancing the virtual clock through every wait and sleep yield
 pub struct Headless {
     pub engine: Shared,
+    pub exited: Option<i32>,
+    // the state must outlive the coroutine that lives in it
     _lua: mlua::Lua,
     thread: mlua::Thread,
     pending: Resume,
-    pub exited: Option<i32>,
 }
 
 impl Headless {
-    /// `project_dir` becomes the editor's project directory (keep it stable
-    /// and minimal: its listing is rendered by the treeview). The editor
-    /// finds `data/` via this crate's manifest dir.
+    /// `project_dir` becomes the editor's project directory; keep it stable
+    /// and minimal, its listing is rendered by the treeview. the editor
+    /// finds data/ via this crate's manifest dir
     pub fn boot(project_dir: &str, width: i32, height: i32) -> Headless {
         let exedir = env!("CARGO_MANIFEST_DIR").to_owned();
         let engine = Engine::shared(Box::new(HeadlessPlatform::new(width, height)));
@@ -108,10 +114,10 @@ impl Headless {
         .expect("lua boot failed");
         Headless {
             engine,
+            exited: None,
             _lua: lua,
             thread,
             pending: Resume::Start,
-            exited: None,
         }
     }
 
@@ -142,13 +148,14 @@ impl Headless {
         self.with_platform(|p| p.title.clone())
     }
 
-    /// Resumes the editor coroutine once and advances the virtual clock as
-    /// dictated by the yield. Returns false once the editor has exited.
+    /// resumes the editor coroutine once and advances the virtual clock as
+    /// dictated by the yield; returns false once the editor has exited
     pub fn step(&mut self) -> bool {
         if self.exited.is_some() {
             return false;
         }
-        let pending = std::mem::replace(&mut self.pending, Resume::Start);
+        let pending = self.pending;
+        self.pending = Resume::Start;
         match boot::resume(&self.thread, pending) {
             Yield::Wait(timeout) => {
                 let has_event = self.with_platform(|p| !p.queue.is_empty());
@@ -159,7 +166,6 @@ impl Headless {
             }
             Yield::Sleep(secs) => {
                 self.with_platform(|p| p.clock += secs.max(0.0));
-                self.pending = Resume::Start;
             }
             Yield::Exit(code) => {
                 self.exited = Some(code);
@@ -169,8 +175,8 @@ impl Headless {
         true
     }
 
-    /// Steps until the editor has presented at least `frames` frames.
-    /// Panics after `max_steps` so a hung editor fails loudly.
+    /// steps until the editor has presented at least `frames` frames;
+    /// panics after `max_steps` so a hung editor fails loudly
     pub fn run_until_frames(&mut self, frames: usize, max_steps: usize) {
         for _ in 0..max_steps {
             if self.frame_count() >= frames {
@@ -187,5 +193,15 @@ impl Headless {
             "editor did not present {frames} frames within {max_steps} steps (got {})",
             self.frame_count()
         );
+    }
+
+    /// steps `n` times, stopping early if the editor exits; useful for
+    /// letting the editor settle or process queued events
+    pub fn run_steps(&mut self, n: usize) {
+        for _ in 0..n {
+            if !self.step() {
+                return;
+            }
+        }
     }
 }

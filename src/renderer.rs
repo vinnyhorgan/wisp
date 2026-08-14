@@ -1,5 +1,9 @@
-//! Software renderer: fills rects and blits glyph masks into a CPU
-//! framebuffer. Pixel format is 0x00RRGGBB, softbuffer's native layout.
+//! software renderer: fills rects and blits glyph masks into a cpu
+//! framebuffer. pixel format is 0x00rrggbb, softbuffer's native layout.
+//!
+//! all coordinate math is done in i64 so arbitrary rects from lua -- even
+//! ones sitting at the edges of the i32 range -- clip safely instead of
+//! overflowing.
 
 use crate::font::Font;
 
@@ -29,37 +33,47 @@ impl Rect {
         }
     }
 
-    /// Touching edges count as overlapping; the rencache relies on this to
-    /// merge adjacent dirty regions.
+    /// touching edges count as overlapping; the rencache relies on this to
+    /// merge adjacent dirty regions
     pub fn overlaps(self, b: Rect) -> bool {
-        b.x + b.width >= self.x
-            && b.x <= self.x + self.width
-            && b.y + b.height >= self.y
-            && b.y <= self.y + self.height
+        let (ax, ay, ax2, ay2) = self.bounds();
+        let (bx, by, bx2, by2) = b.bounds();
+        bx2 >= ax && bx <= ax2 && by2 >= ay && by <= ay2
     }
 
     pub fn intersect(self, b: Rect) -> Rect {
-        let x1 = self.x.max(b.x);
-        let y1 = self.y.max(b.y);
-        let x2 = (self.x + self.width).min(b.x + b.width);
-        let y2 = (self.y + self.height).min(b.y + b.height);
-        Rect::new(x1, y1, (x2 - x1).max(0), (y2 - y1).max(0))
+        let (ax, ay, ax2, ay2) = self.bounds();
+        let (bx, by, bx2, by2) = b.bounds();
+        let x = ax.max(bx);
+        let y = ay.max(by);
+        let w = (ax2.min(bx2) - x).clamp(0, i32::MAX as i64);
+        let h = (ay2.min(by2) - y).clamp(0, i32::MAX as i64);
+        Rect::new(x as i32, y as i32, w as i32, h as i32)
     }
 
     pub fn merge(self, b: Rect) -> Rect {
-        let x1 = self.x.min(b.x);
-        let y1 = self.y.min(b.y);
-        let x2 = (self.x + self.width).max(b.x + b.width);
-        let y2 = (self.y + self.height).max(b.y + b.height);
-        Rect::new(x1, y1, x2 - x1, y2 - y1)
+        let (ax, ay, ax2, ay2) = self.bounds();
+        let (bx, by, bx2, by2) = b.bounds();
+        let x = ax.min(bx);
+        let y = ay.min(by);
+        let w = (ax2.max(bx2) - x).min(i32::MAX as i64);
+        let h = (ay2.max(by2) - y).min(i32::MAX as i64);
+        Rect::new(x as i32, y as i32, w as i32, h as i32)
     }
 
     pub fn is_empty(self) -> bool {
         self.width <= 0 || self.height <= 0
     }
+
+    /// corners as (x1, y1, x2, y2) in i64, safe against i32 overflow
+    fn bounds(self) -> (i64, i64, i64, i64) {
+        let (x, y) = (self.x as i64, self.y as i64);
+        (x, y, x + self.width as i64, y + self.height as i64)
+    }
 }
 
-/// Exact (a * b) / 255 with rounding.
+/// exact (a * b) / 255 with rounding; lite used `>> 8`, which slightly
+/// darkened every blend
 #[inline]
 fn mul255(a: u8, b: u8) -> u8 {
     (((a as u32 * b as u32 + 128) * 257) >> 16) as u8
@@ -134,12 +148,12 @@ impl Framebuffer {
         }
     }
 
-    /// Blits an alpha mask (a rasterized glyph) tinted with `color`.
+    /// blits an alpha mask (a rasterized glyph) tinted with `color`
     fn draw_mask(&mut self, mask: &[u8], mw: i32, x: i32, y: i32, color: Color) {
-        if color.a == 0 || mask.is_empty() {
+        if color.a == 0 || mask.is_empty() || mw <= 0 {
             return;
         }
-        let mh = mask.len() as i32 / mw.max(1);
+        let mh = mask.len() as i32 / mw;
         let sub = Rect::new(x, y, mw, mh).intersect(self.clip);
         if sub.is_empty() {
             return;
@@ -157,25 +171,25 @@ impl Framebuffer {
         }
     }
 
-    /// Draws `text` with its top-left corner at (x, y); returns the pen x
-    /// position after the last glyph.
+    /// draws `text` with its top-left corner at (x, y); returns the pen x
+    /// position after the last glyph
     pub fn draw_text(&mut self, font: &Font, text: &str, x: i32, y: i32, color: Color) -> i32 {
         let mut pen = x;
         let baseline = y + font.ascent();
         for ch in text.chars() {
             if ch == '\t' {
-                pen += font.tab_advance();
+                pen = pen.saturating_add(font.tab_advance());
                 continue;
             }
             let glyph = font.glyph(ch);
             self.draw_mask(
                 &glyph.mask,
                 glyph.width,
-                pen + glyph.left,
+                pen.saturating_add(glyph.left),
                 baseline - glyph.top,
                 color,
             );
-            pen += glyph.advance;
+            pen = pen.saturating_add(glyph.advance);
         }
         pen
     }
@@ -184,6 +198,7 @@ impl Framebuffer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     fn color(r: u8, g: u8, b: u8, a: u8) -> Color {
         Color { r, g, b, a }
@@ -228,8 +243,7 @@ mod tests {
 
     #[test]
     fn alpha_blend_is_exact() {
-        // 50% white over black must give exactly 128 (rounded), not 127:
-        // the >>8 approximation in lite darkened every blend.
+        // 50% white over black must give exactly 128 (rounded), not 127
         let mut fb = Framebuffer::new(1, 1);
         fb.draw_rect(Rect::new(0, 0, 1, 1), color(255, 255, 255, 128));
         assert_eq!(fb.pixels[0], pack(128, 128, 128));
@@ -252,5 +266,50 @@ mod tests {
         assert!(a.overlaps(b));
         assert!(!Rect::new(0, 0, 2, 2).overlaps(Rect::new(5, 5, 2, 2)));
         assert!(a.intersect(Rect::new(20, 20, 5, 5)).is_empty());
+    }
+
+    #[test]
+    fn extreme_rects_do_not_overflow() {
+        let huge = Rect::new(i32::MIN, i32::MIN, i32::MAX, i32::MAX);
+        let tiny = Rect::new(0, 0, 4, 4);
+        let _ = huge.overlaps(tiny);
+        let _ = huge.intersect(tiny);
+        let _ = huge.merge(tiny);
+        let mut fb = Framebuffer::new(8, 8);
+        fb.draw_rect(
+            Rect::new(i32::MAX - 1, i32::MAX - 1, i32::MAX, i32::MAX),
+            color(1, 2, 3, 255),
+        );
+        fb.draw_rect(
+            Rect::new(i32::MIN, 0, i32::MAX, i32::MAX),
+            color(1, 2, 3, 128),
+        );
+    }
+
+    proptest! {
+        // any rect with any clip must never panic, and must never write a
+        // single pixel outside the clip region
+        #[test]
+        fn draw_rect_respects_clip_for_any_input(
+            rx in any::<i32>(), ry in any::<i32>(),
+            rw in any::<i32>(), rh in any::<i32>(),
+            cx in -20..20i32, cy in -20..20i32,
+            cw in 0..30i32, ch in 0..30i32,
+            (r, g, b, a) in (any::<u8>(), any::<u8>(), any::<u8>(), any::<u8>()),
+        ) {
+            let mut fb = Framebuffer::new(16, 16);
+            fb.set_clip(Rect::new(cx, cy, cw, ch));
+            fb.draw_rect(Rect::new(rx, ry, rw, rh), color(r, g, b, a));
+            let clip = Rect::new(cx, cy, cw, ch).intersect(Rect::new(0, 0, 16, 16));
+            for y in 0..16 {
+                for x in 0..16 {
+                    let inside = x >= clip.x && x < clip.x + clip.width
+                        && y >= clip.y && y < clip.y + clip.height;
+                    if !inside {
+                        prop_assert_eq!(fb.pixels[(y * 16 + x) as usize], 0);
+                    }
+                }
+            }
+        }
     }
 }

@@ -1,11 +1,12 @@
-//! The platform boundary. Everything above this trait (renderer, rencache,
-//! fonts, the Lua API) is pure and platform-agnostic; everything below it
+//! the platform boundary. everything above this trait (renderer, rencache,
+//! fonts, the lua api) is pure and platform-agnostic; everything below it
 //! is either the winit/softbuffer desktop or the scripted headless
-//! implementation used by tests.
+//! implementation used by the tests.
 //!
-//! Note there is no `wait_event` or `sleep` here: those are the two blocking
-//! calls in lite's API, and in wisp they are coroutine yields handled by
-//! whoever drives the Lua thread (the winit loop or the headless driver).
+//! note there is no `wait_event` or `sleep` here: those are the two
+//! blocking calls in lite's api, and in wisp they are coroutine yields
+//! handled by whoever drives the lua thread (the winit loop or the
+//! headless driver).
 
 use std::any::Any;
 
@@ -28,8 +29,8 @@ pub enum Event {
 
 pub trait Platform {
     fn poll_event(&mut self) -> Option<Event>;
-    /// Monotonic time in seconds. Headless implementations return a virtual
-    /// clock so rendering is deterministic.
+    /// monotonic time in seconds; headless implementations return a virtual
+    /// clock so rendering is deterministic
     fn now(&self) -> f64;
     fn window_size(&self) -> (i32, i32);
     fn window_has_focus(&self) -> bool;
@@ -39,5 +40,6 @@ pub trait Platform {
     fn get_clipboard(&mut self) -> Option<String>;
     fn set_clipboard(&mut self, text: &str);
     fn present(&mut self, fb: &Framebuffer, rects: &[Rect]);
+    /// escape hatch for the drivers, which know their concrete platform
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }

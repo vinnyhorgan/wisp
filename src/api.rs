@@ -1,20 +1,30 @@
-//! The Lua-facing API: the `system` and `renderer` tables, mirroring
-//! lite's C API surface exactly -- with one deliberate omission:
-//! `system.show_confirm_dialog` does not exist. wisp never draws OS UI on
+//! the lua-facing api: the `system` and `renderer` tables, mirroring
+//! lite's c api surface exactly -- with one deliberate omission:
+//! `system.show_confirm_dialog` does not exist. wisp never draws os ui on
 //! top of the editor (see DEVIATIONS.md).
+//!
+//! strings crossing the boundary are treated the way lite treated them:
+//! paths are raw bytes (lua strings are byte strings), text to render is
+//! decoded lossily so invalid utf-8 draws replacement glyphs instead of
+//! crashing anything.
 
 use std::cell::RefCell;
+use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::rc::Rc;
 
-use mlua::{AnyUserData, IntoLuaMulti, Lua, MultiValue, Table, UserData, UserDataMethods, Value};
+use mlua::{
+    AnyUserData, IntoLuaMulti, Lua, LuaString, MultiValue, Table, UserData, UserDataMethods, Value,
+};
 
 use crate::font::Font;
 use crate::platform::{Event, Platform};
 use crate::rencache::RenCache;
 use crate::renderer::{Color, Framebuffer, Rect};
 
+/// everything the api closures share: the platform, the framebuffer and
+/// the draw-command cache
 pub struct Engine {
     pub platform: Box<dyn Platform>,
     pub fb: Framebuffer,
@@ -33,6 +43,8 @@ impl Engine {
     }
 }
 
+/// the `Font` userdata lua sees; wraps a shared font so pending draw
+/// commands keep it alive after lua drops it
 struct LuaFont(Rc<Font>);
 
 impl UserData for LuaFont {
@@ -41,17 +53,20 @@ impl UserData for LuaFont {
             this.0.set_tab_advance(n as i32);
             Ok(())
         });
-        methods.add_method("get_width", |_, this, text: mlua::LuaString| {
+        methods.add_method("get_width", |_, this, text: LuaString| {
             Ok(this.0.width_of(&String::from_utf8_lossy(&text.as_bytes())))
         });
         methods.add_method("get_height", |_, this, ()| Ok(this.0.height()));
     }
 }
 
-fn lua_path(s: &mlua::LuaString) -> PathBuf {
-    PathBuf::from(std::ffi::OsStr::from_bytes(&s.as_bytes()))
+/// lua strings are byte strings; on unix so are paths
+fn lua_path(s: &LuaString) -> PathBuf {
+    PathBuf::from(OsStr::from_bytes(&s.as_bytes()))
 }
 
+/// a color argument: a {r, g, b, a} table, alpha defaulting to 255, or
+/// nothing at all (lite defaults that to white)
 fn check_color(t: Option<Table>) -> mlua::Result<Color> {
     let Some(t) = t else {
         return Ok(Color {
@@ -74,6 +89,7 @@ fn check_color(t: Option<Table>) -> mlua::Result<Color> {
     })
 }
 
+/// events become the multi-value tuples lite's core.step destructures
 fn event_to_multi(lua: &Lua, event: Event) -> mlua::Result<MultiValue> {
     match event {
         Event::Quit => ("quit",).into_lua_multi(lua),
@@ -92,8 +108,8 @@ fn event_to_multi(lua: &Lua, event: Event) -> mlua::Result<MultiValue> {
     }
 }
 
-/// The exact scoring function from lite's system.fuzzy_match, ported from
-/// C (with the out-of-bounds walk on trailing spaces fixed).
+/// the exact scoring function from lite's system.fuzzy_match, ported from
+/// c (with the out-of-bounds walk on trailing spaces fixed)
 pub fn fuzzy_match(mut s: &[u8], mut p: &[u8]) -> Option<i32> {
     let mut score: i32 = 0;
     let mut run: i32 = 0;
@@ -127,91 +143,88 @@ pub fn register(lua: &Lua, engine: &Shared) -> mlua::Result<()> {
     let system = lua.create_table()?;
     let renderer = lua.create_table()?;
 
-    // --- system ------------------------------------------------------------
+    // --- system -------------------------------------------------------
 
-    {
-        let eng = engine.clone();
-        system.set(
-            "poll_event",
-            lua.create_function(move |lua, _: MultiValue| {
-                let event = {
-                    let mut e = eng.borrow_mut();
-                    let event = e.platform.poll_event();
-                    if matches!(event, Some(Event::Exposed)) {
-                        e.cache.invalidate();
-                    }
-                    event
-                };
-                match event {
-                    Some(event) => event_to_multi(lua, event),
-                    None => Ok(MultiValue::new()),
+    // system.wait_event and system.sleep are deliberately absent: the
+    // bootstrap prelude defines them as coroutine yields (see boot.rs)
+
+    let eng = engine.clone();
+    system.set(
+        "poll_event",
+        lua.create_function(move |lua, _: MultiValue| {
+            let event = {
+                let mut e = eng.borrow_mut();
+                let event = e.platform.poll_event();
+                // an exposed window has lost its contents; forget history
+                if matches!(event, Some(Event::Exposed)) {
+                    e.cache.invalidate();
                 }
-            })?,
-        )?;
-    }
-    // system.wait_event and system.sleep are defined in the bootstrap
-    // prelude as coroutine yields; see boot.rs
-    {
-        let eng = engine.clone();
-        system.set(
-            "get_time",
-            lua.create_function(move |_, ()| Ok(eng.borrow().platform.now()))?,
-        )?;
-    }
-    {
-        let eng = engine.clone();
-        system.set(
-            "set_cursor",
-            lua.create_function(move |_, cursor: Option<String>| {
-                let cursor = cursor.unwrap_or_else(|| "arrow".to_owned());
-                eng.borrow_mut().platform.set_cursor(&cursor);
-                Ok(())
-            })?,
-        )?;
-    }
-    {
-        let eng = engine.clone();
-        system.set(
-            "set_window_title",
-            lua.create_function(move |_, title: String| {
-                eng.borrow_mut().platform.set_window_title(&title);
-                Ok(())
-            })?,
-        )?;
-    }
-    {
-        let eng = engine.clone();
-        system.set(
-            "set_window_mode",
-            lua.create_function(move |_, mode: Option<String>| {
-                let mode = mode.unwrap_or_else(|| "normal".to_owned());
-                eng.borrow_mut().platform.set_window_mode(&mode);
-                Ok(())
-            })?,
-        )?;
-    }
-    {
-        let eng = engine.clone();
-        system.set(
-            "window_has_focus",
-            lua.create_function(move |_, ()| Ok(eng.borrow().platform.window_has_focus()))?,
-        )?;
-    }
+                event
+            };
+            match event {
+                Some(event) => event_to_multi(lua, event),
+                None => Ok(MultiValue::new()),
+            }
+        })?,
+    )?;
+
+    let eng = engine.clone();
+    system.set(
+        "get_time",
+        lua.create_function(move |_, ()| Ok(eng.borrow().platform.now()))?,
+    )?;
+
+    let eng = engine.clone();
+    system.set(
+        "set_cursor",
+        lua.create_function(move |_, cursor: Option<String>| {
+            eng.borrow_mut()
+                .platform
+                .set_cursor(cursor.as_deref().unwrap_or("arrow"));
+            Ok(())
+        })?,
+    )?;
+
+    let eng = engine.clone();
+    system.set(
+        "set_window_title",
+        lua.create_function(move |_, title: String| {
+            eng.borrow_mut().platform.set_window_title(&title);
+            Ok(())
+        })?,
+    )?;
+
+    let eng = engine.clone();
+    system.set(
+        "set_window_mode",
+        lua.create_function(move |_, mode: Option<String>| {
+            eng.borrow_mut()
+                .platform
+                .set_window_mode(mode.as_deref().unwrap_or("normal"));
+            Ok(())
+        })?,
+    )?;
+
+    let eng = engine.clone();
+    system.set(
+        "window_has_focus",
+        lua.create_function(move |_, ()| Ok(eng.borrow().platform.window_has_focus()))?,
+    )?;
+
     system.set(
         "chdir",
-        lua.create_function(|_, path: mlua::LuaString| {
+        lua.create_function(|_, path: LuaString| {
             std::env::set_current_dir(lua_path(&path))
                 .map_err(|_| mlua::Error::runtime("chdir() failed"))
         })?,
     )?;
+
     system.set(
         "list_dir",
-        lua.create_function(|lua, path: mlua::LuaString| {
+        lua.create_function(|lua, path: LuaString| {
             let dir = match std::fs::read_dir(lua_path(&path)) {
                 Ok(dir) => dir,
-                Err(err) => {
-                    return (Value::Nil, err.to_string()).into_lua_multi(lua);
-                }
+                Err(err) => return (Value::Nil, err.to_string()).into_lua_multi(lua),
             };
             let list = lua.create_table()?;
             for entry in dir.flatten() {
@@ -220,31 +233,30 @@ pub fn register(lua: &Lua, engine: &Shared) -> mlua::Result<()> {
             list.into_lua_multi(lua)
         })?,
     )?;
+
     system.set(
         "absolute_path",
-        lua.create_function(|lua, path: mlua::LuaString| {
-            match std::fs::canonicalize(lua_path(&path)) {
+        lua.create_function(
+            |lua, path: LuaString| match std::fs::canonicalize(lua_path(&path)) {
                 Ok(abs) => Ok(Some(lua.create_string(abs.as_os_str().as_bytes())?)),
                 Err(_) => Ok(None),
-            }
-        })?,
+            },
+        )?,
     )?;
+
     system.set(
         "get_file_info",
-        lua.create_function(|lua, path: mlua::LuaString| {
+        lua.create_function(|lua, path: LuaString| {
             let meta = match std::fs::metadata(lua_path(&path)) {
                 Ok(meta) => meta,
-                Err(err) => {
-                    return (Value::Nil, err.to_string()).into_lua_multi(lua);
-                }
+                Err(err) => return (Value::Nil, err.to_string()).into_lua_multi(lua),
             };
-            let info = lua.create_table()?;
             let modified = meta
                 .modified()
                 .ok()
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
+                .map_or(0, |d| d.as_secs());
+            let info = lua.create_table()?;
             info.set("modified", modified)?;
             info.set("size", meta.len())?;
             if meta.is_file() {
@@ -255,179 +267,173 @@ pub fn register(lua: &Lua, engine: &Shared) -> mlua::Result<()> {
             info.into_lua_multi(lua)
         })?,
     )?;
-    {
-        let eng = engine.clone();
-        system.set(
-            "get_clipboard",
-            lua.create_function(move |_, ()| Ok(eng.borrow_mut().platform.get_clipboard()))?,
-        )?;
-    }
-    {
-        let eng = engine.clone();
-        system.set(
-            "set_clipboard",
-            lua.create_function(move |_, text: String| {
-                eng.borrow_mut().platform.set_clipboard(&text);
-                Ok(())
-            })?,
-        )?;
-    }
+
+    let eng = engine.clone();
+    system.set(
+        "get_clipboard",
+        lua.create_function(move |_, ()| Ok(eng.borrow_mut().platform.get_clipboard()))?,
+    )?;
+
+    let eng = engine.clone();
+    system.set(
+        "set_clipboard",
+        lua.create_function(move |_, text: String| {
+            eng.borrow_mut().platform.set_clipboard(&text);
+            Ok(())
+        })?,
+    )?;
+
     system.set(
         "exec",
         lua.create_function(|_, cmd: String| {
-            // mirror lite: hand the command line to the shell, backgrounded
-            let result = std::process::Command::new("sh")
+            // mirror lite: hand the command line to the shell, backgrounded;
+            // the outer sh exits immediately so nothing is left to reap
+            if let Ok(mut child) = std::process::Command::new("sh")
                 .arg("-c")
                 .arg(format!("{cmd} &"))
-                .spawn();
-            if let Ok(mut child) = result {
+                .spawn()
+            {
                 let _ = child.wait();
             }
             Ok(())
         })?,
     )?;
+
     system.set(
         "fuzzy_match",
-        lua.create_function(|_, (s, p): (mlua::LuaString, mlua::LuaString)| {
+        lua.create_function(|_, (s, p): (LuaString, LuaString)| {
             Ok(fuzzy_match(&s.as_bytes(), &p.as_bytes()))
         })?,
     )?;
 
-    // --- renderer ----------------------------------------------------------
+    // --- renderer -----------------------------------------------------
 
-    {
-        let eng = engine.clone();
-        renderer.set(
-            "show_debug",
-            lua.create_function(move |_, enable: Value| {
-                eng.borrow_mut()
-                    .cache
-                    .show_debug(enable.as_boolean().unwrap_or(false));
+    let eng = engine.clone();
+    renderer.set(
+        "show_debug",
+        lua.create_function(move |_, enable: Value| {
+            eng.borrow_mut()
+                .cache
+                .show_debug(enable.as_boolean().unwrap_or(false));
+            Ok(())
+        })?,
+    )?;
+
+    let eng = engine.clone();
+    renderer.set(
+        "get_size",
+        lua.create_function(move |_, ()| Ok(eng.borrow().platform.window_size()))?,
+    )?;
+
+    let eng = engine.clone();
+    renderer.set(
+        "begin_frame",
+        lua.create_function(move |_, ()| {
+            let e = &mut *eng.borrow_mut();
+            let (w, h) = e.platform.window_size();
+            e.fb.resize(w, h);
+            e.cache.begin_frame(e.fb.width, e.fb.height);
+            Ok(())
+        })?,
+    )?;
+
+    let eng = engine.clone();
+    renderer.set(
+        "end_frame",
+        lua.create_function(move |_, ()| {
+            let e = &mut *eng.borrow_mut();
+            let rects = e.cache.end_frame(&mut e.fb);
+            if !rects.is_empty() {
+                e.platform.present(&e.fb, &rects);
+            }
+            Ok(())
+        })?,
+    )?;
+
+    let eng = engine.clone();
+    renderer.set(
+        "set_clip_rect",
+        lua.create_function(move |_, (x, y, w, h): (f64, f64, f64, f64)| {
+            eng.borrow_mut()
+                .cache
+                .set_clip_rect(Rect::new(x as i32, y as i32, w as i32, h as i32));
+            Ok(())
+        })?,
+    )?;
+
+    let eng = engine.clone();
+    renderer.set(
+        "draw_rect",
+        lua.create_function(
+            move |_, (x, y, w, h, color): (f64, f64, f64, f64, Option<Table>)| {
+                eng.borrow_mut().cache.draw_rect(
+                    Rect::new(x as i32, y as i32, w as i32, h as i32),
+                    check_color(color)?,
+                );
                 Ok(())
-            })?,
-        )?;
-    }
-    {
-        let eng = engine.clone();
-        renderer.set(
-            "get_size",
-            lua.create_function(move |_, ()| Ok(eng.borrow().platform.window_size()))?,
-        )?;
-    }
-    {
-        let eng = engine.clone();
-        renderer.set(
-            "begin_frame",
-            lua.create_function(move |_, ()| {
-                let e = &mut *eng.borrow_mut();
-                let (w, h) = e.platform.window_size();
-                e.fb.resize(w, h);
-                e.cache.begin_frame(e.fb.width, e.fb.height);
-                Ok(())
-            })?,
-        )?;
-    }
-    {
-        let eng = engine.clone();
-        renderer.set(
-            "end_frame",
-            lua.create_function(move |_, ()| {
-                let e = &mut *eng.borrow_mut();
-                let rects = e.cache.end_frame(&mut e.fb);
-                if !rects.is_empty() {
-                    e.platform.present(&e.fb, &rects);
-                }
-                Ok(())
-            })?,
-        )?;
-    }
-    {
-        let eng = engine.clone();
-        renderer.set(
-            "set_clip_rect",
-            lua.create_function(move |_, (x, y, w, h): (f64, f64, f64, f64)| {
-                eng.borrow_mut()
-                    .cache
-                    .set_clip_rect(Rect::new(x as i32, y as i32, w as i32, h as i32));
-                Ok(())
-            })?,
-        )?;
-    }
-    {
-        let eng = engine.clone();
-        renderer.set(
-            "draw_rect",
-            lua.create_function(
-                move |_, (x, y, w, h, color): (f64, f64, f64, f64, Option<Table>)| {
-                    eng.borrow_mut().cache.draw_rect(
-                        Rect::new(x as i32, y as i32, w as i32, h as i32),
-                        check_color(color)?,
-                    );
-                    Ok(())
-                },
-            )?,
-        )?;
-    }
-    {
-        let eng = engine.clone();
-        renderer.set(
-            "draw_text",
-            lua.create_function(
-                move |_,
-                      (font, text, x, y, color): (
-                    AnyUserData,
-                    mlua::LuaString,
-                    f64,
-                    f64,
-                    Option<Table>,
-                )| {
-                    let font = font.borrow::<LuaFont>()?;
-                    let text = String::from_utf8_lossy(&text.as_bytes()).into_owned();
-                    let x = eng.borrow_mut().cache.draw_text(
-                        &font.0,
-                        &text,
-                        x as i32,
-                        y as i32,
-                        check_color(color)?,
-                    );
-                    Ok(x)
-                },
-            )?,
-        )?;
-    }
+            },
+        )?,
+    )?;
+
+    let eng = engine.clone();
+    renderer.set(
+        "draw_text",
+        lua.create_function(
+            move |_,
+                  (font, text, x, y, color): (
+                AnyUserData,
+                LuaString,
+                f64,
+                f64,
+                Option<Table>,
+            )| {
+                let font = font.borrow::<LuaFont>()?;
+                let text = String::from_utf8_lossy(&text.as_bytes()).into_owned();
+                let x = eng.borrow_mut().cache.draw_text(
+                    &font.0,
+                    &text,
+                    x as i32,
+                    y as i32,
+                    check_color(color)?,
+                );
+                Ok(x)
+            },
+        )?,
+    )?;
 
     let font = lua.create_table()?;
     font.set(
         "load",
-        lua.create_function(|_, (filename, size): (mlua::LuaString, f64)| {
+        lua.create_function(|_, (filename, size): (LuaString, f64)| {
             match Font::load(&lua_path(&filename), size as f32) {
                 Ok(font) => Ok(LuaFont(Rc::new(font))),
                 Err(err) => Err(mlua::Error::runtime(format!(
                     "failed to load font: {}: {err}",
-                    Path::new(std::ffi::OsStr::from_bytes(&filename.as_bytes())).display()
+                    lua_path(&filename).display()
                 ))),
             }
         })?,
     )?;
     renderer.set("font", font)?;
 
-    let globals = lua.globals();
+    // register like lite's luaL_requiref: as globals and in package.loaded
     let loaded: Table = lua
         .globals()
         .get::<Table>("package")?
         .get::<Table>("loaded")?;
     loaded.set("system", &system)?;
     loaded.set("renderer", &renderer)?;
-    globals.set("system", system)?;
-    globals.set("renderer", renderer)?;
+    lua.globals().set("system", system)?;
+    lua.globals().set("renderer", renderer)?;
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::fuzzy_match;
+    use proptest::prelude::*;
 
-    // expectations computed by hand from lite's C implementation
+    // expectations computed by hand from lite's c implementation
     #[test]
     fn fuzzy_match_matches_lite_semantics() {
         // no pattern: score = 0 - remaining chars
@@ -439,8 +445,8 @@ mod tests {
         // pattern not consumed -> nil
         assert_eq!(fuzzy_match(b"abc", b"abcd"), None);
         assert_eq!(fuzzy_match(b"", b"x"), None);
-        // skipped chars cost 10 each: "x" then match "a" (run 0 -> +0), then
-        // trailing "yz" costs via strlen: -10 (skip x) + 0 - 2 = -12
+        // skipped chars cost 10 each: skip x (-10), match a (run 0, +0),
+        // then trailing yz costs -2 via the final strlen
         assert_eq!(fuzzy_match(b"xayz", b"a"), Some(-12));
         // spaces are skipped on both sides
         assert_eq!(fuzzy_match(b"  ab", b" a b"), Some(10));
@@ -452,5 +458,15 @@ mod tests {
         assert_eq!(fuzzy_match(b"a ", b"b"), None);
         let _ = fuzzy_match(b"   ", b"   ");
         let _ = fuzzy_match(b"a   ", b"ab  ");
+    }
+
+    proptest! {
+        // arbitrary byte strings must never panic, and an empty pattern
+        // must always match with score -len(remaining)
+        #[test]
+        fn fuzzy_match_total_and_sane(s in any::<Vec<u8>>(), p in any::<Vec<u8>>()) {
+            let _ = fuzzy_match(&s, &p);
+            prop_assert_eq!(fuzzy_match(&s, b""), Some(-(s.len() as i32)));
+        }
     }
 }

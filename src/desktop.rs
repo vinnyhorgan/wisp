@@ -1,12 +1,12 @@
-//! The desktop platform: winit windowing, softbuffer presentation, arboard
-//! clipboard -- and the driver that runs the editor coroutine inside the
-//! winit event loop.
+//! the desktop platform: winit windowing, softbuffer presentation,
+//! arboard clipboard -- and the driver that runs the editor coroutine
+//! inside the winit event loop.
 //!
-//! winit owns the OS event loop, as it is designed to; the editor Lua
-//! believes it owns its own loop, as it is designed to. The coroutine
-//! protocol in boot.rs lets both be true: when Lua calls wait_event or
+//! winit owns the os event loop, as it is designed to; the editor lua
+//! believes it owns its own loop, as it is designed to. the coroutine
+//! protocol in boot.rs lets both be true: when lua calls wait_event or
 //! sleep, the coroutine parks, control returns here, and winit blocks in
-//! the OS with ControlFlow::WaitUntil. Idle costs nothing.
+//! the os with waituntil. idle costs nothing.
 
 use std::any::Any;
 use std::collections::VecDeque;
@@ -408,8 +408,8 @@ impl ApplicationHandler for App {
     }
 }
 
-/// Directory that contains `data/`: next to the executable for installs,
-/// the crate root for `cargo run`.
+/// directory that contains data/: next to the executable for installs,
+/// the crate root for cargo run
 fn find_exedir() -> String {
     if let Ok(exe) = std::env::current_exe()
         && let Some(dir) = exe.parent()

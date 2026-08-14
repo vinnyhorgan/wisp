@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 85e0d8fae29486ef54bd253bf720930d3fc4a4c3ce48344ad6fbdd20feb73653 # shrinks to a = [Fill(Rect { x: 0, y: 0, width: 1, height: 1 }, Color { r: 0, g: 0, b: 3, a: 43 })], b = []

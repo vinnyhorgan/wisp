@@ -1,12 +1,12 @@
-//! Font loading and glyph rasterization on top of swash, which gives us
-//! hinted, FreeType-class glyphs in pure Rust (lite used stb_truetype,
+//! font loading and glyph rasterization on top of swash, which gives us
+//! hinted, freetype-class glyphs in pure rust (lite used stb_truetype,
 //! which does not hint).
 //!
-//! Layout mirrors lite: sizes are pixels per em, advances are floored to
+//! layout mirrors lite: sizes are pixels per em, advances are floored to
 //! whole pixels, line height is ascent + descent + leading, and text is
 //! drawn from the top of the line (the renderer adds the ascent to find
-//! the baseline). Tabs and newlines produce no pixels; the tab advance is
-//! mutable at runtime via `Font:set_tab_width()`.
+//! the baseline). tabs and newlines produce no pixels; the tab advance is
+//! mutable at runtime via lua's `Font:set_tab_width()`.
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -57,11 +57,14 @@ impl Font {
             glyphs: RefCell::new(HashMap::new()),
             context: RefCell::new(ScaleContext::new()),
         };
+        // a sane default until lua calls set_tab_width; lite left this as
+        // whatever the font baked for the tab glyph
         font.tab_advance.set(font.glyph(' ').advance * 2);
         Ok(font)
     }
 
-    fn as_ref(&self) -> FontRef<'_> {
+    /// swash's borrowed view into the font data; cheap to construct
+    fn font_ref(&self) -> FontRef<'_> {
         FontRef {
             data: &self.data,
             offset: self.offset,
@@ -85,12 +88,12 @@ impl Font {
         self.tab_advance.set(n);
     }
 
-    /// Rasterizes (or fetches from cache) the glyph for a codepoint.
+    /// rasterizes (or fetches from cache) the glyph for a codepoint
     pub fn glyph(&self, ch: char) -> Rc<Glyph> {
         if let Some(glyph) = self.glyphs.borrow().get(&ch) {
             return Rc::clone(glyph);
         }
-        let font_ref = self.as_ref();
+        let font_ref = self.font_ref();
         let id = font_ref.charmap().map(ch);
         let advance = font_ref
             .glyph_metrics(&[])
@@ -132,17 +135,17 @@ impl Font {
         glyph
     }
 
-    /// Width of `text` in pixels, honoring the current tab advance.
+    /// width of `text` in pixels, honoring the current tab advance
     pub fn width_of(&self, text: &str) -> i32 {
-        let mut x = 0;
+        let mut x: i64 = 0;
         for ch in text.chars() {
             if ch == '\t' {
-                x += self.tab_advance.get();
+                x += self.tab_advance.get() as i64;
             } else {
-                x += self.glyph(ch).advance;
+                x += self.glyph(ch).advance as i64;
             }
         }
-        x
+        x.clamp(i32::MIN as i64, i32::MAX as i64) as i32
     }
 }
 
@@ -213,15 +216,24 @@ mod tests {
 
     #[test]
     fn exotic_codepoints_do_not_collide() {
-        // lite aliased glyph pages: codepoint >> 8 % 256 mapped U+10400 onto
-        // page 4, colliding with U+0400. Ours must not.
+        // lite aliased glyph pages: `codepoint >> 8 % 256` mapped u+10400
+        // onto the same page as u+0400; ours must keep them distinct
         let font = Font::load(&font_path(), 14.0).unwrap();
         let a = font.glyph('\u{10400}');
         let b = font.glyph('\u{0400}');
-        // both resolve (possibly to notdef) without panicking, and the cache
-        // keeps them as distinct entries
         assert!(font.glyphs.borrow().contains_key(&'\u{10400}'));
         assert!(font.glyphs.borrow().contains_key(&'\u{0400}'));
         let _ = (a.advance, b.advance);
+    }
+
+    #[test]
+    fn absurdly_long_text_does_not_overflow_width() {
+        let font = Font::load(&font_path(), 14.0).unwrap();
+        let text = "m".repeat(1 << 20);
+        let w = font.width_of(&text);
+        assert!(w > 0);
+        // and a width that would exceed i32 saturates instead of wrapping
+        font.set_tab_advance(i32::MAX);
+        assert_eq!(font.width_of("\t\t\t"), i32::MAX);
     }
 }
