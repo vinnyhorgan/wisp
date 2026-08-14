@@ -1,6 +1,7 @@
 # Deviations from lite's `data/`
 
-`data/` is a byte-per-byte copy of rxi's lite 1.11 `data/` directory, except for
+`data/` is a byte-per-byte copy of rxi's lite `data/` directory at master
+(`38bd9b3`, v1.11 plus rxi's last fixes), except for
 the intentional changes listed here. Every entry must say what changed and why.
 The reference copy lives untouched in `/lite/` (git-ignored, read-only).
 
