@@ -24,6 +24,16 @@ function TreeView:new()
     self.visible = true
     self.init_size = true
     self.cache = {}
+    self.target_size = config.treeview_size
+end
+
+-- opts into divider dragging: the rootview calls this when the divider
+-- of a locked split is dragged
+function TreeView:set_target_size(axis, value)
+    if axis == "x" then
+        self.target_size = math.max(value, 80 * SCALE)
+        return true
+    end
 end
 
 function TreeView:get_cached(item)
@@ -118,7 +128,7 @@ end
 
 function TreeView:update()
     -- update width
-    local dest = self.visible and config.treeview_size or 0
+    local dest = self.visible and self.target_size or 0
     if self.init_size then
         self.size.x = dest
         self.init_size = false

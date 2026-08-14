@@ -237,6 +237,39 @@ fn quit_with_unsaved_changes_asks_in_the_editor() {
 }
 
 #[test]
+fn dragging_the_divider_resizes_the_treeview() {
+    // lite issue #113: the resize cursor appeared but dragging did
+    // nothing. wisp's treeview opts into divider dragging
+    let mut editor = boot();
+    for _ in 0..2000 {
+        assert!(editor.step(), "editor exited while settling");
+    }
+    // background2 (treeview) vs background (docview) at a point that is
+    // docview before the drag and treeview after it
+    let (pixels, w, _) = editor.last_frame();
+    let probe = |pixels: &[u32], x: i32, y: i32| pixels[(y * w + x) as usize];
+    let treeview_bg = probe(&pixels, 100, 300);
+    let docview_bg = probe(&pixels, 250, 300);
+    assert_ne!(treeview_bg, docview_bg, "test needs distinct backgrounds");
+
+    // the divider sits at the treeview's width (200 at scale 1); press
+    // within its 6px grab zone and drag right
+    editor.push_event(Event::MousePressed("left", 203, 300, 1));
+    editor.run_steps(20);
+    editor.push_event(Event::MouseMoved(300, 300, 97, 0));
+    editor.run_steps(20);
+    editor.push_event(Event::MouseReleased("left", 300, 300));
+    editor.run_steps(500);
+
+    let (pixels, _, _) = editor.last_frame();
+    assert_eq!(
+        probe(&pixels, 250, 300),
+        treeview_bg,
+        "treeview must widen to cover the dragged-over area"
+    );
+}
+
+#[test]
 fn wheel_scrolls_the_document() {
     let mut editor = boot();
     editor.push_event(Event::KeyPressed("left ctrl".into()));

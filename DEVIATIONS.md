@@ -61,6 +61,19 @@ peach, functions blue, operators sky, comments overlay2, selection overlay2
 at 25%). The accent is green: caret and highlighted UI text. Same palette
 structure as lite's, only the values changed.
 
+## 5. The treeview divider is actually draggable
+
+**Files:** `data/core/rootview.lua`, `data/plugins/treeview.lua`
+
+lite showed the resize cursor on the treeview divider but dragging did
+nothing (open lite issue #113): the drag adjusted a proportional divider
+that the layout ignores for locked splits, and the treeview re-pinned its
+width every frame anyway. wisp adds a small protocol: a locked view may
+implement `set_target_size(axis, value)` to accept divider drags, and the
+treeview does. Dividers that nothing can resize (command view, status bar)
+no longer show the resize cursor at all -- the cursor only promises what a
+drag can deliver.
+
 ## Core behavior notes (rust core vs lite's c core)
 
 The core fixes lite's bugs instead of reproducing them. The observable

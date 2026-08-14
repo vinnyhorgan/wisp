@@ -189,13 +189,22 @@ function Node:get_children(t)
     return t
 end
 
+-- a divider is draggable if no side is pinned by a locked view, or if
+-- every locked view along it opts in by implementing set_target_size
+function Node:is_resizable()
+    if self.type == "leaf" then
+        return not self.locked or self.active_view.set_target_size ~= nil
+    end
+    return self.a:is_resizable() and self.b:is_resizable()
+end
+
 function Node:get_divider_overlapping_point(px, py)
     if self.type ~= "leaf" then
         local p = 6
         local x, y, w, h = self:get_divider_rect()
         x, y = x - p, y - p
         w, h = w + p * 2, h + p * 2
-        if px > x and py > y and px < x + w and py < y + h then
+        if px > x and py > y and px < x + w and py < y + h and self:is_resizable() then
             return self
         end
         return self.a:get_divider_overlapping_point(px, py)
@@ -430,12 +439,20 @@ end
 function RootView:on_mouse_moved(x, y, dx, dy)
     if self.dragged_divider then
         local node = self.dragged_divider
-        if node.type == "hsplit" then
-            node.divider = node.divider + dx / node.size.x
-        else
-            node.divider = node.divider + dy / node.size.y
+        local axis, mouse, delta = "x", x, dx
+        if node.type == "vsplit" then
+            axis, mouse, delta = "y", y, dy
         end
-        node.divider = common.clamp(node.divider, 0.01, 0.99)
+        -- a locked view pins the split's layout, so resize it directly
+        -- (to the absolute mouse position, so the divider tracks the
+        -- cursor exactly); free splits keep lite's proportional divider
+        if node.a.type == "leaf" and node.a.locked then
+            node.a.active_view:set_target_size(axis, mouse - node.position[axis])
+        elseif node.b.type == "leaf" and node.b.locked then
+            node.b.active_view:set_target_size(axis, node.position[axis] + node.size[axis] - mouse)
+        else
+            node.divider = common.clamp(node.divider + delta / node.size[axis], 0.01, 0.99)
+        end
         return
     end
 
