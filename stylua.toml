@@ -1,0 +1,9 @@
+# mirror rustfmt's defaults as closely as stylua allows, so the lua and
+# rust halves of the codebase read the same
+column_width = 100
+line_endings = "Unix"
+indent_type = "Spaces"
+indent_width = 4
+quote_style = "AutoPreferDouble"
+call_parentheses = "Always"
+collapse_simple_statement = "Never"

@@ -1,9 +1,17 @@
 # Deviations from lite's `data/`
 
-`data/` is a byte-per-byte copy of rxi's lite `data/` directory at master
-(`38bd9b3`, v1.11 plus rxi's last fixes), except for
-the intentional changes listed here. Every entry must say what changed and why.
-The reference copy lives untouched in `/lite/` (git-ignored, read-only).
+`data/` began as a byte-per-byte copy of rxi's lite `data/` directory at
+master (`38bd9b3`, v1.11 plus rxi's last fixes) and is evolving from there.
+Every intentional change is listed here, with what changed and why. The
+reference copy lives untouched in `/lite/` (git-ignored, read-only).
+
+The whole tree is formatted with stylua (config in `/stylua.toml`, tuned to
+read like rustfmt output). To diff meaningfully against the reference,
+format a copy of it the same way first:
+
+    cp -r lite/data /tmp/lite-data
+    stylua --config-path stylua.toml /tmp/lite-data
+    diff -r /tmp/lite-data data
 
 ## 1. Quit confirmation uses the CommandView, not an OS dialog
 
