@@ -96,7 +96,7 @@ function StatusView:get_items()
     local dirty = dv.doc:is_dirty()
 
     return {
-      dirty and style.accent or style.text, style.icon_font, "f",
+      dirty and style.accent or style.text, style.icon_font, style.icons.file,
       style.dim, style.font, self.separator2, style.text,
       dv.doc.filename and style.text or style.dim, dv.doc:get_name(),
       style.text,
@@ -108,7 +108,7 @@ function StatusView:get_items()
       self.separator,
       string.format("%d%%", line / #dv.doc.lines * 100),
     }, {
-      style.icon_font, "g",
+      style.icon_font, style.icons.gear,
       style.font, style.dim, self.separator2, style.text,
       #dv.doc.lines, " lines",
       self.separator,
@@ -117,7 +117,7 @@ function StatusView:get_items()
   end
 
   return {}, {
-    style.icon_font, "g",
+    style.icon_font, style.icons.gear,
     style.font, style.dim, self.separator2,
     #core.docs, style.text, " / ",
     #core.project_files, " files"

@@ -26,6 +26,18 @@ title (`"file - wisp"`), the wordmark on the empty view, the project module
 (`.wisp_project.lua`), and the temp file prefix (`.wisp_temp_*`). The scale
 override env var is `WISP_SCALE` (was `LITE_SCALE`).
 
+## 3. New fonts: inter + jetbrains mono nerd font
+
+**Files:** `data/fonts/`, `data/core/style.lua`, `data/core/init.lua`,
+`data/core/statusview.lua`, `data/plugins/treeview.lua`
+
+lite's three fonts (`font.ttf`, `monospace.ttf`, `icons.ttf`) are replaced by
+two: `inter.ttf` (UI text, Inter Regular, OFL) and `jetbrainsmono.ttf` (code,
+JetBrains Mono Regular patched by Nerd Fonts, OFL). The icon font is gone --
+icons are Nerd Font glyphs living in the private use area of the code font,
+named once in `style.icons` and referenced by name at every call site instead
+of lite's single-letter mappings ("f", "d", "g", ...).
+
 ## Core behavior notes (rust core vs lite's c core)
 
 The core fixes lite's bugs instead of reproducing them. The observable

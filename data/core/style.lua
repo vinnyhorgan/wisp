@@ -7,10 +7,22 @@ style.scrollbar_size = common.round(4 * SCALE)
 style.caret_width = common.round(2 * SCALE)
 style.tab_width = common.round(170 * SCALE)
 
-style.font = renderer.font.load(EXEDIR .. "/data/fonts/font.ttf", 14 * SCALE)
-style.big_font = renderer.font.load(EXEDIR .. "/data/fonts/font.ttf", 34 * SCALE)
-style.icon_font = renderer.font.load(EXEDIR .. "/data/fonts/icons.ttf", 14 * SCALE)
-style.code_font = renderer.font.load(EXEDIR .. "/data/fonts/monospace.ttf", 13.5 * SCALE)
+style.font = renderer.font.load(EXEDIR .. "/data/fonts/inter.ttf", 14 * SCALE)
+style.big_font = renderer.font.load(EXEDIR .. "/data/fonts/inter.ttf", 34 * SCALE)
+style.icon_font = renderer.font.load(EXEDIR .. "/data/fonts/jetbrainsmono.ttf", 14 * SCALE)
+style.code_font = renderer.font.load(EXEDIR .. "/data/fonts/jetbrainsmono.ttf", 13.5 * SCALE)
+
+-- nerd font icons, utf-8 encoded private use area codepoints
+style.icons = {
+  file      = "\xEF\x80\x96",  -- U+F016 file outline
+  dir       = "\xEF\x81\xBB",  -- U+F07B folder
+  dir_open  = "\xEF\x81\xBC",  -- U+F07C folder open
+  collapsed = "\xEF\x81\x94",  -- U+F054 chevron right
+  expanded  = "\xEF\x81\xB8",  -- U+F078 chevron down
+  gear      = "\xEF\x80\x93",  -- U+F013 cog
+  info      = "\xEF\x81\x9A",  -- U+F05A info circle
+  warn      = "\xEF\x81\xB1",  -- U+F071 warning triangle
+}
 
 style.background = { common.color "#2e2e32" }
 style.background2 = { common.color "#252529" }

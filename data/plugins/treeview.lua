@@ -140,7 +140,7 @@ end
 function TreeView:draw()
   self:draw_background(style.background2)
 
-  local icon_width = style.icon_font:get_width("D")
+  local icon_width = style.icon_font:get_width(style.icons.dir)
   local spacing = style.font:get_width(" ") * 2
 
   local doc = core.active_view.doc
@@ -163,15 +163,15 @@ function TreeView:draw()
     -- icons
     x = x + item.depth * style.padding.x + style.padding.x
     if item.type == "dir" then
-      local icon1 = item.expanded and "-" or "+"
-      local icon2 = item.expanded and "D" or "d"
+      local icon1 = item.expanded and style.icons.expanded or style.icons.collapsed
+      local icon2 = item.expanded and style.icons.dir_open or style.icons.dir
       common.draw_text(style.icon_font, color, icon1, nil, x, y, 0, h)
       x = x + style.padding.x
       common.draw_text(style.icon_font, color, icon2, nil, x, y, 0, h)
       x = x + icon_width
     else
       x = x + style.padding.x
-      common.draw_text(style.icon_font, color, "f", nil, x, y, 0, h)
+      common.draw_text(style.icon_font, color, style.icons.file, nil, x, y, 0, h)
       x = x + icon_width
     end
 

@@ -155,7 +155,7 @@ mod tests {
     use std::path::PathBuf;
 
     fn font_path() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data/fonts/monospace.ttf")
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data/fonts/jetbrainsmono.ttf")
     }
 
     #[test]

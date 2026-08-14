@@ -300,7 +300,7 @@ end
 
 
 function core.log(...)
-  return log("i", style.text, ...)
+  return log(style.icons.info, style.text, ...)
 end
 
 
@@ -310,7 +310,7 @@ end
 
 
 function core.error(...)
-  return log("!", style.accent, ...)
+  return log(style.icons.warn, style.accent, ...)
 end
 
 
