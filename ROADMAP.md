@@ -113,6 +113,11 @@ deciding lite #64 alongside word wrap - copy/cut whole line on empty
 selection (lite pr #209) - draw whitespace, auto-save, hide tabs /
 gutter (plugin-shaped lite prs)
 
+someday, deliberately last: a newer lua (5.4). mlua makes the swap
+cheap, but 5.2 semantics are load-bearing (interned strings, ephemeron
+weak tables, the yieldable exit path) and every plugin will inherit
+the choice -- revisit only once the plugin ecosystem has settled.
+
 ## said no, on the record
 
 ime - lsp (in doubt, not dead) - ai integration in the editor (the
