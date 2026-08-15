@@ -127,11 +127,13 @@ way rxi intended.
   -- rxi cancelled superseded searches via a weak thread key, wisp only
   closed the gc-timing window.
 - **phase b -- core api milestone** (last core surgery, then re-freeze):
-  subprocess (`system.spawn(argv)`, poll-based, no shell; study lite-xl's
-  Process api) and images (pure-rust decode, draw-image rencache command
-  honoring the ink invariant; §7 binary refusal becomes "refused unless a
-  view claims it"). parked and staying parked: ime, lsp, ai, terminal,
-  gamma-correct blending, dynamic hidpi rescale.
+  subprocess DONE 2026-08-15: `system.spawn(argv, opts)` in
+  src/process.rs, poll-based, never blocking, no shell; reads return ""
+  for nothing-yet and nil at eof (kills lite-xl's errno-style returns);
+  gc kills and reaps. remaining: images (pure-rust decode, draw-image
+  rencache command honoring the ink invariant; §7 binary refusal becomes
+  "refused unless a view claims it"). parked and staying parked: ime,
+  lsp, ai, terminal, gamma-correct blending, dynamic hidpi rescale.
 - **phase c -- v0.1.0, the plugin baseline**: pin the philosophy
   (artifact-vs-tool, the monday morning test, the three declared
   exceptions, "an api added speculatively is forever") in CLAUDE.md +

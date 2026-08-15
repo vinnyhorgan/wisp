@@ -1775,3 +1775,78 @@ fn a_trackpad_gesture_stays_railed_to_its_first_axis() {
         "the rail did not unlock when the gesture ended"
     );
 }
+
+#[test]
+fn lua_spawns_a_subprocess_and_round_trips_data() {
+    let _serial = serial();
+    // the whole system.spawn surface, driven from a user-module command:
+    // spawn cat, write to its stdin, read stdout to eof (nil, the
+    // file:read convention), then report the exit code
+    let root = copy_data_root("spawnroot");
+    let out = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("spawn-out.txt");
+    let _ = std::fs::remove_file(&out);
+    std::fs::write(
+        root.join("data/user/init.lua"),
+        format!(
+            r#"
+local core = require("core")
+local command = require("core.command")
+command.add(nil, {{
+    ["test:spawn"] = function()
+        local proc, err = system.spawn({{ "cat" }})
+        if not proc then
+            core.error("%s", err)
+            return
+        end
+        proc:write("ping\n")
+        proc:close_stdin()
+        core.add_thread(function()
+            local chunks = {{}}
+            while true do
+                local chunk = proc:read_stdout()
+                if not chunk then
+                    break
+                end
+                chunks[#chunks + 1] = chunk
+                coroutine.yield()
+            end
+            while proc:running() do
+                coroutine.yield()
+            end
+            local fp = io.open({out:?}, "w")
+            fp:write(string.format("%s|%d", table.concat(chunks), proc:returncode()))
+            fp:close()
+        end)
+    end,
+}})
+"#,
+            out = out.display().to_string()
+        ),
+    )
+    .unwrap();
+
+    let mut editor =
+        Headless::boot_with_exedir(&root.display().to_string(), &project_dir(), 900, 600, 1.0);
+    editor.run_until_frames(1, 10_000);
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    editor.push_event(Event::KeyPressed("left shift".into()));
+    press(&editor, "p");
+    editor.push_event(Event::KeyReleased("left shift".into()));
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(100);
+    editor.push_event(Event::TextInput("test:spawn".into()));
+    editor.run_steps(100);
+    press(&editor, "return");
+
+    // the editor clock is virtual but cat runs in real time: keep
+    // stepping (resuming the reader coroutine) until the report lands
+    for _ in 0..1000 {
+        editor.run_steps(20);
+        if out.exists() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    let report = std::fs::read_to_string(&out).expect("the spawn thread never reported");
+    assert_eq!(report, "ping\n|0");
+}

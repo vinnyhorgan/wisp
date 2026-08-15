@@ -20,6 +20,7 @@ use mlua::{
 
 use crate::font::Font;
 use crate::platform::{Event, Platform};
+use crate::process;
 use crate::rencache::RenCache;
 use crate::renderer::{Color, Framebuffer, Rect};
 
@@ -57,6 +58,53 @@ impl UserData for LuaFont {
             Ok(this.0.width_of(&String::from_utf8_lossy(&text.as_bytes())))
         });
         methods.add_method("get_height", |_, this, ()| Ok(this.0.height()));
+    }
+}
+
+/// the process userdata behind `system.spawn`; every method polls, none
+/// blocks, and reads follow the `file:read` convention: an empty string
+/// means nothing buffered right now, nil means end of stream
+struct LuaProcess(process::Process);
+
+impl UserData for LuaProcess {
+    fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
+        methods.add_method("read_stdout", |lua, this, max: Option<usize>| {
+            this.0
+                .read_stdout(max)
+                .map(|chunk| lua.create_string(&chunk))
+                .transpose()
+        });
+        methods.add_method("read_stderr", |lua, this, max: Option<usize>| {
+            this.0
+                .read_stderr(max)
+                .map(|chunk| lua.create_string(&chunk))
+                .transpose()
+        });
+        methods.add_method("write", |_, this, data: LuaString| {
+            Ok(match this.0.write(&data.as_bytes()) {
+                Ok(()) => (Some(true), None),
+                Err(e) => (None, Some(e)),
+            })
+        });
+        methods.add_method("close_stdin", |_, this, ()| {
+            this.0.close_stdin();
+            Ok(())
+        });
+        methods.add_method("running", |_, this, ()| Ok(this.0.running()));
+        methods.add_method("returncode", |_, this, ()| Ok(this.0.returncode()));
+        methods.add_method("pid", |_, this, ()| Ok(this.0.pid()));
+        methods.add_method("terminate", |_, this, ()| {
+            Ok(match this.0.terminate() {
+                Ok(()) => (Some(true), None),
+                Err(e) => (None, Some(e)),
+            })
+        });
+        methods.add_method("kill", |_, this, ()| {
+            Ok(match this.0.kill() {
+                Ok(()) => (Some(true), None),
+                Err(e) => (None, Some(e)),
+            })
+        });
     }
 }
 
@@ -308,6 +356,32 @@ pub fn register(lua: &Lua, engine: &Shared) -> mlua::Result<()> {
                 let _ = child.wait();
             }
             Ok(())
+        })?,
+    )?;
+
+    system.set(
+        "spawn",
+        lua.create_function(|_, (argv, opts): (Vec<String>, Option<Table>)| {
+            let mut options = process::SpawnOptions::default();
+            if let Some(t) = opts {
+                options.cwd = t.get::<Option<String>>("cwd")?;
+                if let Some(env) = t.get::<Option<Table>>("env")? {
+                    for pair in env.pairs::<String, String>() {
+                        let (k, v) = pair?;
+                        options.env.push((k, v));
+                    }
+                }
+                if let Some(stderr) = t.get::<Option<String>>("stderr")? {
+                    if stderr != "stdout" {
+                        return Ok((None, Some(format!("bad stderr option {stderr:?}"))));
+                    }
+                    options.merge_stderr = true;
+                }
+            }
+            match process::spawn(&argv, options) {
+                Ok(p) => Ok((Some(LuaProcess(p)), None)),
+                Err(e) => Ok((None, Some(e))),
+            }
         })?,
     )?;
 

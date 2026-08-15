@@ -17,5 +17,6 @@ pub mod font;
 pub mod headless;
 pub mod keys;
 pub mod platform;
+pub mod process;
 pub mod rencache;
 pub mod renderer;

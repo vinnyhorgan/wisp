@@ -290,3 +290,12 @@ differences, all deliberate:
   does, third-party plugins should not either).
 - the `renderer.show_debug` overlay tints the whole dirty rect; lite drew
   it under the frame's last clip, which could hide part of the overlay.
+- `system.spawn(argv, opts)` runs a subprocess with polled, never-blocking
+  pipes; lite could only fire-and-forget through `system.exec`. argv is
+  executed as given -- no shell, ever. reads follow the `file:read`
+  convention (an empty string means nothing buffered right now, nil means
+  end of stream), writes queue against a capped buffer, and a process the
+  editor lets go of is killed and reaped -- no zombies, no orphans.
+  options: `cwd`, `env` (merged over the parent's), `stderr = "stdout"`
+  to interleave. there is no blocking wait, by design: poll from a
+  `core.add_thread` coroutine, like every other background task.
