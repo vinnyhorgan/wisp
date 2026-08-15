@@ -10,16 +10,22 @@ local function update_time(doc)
 end
 
 local function reload_doc(doc)
-    local fp = io.open(doc.filename, "r")
+    local fp = io.open(doc.filename, "rb")
     local text = fp:read("*a")
     fp:close()
+
+    -- the file may have been replaced by binary output; keep the doc
+    if text:find("\0", 1, true) then
+        core.error("not auto-reloading %q: it is a binary file now", doc.filename)
+        return
+    end
 
     local sel = { doc:get_selection() }
     doc:remove(1, 1, math.huge, math.huge)
     doc:insert(1, 1, text:gsub("\r", ""):gsub("\n$", ""))
     doc:set_selection(table.unpack(sel))
+    doc.crlf = text:find("\r\n", 1, true) ~= nil
 
-    update_time(doc)
     doc:clean()
     core.log_quiet('auto-reloaded doc "%s"', doc.filename)
 end
@@ -30,7 +36,13 @@ core.add_thread(function()
         for _, doc in ipairs(core.docs) do
             local info = system.get_file_info(doc.filename or "")
             if info and times[doc] ~= info.modified then
-                reload_doc(doc)
+                update_time(doc)
+                if doc:is_dirty() then
+                    -- reloading would silently discard the unsaved changes
+                    core.error("%q changed on disk, keeping the unsaved changes", doc.filename)
+                else
+                    reload_doc(doc)
+                end
             end
             coroutine.yield()
         end

@@ -534,3 +534,50 @@ fn project_search_survives_an_empty_project() {
         "project search crashed in an empty project"
     );
 }
+
+#[test]
+fn autoreload_keeps_unsaved_changes() {
+    // autoreload used to replace the buffer and mark it clean even when
+    // it held unsaved edits
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("reload");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("note.txt");
+    std::fs::write(&file, "original\n").unwrap();
+
+    let mut editor = Headless::boot(&dir.display().to_string(), 900, 600, 1.0);
+    editor.run_until_frames(1, 10_000);
+    // open the file and dirty it
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    press(&editor, "o");
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(100);
+    editor.push_event(Event::TextInput(file.display().to_string()));
+    editor.run_steps(100);
+    press(&editor, "return");
+    editor.run_steps(500);
+    editor.push_event(Event::TextInput("edit ".into()));
+    editor.run_steps(100);
+    assert!(
+        editor.window_title().contains("note.txt*"),
+        "expected a dirty doc, title was {:?}",
+        editor.window_title()
+    );
+
+    // change the file on disk behind the editor's back
+    std::fs::write(&file, "replaced\n").unwrap();
+    let f = std::fs::OpenOptions::new().write(true).open(&file).unwrap();
+    f.set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(3600))
+        .unwrap();
+    drop(f);
+
+    // give the autoreload thread time to notice (it polls every 5
+    // virtual seconds)
+    editor.run_steps(5000);
+    assert_eq!(editor.exited, None);
+    assert!(
+        editor.window_title().contains("note.txt*"),
+        "autoreload discarded unsaved changes (title: {:?})",
+        editor.window_title()
+    );
+}

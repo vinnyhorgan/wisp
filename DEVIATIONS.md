@@ -137,6 +137,11 @@ fix is small and local:
   files divided by zero while drawing the progress header; the resulting
   `inf` made `%d` error on the draw path, outside any `core.try`, killing
   the editor.
+- **`data/plugins/autoreload.lua`** -- a file changing on disk silently
+  replaced the buffer and marked it clean, even when it held unsaved
+  edits. A dirty doc now keeps its changes (with a status message)
+  instead. Reloads also refuse files that turned binary (matching §7) and
+  update the doc's crlf flag to the file's actual line endings.
 
 ## Core behavior notes (rust core vs lite's c core)
 
