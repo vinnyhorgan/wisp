@@ -24,12 +24,8 @@ function command.add(predicate, map)
     end
 end
 
-local function capitalize_first(str)
-    return str:sub(1, 1):upper() .. str:sub(2)
-end
-
 function command.prettify_name(name)
-    return name:gsub(":", ": "):gsub("-", " "):gsub("%S+", capitalize_first)
+    return name:gsub(":", ": "):gsub("-", " ")
 end
 
 function command.get_all_valid()

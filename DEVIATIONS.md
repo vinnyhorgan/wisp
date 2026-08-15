@@ -131,8 +131,10 @@ most editors; a wheel that already scrolls sideways is left untouched.
 rxi's lowercase style covers lite's code and prose, but its UI strings were
 Title Case ("Open File From Project", "Save As", "Project"). wisp commits
 fully: command view prompts, suggestions, log and error messages, view
-names and the status bar ("crlf"/"lf") are all lowercase. Internal assert
-messages (only ever visible on a bug) were left as lite wrote them.
+names and the status bar ("crlf"/"lf") are all lowercase. The command
+palette prettifies command names without capitalizing them ("doc: save
+as", not "Doc: Save As"). Internal assert messages (only ever visible on
+a bug) were left as lite wrote them.
 
 ## 10. Assorted lua-layer fixes
 
