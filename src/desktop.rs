@@ -428,6 +428,10 @@ impl ApplicationHandler for App {
             let resume_arg = match self.parked {
                 Parked::Done(code) => {
                     if code != 0 {
+                        // process::exit skips destructors: close the lua
+                        // state first so spawned processes are killed and
+                        // reaped instead of orphaned
+                        self.lua = None;
                         std::process::exit(code);
                     }
                     event_loop.exit();

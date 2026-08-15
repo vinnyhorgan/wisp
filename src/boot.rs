@@ -27,10 +27,10 @@ function system.sleep(secs)
   coroutine.yield("sleep", secs)
 end
 
-if headless then
-  os.exit = function(code)
-    while true do coroutine.yield("exit", code or 0) end
-  end
+-- exit by yielding, never by exit(2): the host must get control back
+-- so rust destructors run (spawned processes are killed and reaped)
+os.exit = function(code)
+  while true do coroutine.yield("exit", code or 0) end
 end
 
 return function()
