@@ -37,6 +37,8 @@ pub struct DesktopPlatform {
     surface_size: (u32, u32),
     shown: bool,
     clipboard: Option<arboard::Clipboard>,
+    // echoes back what the editor last copied, so copy/paste inside the
+    // editor keeps working when the system clipboard is broken or absent
     clipboard_fallback: String,
 }
 
@@ -153,9 +155,10 @@ impl Platform for DesktopPlatform {
         let Ok(mut buffer) = surface.buffer_mut() else {
             return;
         };
-        if buffer.len() == fb.pixels.len() {
-            buffer.copy_from_slice(&fb.pixels);
+        if buffer.len() != fb.pixels.len() {
+            return;
         }
+        buffer.copy_from_slice(&fb.pixels);
         let damage: Vec<softbuffer::Rect> = rects
             .iter()
             .filter_map(|r| {

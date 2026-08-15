@@ -92,7 +92,12 @@ impl Command {
                 ..
             } => {
                 h.write(&[2, color.r, color.g, color.b, color.a]);
+                // the pointer identifies the font, but an rc freed by lua
+                // can be reallocated at the same address between frames
+                // (inherited from lite's rencache.c); hashing the height
+                // too closes the window for every realistic swap
                 h.write(&(Rc::as_ptr(font) as usize).to_le_bytes());
+                h.write_i32(font.height());
                 h.write_i32(*x);
                 h.write_i32(*y);
                 h.write_i32(*tab_advance);
@@ -249,6 +254,8 @@ impl RenCache {
                 if self.cells[idx] != self.cells_prev[idx] {
                     push_rect(&mut rects, Rect::new(x, y, 1, 1));
                 }
+                // reset in place: the swap below makes this buffer next
+                // frame's cells, so it must leave here pristine
                 self.cells_prev[idx] = HASH_INITIAL;
             }
         }

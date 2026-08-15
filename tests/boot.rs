@@ -1910,12 +1910,6 @@ fn growing_a_view_reclamps_a_stale_sideways_scroll() {
     reference.run_steps(500);
     let refframe = reference.last_frame().0;
     assert_eq!(grown.len(), refframe.len(), "frame sizes differ");
-    let mut rows = std::collections::BTreeSet::new();
-    for (i, (a, b)) in grown.iter().zip(refframe.iter()).enumerate() {
-        if a != b {
-            rows.insert(i / 1100);
-        }
-    }
     assert_eq!(
         grown, refframe,
         "the grown view kept its stale sideways scroll"

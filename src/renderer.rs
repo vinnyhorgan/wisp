@@ -175,7 +175,7 @@ impl Framebuffer {
     /// position after the last glyph
     pub fn draw_text(&mut self, font: &Font, text: &str, x: i32, y: i32, color: Color) -> i32 {
         let mut pen = x;
-        let baseline = y + font.ascent();
+        let baseline = y.saturating_add(font.ascent());
         for ch in text.chars() {
             if ch == '\t' {
                 pen = pen.saturating_add(font.tab_advance());
@@ -186,7 +186,7 @@ impl Framebuffer {
                 &glyph.mask,
                 glyph.width,
                 pen.saturating_add(glyph.left),
-                baseline - glyph.top,
+                baseline.saturating_sub(glyph.top),
                 color,
             );
             pen = pen.saturating_add(glyph.advance);
