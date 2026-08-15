@@ -737,12 +737,14 @@ fn opening_views_works_while_the_treeview_has_focus() {
     editor.push_event(Event::MouseReleased("left", 40, 300));
     editor.run_steps(50);
 
-    // ctrl+p, pick the project file
+    // open the project file from a prompt (absolute path: the process
+    // cwd races other tests' editors, so the project scan is off limits)
     editor.push_event(Event::KeyPressed("left ctrl".into()));
-    press(&editor, "p");
+    press(&editor, "o");
     editor.push_event(Event::KeyReleased("left ctrl".into()));
     editor.run_steps(100);
-    editor.push_event(Event::TextInput("hello".into()));
+    let path = format!("{}/hello.txt", project_dir());
+    editor.push_event(Event::TextInput(path));
     editor.run_steps(100);
     press(&editor, "return");
     editor.run_steps(200);
