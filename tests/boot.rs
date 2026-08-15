@@ -1111,3 +1111,113 @@ fn line_commands_on_the_last_line_leave_the_doc_intact() {
     editor.run_steps(100);
     assert_eq!(save_and_read(&mut editor), "aa\nbb\ncc\n");
 }
+
+#[test]
+fn treeview_hover_follows_a_wheel_scroll() {
+    let _serial = serial();
+    // hover was only recomputed on mouse *move*: wheel-scrolling under a
+    // stationary pointer left the highlight (and the click target!) on
+    // the pre-scroll row, so clicking opened the wrong file
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("treehover");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    for i in 1..=60 {
+        std::fs::write(dir.join(format!("f{i:02}.txt")), "x\n").unwrap();
+    }
+
+    // two editors: one clicks a treeview spot directly, the other
+    // wheel-scrolls first and clicks the same spot
+    let run = |scroll: bool| -> String {
+        let mut editor = Headless::boot(&dir.display().to_string(), 900, 600, 1.0);
+        editor.run_until_frames(1, 10_000);
+        editor.run_steps(200); // let the project scan land
+        editor.push_event(Event::MouseMoved(40, 300, 0, 0));
+        editor.run_steps(100);
+        if scroll {
+            editor.push_event(Event::MouseWheel(0.0, -3.0));
+            editor.run_steps(500);
+        }
+        editor.push_event(Event::MousePressed("left", 40, 300, 1));
+        editor.push_event(Event::MouseReleased("left", 40, 300));
+        editor.run_steps(300);
+        editor.window_title()
+    };
+    let direct = run(false);
+    let scrolled = run(true);
+    assert!(
+        direct.contains(".txt"),
+        "direct click opened nothing ({direct:?})"
+    );
+    assert!(
+        scrolled.contains(".txt"),
+        "post-scroll click opened nothing ({scrolled:?})"
+    );
+    assert_ne!(
+        direct, scrolled,
+        "the click target did not follow the scroll"
+    );
+}
+
+#[test]
+fn treeview_has_a_scrollbar_and_pans_sideways() {
+    let _serial = serial();
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("treebar");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    for i in 1..=60 {
+        std::fs::write(dir.join(format!("f{i:02}.txt")), "x\n").unwrap();
+    }
+    std::fs::write(
+        dir.join("z_a_filename_much_wider_than_the_treeview_could_ever_show.txt"),
+        "x\n",
+    )
+    .unwrap();
+
+    let mut editor = Headless::boot(&dir.display().to_string(), 900, 600, 1.0);
+    editor.run_until_frames(1, 10_000);
+    editor.set_focus(false);
+    editor.run_steps(500);
+
+    // the scrollbar strip at the treeview's right edge must not be a
+    // uniform background: 61 rows overflow the view, so a bar is drawn
+    let (frame, w, _) = editor.last_frame();
+    let mut strip = std::collections::HashSet::new();
+    for y in 10..500 {
+        for x in 196..200 {
+            strip.insert(frame[(y * w + x) as usize]);
+        }
+    }
+    assert!(strip.len() > 1, "no scrollbar drawn in the treeview");
+
+    // shift the content sideways with a horizontal wheel and back: the
+    // long filename pans into view, then the frame returns exactly
+    editor.push_event(Event::MouseMoved(40, 300, 0, 0));
+    editor.run_steps(100);
+    let (before, _, _) = editor.last_frame();
+    editor.push_event(Event::MouseWheel(-2.0, 0.0));
+    editor.run_steps(500);
+    let (panned, _, _) = editor.last_frame();
+    assert_ne!(before, panned, "the treeview did not pan sideways");
+    editor.push_event(Event::MouseWheel(2.0, 0.0));
+    editor.run_steps(500);
+    let (back, _, _) = editor.last_frame();
+    assert_eq!(before, back, "panning back did not restore the view");
+
+    // dragging the scrollbar scrolls the list instead of opening the
+    // row under the pointer
+    editor.push_event(Event::MouseMoved(198, 30, 0, 0));
+    editor.run_steps(50);
+    editor.push_event(Event::MousePressed("left", 198, 30, 1));
+    editor.run_steps(20);
+    editor.push_event(Event::MouseMoved(198, 300, 0, 0));
+    editor.run_steps(200);
+    editor.push_event(Event::MouseReleased("left", 198, 300));
+    editor.run_steps(200);
+    assert_eq!(
+        editor.window_title(),
+        "wisp",
+        "clicking the scrollbar opened a file"
+    );
+    let (dragged, _, _) = editor.last_frame();
+    assert_ne!(back, dragged, "dragging the scrollbar did not scroll");
+}

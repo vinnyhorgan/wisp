@@ -200,6 +200,15 @@ fix is small and local:
   line dirtied the doc, and moving the last line down fed blank lines
   into it. each command now handles the last line explicitly and the
   helper is gone; line commands never edit what they were not asked to.
+- **`data/plugins/treeview.lua`** -- hover was only recomputed on mouse
+  move, so wheel-scrolling under a stationary pointer left the highlight
+  (and the click target) on the pre-scroll row: clicking opened the
+  wrong file. the hovered item now follows the rows whenever the scroll
+  moves. the treeview also gained the scrollbar every other scrolling
+  view already had (clicks and drags on it reach the scrollbar now that
+  the mouse handlers call their base class), and long filenames pan
+  sideways through the §8 protocol, with the hover highlight pinned to
+  the view width.
 - **`data/plugins/tabularize.lua`** -- fields were split with a
   `[^d]+` pattern built from the delimiter's first character, which
   silently dropped empty fields (`a,,b` became `a,b`) and corrupted

@@ -69,6 +69,20 @@ function TreeView:get_scrollable_size()
     return style.padding.y * 2 + count * self:get_item_height()
 end
 
+-- long filenames pan sideways like any other view (the clamp lives in
+-- the wheel handler); the widest row is measured the way draw lays
+-- rows out
+function TreeView:get_h_scrollable_size()
+    local w = 0
+    local icon_width = style.icon_font:get_width(style.icons.dir)
+    local spacing = style.font:get_width(" ")
+    for item in self:each_item() do
+        local x = (item.depth + 2) * style.padding.x + icon_width + spacing
+        w = math.max(w, x + style.font:get_width(item.name))
+    end
+    return w > 0 and w + style.padding.x or 0
+end
+
 function TreeView:check_cache()
     -- invalidate cache's skip values if project_files has changed
     if core.project_files ~= self.last_project_files then
@@ -115,17 +129,36 @@ function TreeView:each_item()
     end)
 end
 
-function TreeView:on_mouse_moved(px, py)
+function TreeView:update_hovered()
     self.hovered_item = nil
-    for item, x, y, w, h in self:each_item() do
-        if px > x and py > y and px <= x + w and py <= y + h then
+    if not self.mouse_x then
+        return
+    end
+    -- rows span the view horizontally no matter how far the content is
+    -- panned sideways, so only y comes from the item
+    local px, py = self.mouse_x, self.mouse_y
+    if px <= self.position.x or px > self.position.x + self.size.x then
+        return
+    end
+    for item, _, y, _, h in self:each_item() do
+        if py > y and py <= y + h then
             self.hovered_item = item
             break
         end
     end
 end
 
-function TreeView:on_mouse_pressed(button, x, y)
+function TreeView:on_mouse_moved(px, py, ...)
+    TreeView.super.on_mouse_moved(self, px, py, ...)
+    self.mouse_x, self.mouse_y = px, py
+    self:update_hovered()
+end
+
+function TreeView:on_mouse_pressed(button, x, y, clicks)
+    local caught = TreeView.super.on_mouse_pressed(self, button, x, y, clicks)
+    if caught then
+        return true
+    end
     if not self.hovered_item then
         return
     elseif self.hovered_item.type == "dir" then
@@ -151,6 +184,13 @@ function TreeView:update()
         self:move_towards(self.size, "x", dest)
     end
 
+    -- wheel scrolling slides the rows under a stationary pointer; the
+    -- hovered item must follow the rows, not the last mouse event
+    if self.scroll.y ~= self.last_scroll_y then
+        self.last_scroll_y = self.scroll.y
+        self:update_hovered()
+    end
+
     TreeView.super.update(self)
 end
 
@@ -171,9 +211,10 @@ function TreeView:draw()
             color = style.accent
         end
 
-        -- hovered item background
+        -- hovered item background: always the full view width, however
+        -- far the content is panned sideways
         if item == self.hovered_item then
-            renderer.draw_rect(x, y, w, h, style.line_highlight)
+            renderer.draw_rect(self.position.x, y, self.size.x, h, style.line_highlight)
             color = style.accent
         end
 
@@ -196,6 +237,8 @@ function TreeView:draw()
         x = x + spacing
         x = common.draw_text(style.font, color, item.name, nil, x, y, 0, h)
     end
+
+    self:draw_scrollbar()
 end
 
 -- init
