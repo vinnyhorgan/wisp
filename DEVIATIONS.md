@@ -114,8 +114,11 @@ width through `get_h_scrollable_size()` (default 0: no sideways scrolling),
 and the docview reports its widest line -- measured once and cached against
 a new `Doc.change_count`, bumped on every edit, since measuring every line
 per frame would be too slow. Horizontal scroll is clamped to the content on
-both ends, like the vertical fix in §6. Shift turns a vertical wheel into a
-horizontal one, as in most editors.
+both ends, like the vertical fix in §6. The clamp lives in the wheel handler
+-- the only source of sideways scrolling -- because measuring content width
+can mean scanning the whole document, which must never happen per frame
+(the other setter, caret-following, is in range by construction). Shift
+turns a vertical wheel into a horizontal one, as in most editors.
 
 ## 9. All user-facing text is lowercase
 
