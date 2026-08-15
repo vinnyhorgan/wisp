@@ -4,6 +4,11 @@ version = "0.1.0"
 edition = "2024"
 description = "what lite could really be"
 repository = "https://github.com/vinnyhorgan/wisp"
+license = "MIT"
+# let-chains and std::io::pipe; edition 2024 alone would accept older
+rust-version = "1.88"
+# the binary runs against the data/ tree, not as a library
+publish = false
 
 [dependencies]
 # lua 5.2 vendored: same interpreter lite shipped, the only c we compile
