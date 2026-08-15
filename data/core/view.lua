@@ -90,10 +90,9 @@ end
 function View:on_mouse_wheel(y, x)
     if self.scrollable then
         self.scroll.to.y = self.scroll.to.y + y * -config.mouse_wheel_scroll
-        -- sideways scroll is clamped here, at its only source: measuring
-        -- the content width may mean scanning a whole document, so it
-        -- must not happen every frame in update (the other x setter,
-        -- scroll_to_make_visible, is in range by construction)
+        -- the update clamp only measures while panned (scroll.to.x > 0),
+        -- so the lower bound must also hold here or a leftward overshoot
+        -- could never be pulled back
         if x and x ~= 0 then
             local max = self:get_h_scrollable_size() - self.size.x
             self.scroll.to.x =
