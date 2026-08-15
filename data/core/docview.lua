@@ -227,9 +227,9 @@ local function mouse_selection(doc, clicks, line1, col1, line2, col2)
         line1, col1 = translate.start_of_word(doc, line1, col1)
         line2, col2 = translate.end_of_word(doc, line2, col2)
     elseif clicks == 3 then
-        if line2 == #doc.lines and doc.lines[#doc.lines] ~= "\n" then
-            doc:insert(math.huge, math.huge, "\n")
-        end
+        -- lite inserted a real newline here so a last-line selection had
+        -- a next line to end on; sanitizing clamps the end instead, the
+        -- selection covers the same text and the doc stays clean
         line1, col1, line2, col2 = line1, 1, line2 + 1, 1
     end
     if swap then

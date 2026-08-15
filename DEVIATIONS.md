@@ -210,6 +210,12 @@ fix is small and local:
   line dirtied the doc, and moving the last line down fed blank lines
   into it. each command now handles the last line explicitly and the
   helper is gone; line commands never edit what they were not asked to.
+- **`data/core/docview.lua`** -- triple-clicking the last line inserted
+  a real newline so the line selection had a next line to end on: the
+  same phantom-newline edit the line commands above were cured of,
+  never filed upstream. the selection end is left to the doc's
+  position sanitizing now, which clamps it to the end of the doc; the
+  selection covers the same text and the doc stays clean.
 - **`data/plugins/treeview.lua`** -- hover was only recomputed on mouse
   move, so wheel-scrolling under a stationary pointer left the highlight
   (and the click target) on the pre-scroll row: clicking opened the

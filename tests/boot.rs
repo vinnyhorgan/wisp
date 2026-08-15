@@ -198,6 +198,32 @@ fn clicking_the_treeview_opens_the_file() {
 }
 
 #[test]
+fn a_triple_click_on_the_last_line_keeps_the_doc_clean() {
+    let _serial = serial();
+    let mut editor = boot();
+    for row in 0..8 {
+        let y = 8 + row * 12;
+        editor.push_event(Event::MouseMoved(40, y, 0, 0));
+        editor.run_steps(50);
+        editor.push_event(Event::MousePressed("left", 40, y, 1));
+        editor.push_event(Event::MouseReleased("left", 40, y));
+        editor.run_steps(100);
+        if editor.window_title().starts_with("hello.txt") {
+            break;
+        }
+    }
+    assert_eq!(editor.window_title(), "hello.txt - wisp");
+    // hello.txt is one line, so its first line is also its last: the
+    // triple click must select it without editing the doc to do so
+    editor.push_event(Event::MouseMoved(400, 60, 0, 0));
+    editor.run_steps(20);
+    editor.push_event(Event::MousePressed("left", 400, 60, 3));
+    editor.push_event(Event::MouseReleased("left", 400, 60));
+    editor.run_steps(100);
+    assert_eq!(editor.window_title(), "hello.txt - wisp");
+}
+
+#[test]
 fn idle_editor_stops_redrawing() {
     let _serial = serial();
     // lite's most beloved property, enforced by machine: once quiescent
