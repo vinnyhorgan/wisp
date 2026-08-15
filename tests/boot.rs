@@ -1007,3 +1007,107 @@ fn refreshing_a_search_midway_does_not_duplicate_results() {
         "a refresh mid-search changed the settled results"
     );
 }
+
+#[test]
+fn line_commands_on_the_last_line_leave_the_doc_intact() {
+    let _serial = serial();
+    // every whole-line command first materialized a phantom newline at
+    // the end of the doc (append_line_if_last_line) -- a real edit:
+    // ctrl+l on the last line dirtied the doc, and moving the last line
+    // down fed blank lines into it
+    fn ctrl(editor: &Headless, key: &str) {
+        editor.push_event(Event::KeyPressed("left ctrl".into()));
+        press(editor, key);
+        editor.push_event(Event::KeyReleased("left ctrl".into()));
+    }
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("lastline");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("f.txt");
+    std::fs::write(&file, "aa\nbb\ncc\n").unwrap();
+
+    let mut editor = Headless::boot(&dir.display().to_string(), 900, 600, 1.0);
+    editor.run_until_frames(1, 10_000);
+    ctrl(&editor, "o");
+    editor.run_steps(100);
+    editor.push_event(Event::TextInput(file.display().to_string()));
+    editor.run_steps(100);
+    press(&editor, "return");
+    editor.run_steps(500);
+
+    // mid-doc select-lines still spans the trailing newline
+    ctrl(&editor, "l");
+    editor.run_steps(50);
+    ctrl(&editor, "c");
+    editor.run_steps(100);
+    let clip = editor.engine.borrow_mut().platform.get_clipboard();
+    assert_eq!(clip.as_deref(), Some("aa\n"));
+
+    // on the last line it selects the text without editing the doc
+    ctrl(&editor, "end");
+    editor.run_steps(50);
+    ctrl(&editor, "l");
+    editor.run_steps(100);
+    assert_eq!(
+        editor.window_title(),
+        "f.txt - wisp",
+        "select-lines on the last line dirtied the doc"
+    );
+    ctrl(&editor, "c");
+    editor.run_steps(100);
+    let clip = editor.engine.borrow_mut().platform.get_clipboard();
+    assert_eq!(clip.as_deref(), Some("cc"));
+
+    // moving the last line down is a no-op, not a blank-line feeder
+    ctrl(&editor, "down");
+    editor.run_steps(100);
+    assert_eq!(
+        editor.window_title(),
+        "f.txt - wisp",
+        "move-lines-down on the last line edited the doc"
+    );
+
+    let save_and_read = |editor: &mut Headless| -> String {
+        ctrl(editor, "s");
+        editor.run_steps(300);
+        std::fs::read_to_string(&file).unwrap()
+    };
+
+    // moving a line down onto the last line swaps them
+    ctrl(&editor, "g");
+    editor.run_steps(100);
+    editor.push_event(Event::TextInput("2".into()));
+    editor.run_steps(50);
+    press(&editor, "return");
+    editor.run_steps(100);
+    ctrl(&editor, "down");
+    editor.run_steps(100);
+    assert_eq!(save_and_read(&mut editor), "aa\ncc\nbb\n");
+
+    // duplicating the last line
+    ctrl(&editor, "end");
+    editor.run_steps(50);
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    editor.push_event(Event::KeyPressed("left shift".into()));
+    press(&editor, "d");
+    editor.push_event(Event::KeyReleased("left shift".into()));
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(100);
+    assert_eq!(save_and_read(&mut editor), "aa\ncc\nbb\nbb\n");
+
+    // deleting the last line
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    editor.push_event(Event::KeyPressed("left shift".into()));
+    press(&editor, "k");
+    editor.push_event(Event::KeyReleased("left shift".into()));
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(100);
+    assert_eq!(save_and_read(&mut editor), "aa\ncc\nbb\n");
+
+    // moving the last line up
+    ctrl(&editor, "end");
+    editor.run_steps(50);
+    ctrl(&editor, "up");
+    editor.run_steps(100);
+    assert_eq!(save_and_read(&mut editor), "aa\nbb\ncc\n");
+}

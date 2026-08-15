@@ -42,12 +42,6 @@ local function remove_from_start_of_selected_lines(text, skip_empty)
     doc():set_selection(line1, col1 - #text, line2, col2 - #text, swap)
 end
 
-local function append_line_if_last_line(line)
-    if line >= #doc().lines then
-        doc():insert(line, math.huge, "\n")
-    end
-end
-
 local function save(filename)
     doc():save(filename)
     core.log('saved "%s"', doc().filename)
@@ -135,8 +129,15 @@ local commands = {
 
     ["doc:select-lines"] = function()
         local line1, _, line2, _, swap = doc():get_selection(true)
-        append_line_if_last_line(line2)
-        doc():set_selection(line1, 1, line2 + 1, 1, swap)
+        -- lite materialized a line below the selection (a real edit that
+        -- dirtied the doc) so the selection could span the trailing
+        -- newline; on the last line, clamping to its end selects the
+        -- same text without touching the doc
+        if line2 >= #doc().lines then
+            doc():set_selection(line1, 1, line2, math.huge, swap)
+        else
+            doc():set_selection(line1, 1, line2 + 1, 1, swap)
+        end
     end,
 
     ["doc:select-word"] = function()
@@ -178,26 +179,47 @@ local commands = {
 
     ["doc:duplicate-lines"] = function()
         local line1, col1, line2, col2, swap = doc():get_selection(true)
-        append_line_if_last_line(line2)
-        local text = doc():get_text(line1, 1, line2 + 1, 1)
-        doc():insert(line2 + 1, 1, text)
         local n = line2 - line1 + 1
+        if line2 >= #doc().lines then
+            -- the block ends on the last line: copy up to its end and
+            -- reinsert below with a leading newline, so no phantom
+            -- line has to be materialized first
+            local text = doc():get_text(line1, 1, line2, math.huge)
+            doc():insert(line2, math.huge, "\n" .. text)
+        else
+            local text = doc():get_text(line1, 1, line2 + 1, 1)
+            doc():insert(line2 + 1, 1, text)
+        end
         doc():set_selection(line1 + n, col1, line2 + n, col2, swap)
     end,
 
     ["doc:delete-lines"] = function()
         local line1, col1, line2 = doc():get_selection(true)
-        append_line_if_last_line(line2)
-        doc():remove(line1, 1, line2 + 1, 1)
+        if line2 >= #doc().lines then
+            -- the block ends on the last line: there is no newline
+            -- after it, so eat the one before the block instead
+            if line1 == 1 then
+                doc():remove(1, 1, line2, math.huge)
+            else
+                doc():remove(line1 - 1, math.huge, line2, math.huge)
+            end
+        else
+            doc():remove(line1, 1, line2 + 1, 1)
+        end
         doc():set_selection(line1, col1)
     end,
 
     ["doc:move-lines-up"] = function()
         local line1, col1, line2, col2, swap = doc():get_selection(true)
-        append_line_if_last_line(line2)
         if line1 > 1 then
             local text = doc().lines[line1 - 1]
-            doc():insert(line2 + 1, 1, text)
+            if line2 >= #doc().lines then
+                -- the moved line lands at the end of the doc, where
+                -- its newline moves in front of it
+                doc():insert(line2, math.huge, "\n" .. text:sub(1, -2))
+            else
+                doc():insert(line2 + 1, 1, text)
+            end
             doc():remove(line1 - 1, 1, line1, 1)
             doc():set_selection(line1 - 1, col1, line2 - 1, col2, swap)
         end
@@ -205,10 +227,15 @@ local commands = {
 
     ["doc:move-lines-down"] = function()
         local line1, col1, line2, col2, swap = doc():get_selection(true)
-        append_line_if_last_line(line2 + 1)
         if line2 < #doc().lines then
             local text = doc().lines[line2 + 1]
-            doc():remove(line2 + 1, 1, line2 + 2, 1)
+            if line2 + 1 >= #doc().lines then
+                -- swapping with the last line: it has no newline of its
+                -- own to give, so the block's trailing one moves down
+                doc():remove(line2, math.huge, line2 + 1, math.huge)
+            else
+                doc():remove(line2 + 1, 1, line2 + 2, 1)
+            end
             doc():insert(line1, 1, text)
             doc():set_selection(line1 + 1, col1, line2 + 1, col2, swap)
         end

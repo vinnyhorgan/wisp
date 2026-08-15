@@ -193,6 +193,13 @@ fix is small and local:
   without limit (lite issues #185/#208; fix modeled on lite PR #218). the
   scan now stops at `config.max_project_files` (2000) and logs that it
   did.
+- **`data/core/commands/doc.lua`** -- every whole-line command
+  (select/duplicate/delete/move lines) began by materializing a phantom
+  newline at the end of the doc (`append_line_if_last_line`) whenever
+  the block touched the last line -- a real edit: ctrl+l on the last
+  line dirtied the doc, and moving the last line down fed blank lines
+  into it. each command now handles the last line explicitly and the
+  helper is gone; line commands never edit what they were not asked to.
 - **`data/plugins/tabularize.lua`** -- fields were split with a
   `[^d]+` pattern built from the delimiter's first character, which
   silently dropped empty fields (`a,,b` became `a,b`) and corrupted
