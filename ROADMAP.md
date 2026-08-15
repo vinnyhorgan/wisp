@@ -86,6 +86,22 @@ ideas agreed in spirit, not yet scheduled or designed:
   practically purpose-built for a terminal grid). also quietly solves
   the ai dilemma: a real terminal runs any terminal-based agent, no ai
   integration required in the editor itself.
+- **fs events (a dirmonitor).** stronger than it first looks: the
+  editor already pays for freshness the expensive way -- the project
+  scan thread rescans the whole tree every `project_scan_rate` seconds
+  (lite's design), which is the very cost the 2000-file cap exists to
+  bound. native fs events would make external changes (a git branch
+  switch, a build dropping files) appear instantly and delete the
+  standing rescan instead of adding a capability. decide during the
+  plugin pass's treeview work, staleness in hand; the pure-rust
+  `notify` crate is the candidate. taking it is a deliberate core
+  reopening, same bar as spawn cleared.
+- **cross-platform.** the stack (winit, softbuffer, swash, vendored
+  lua) is already portable; the unix-only parts are small and
+  deliberate (byte paths, signals, the future pty). macos is likely
+  close already -- it is unix. windows is a real port (conpty, paths,
+  process semantics) and waits until someone wants it. low priority,
+  not soon.
 - **a proper linux citizen.** the single binary unpacks everything --
   config included -- into `$XDG_DATA_HOME/wisp` today. eventually the
   split should follow the platform: config and user plugins in
