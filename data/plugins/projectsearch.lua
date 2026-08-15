@@ -129,6 +129,23 @@ function ResultsView:get_scrollable_size()
     return self:get_results_yoffset() + #self.results * self:get_line_height()
 end
 
+-- long result lines pan sideways through the §8 protocol. the result
+-- list is unbounded, so the widest row is cached against the result
+-- count (results only ever grow, and a new search replaces the list)
+function ResultsView:get_h_scrollable_size()
+    if self.widest_count ~= #self.results or self.widest_of ~= self.results then
+        self.widest_count = #self.results
+        self.widest_of = self.results
+        local w = 0
+        for _, item in ipairs(self.results) do
+            local text = string.format("%s at line %d (col %d): ", item.file, item.line, item.col)
+            w = math.max(w, style.font:get_width(text) + style.code_font:get_width(item.text))
+        end
+        self.widest = w > 0 and w + style.padding.x * 2 or 0
+    end
+    return self.widest
+end
+
 function ResultsView:get_visible_results_range()
     local lh = self:get_line_height()
     local oy = self:get_results_yoffset()

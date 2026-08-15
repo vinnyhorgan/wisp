@@ -15,6 +15,28 @@ function LogView:get_name()
     return "log"
 end
 
+-- long messages pan sideways through the §8 protocol; the widest drawn
+-- row is measured the way draw lays rows out (log items are capped at
+-- config.max_log_items, so measuring on each wheel event is cheap)
+function LogView:get_h_scrollable_size()
+    local w = 0
+    for _, item in ipairs(core.log_items) do
+        local x = style.padding.x * 2 + style.font:get_width(os.date(nil, item.time))
+        local last_w = 0
+        for line in item.text:gmatch("[^\n]+") do
+            last_w = style.font:get_width(line)
+            w = math.max(w, x + last_w)
+        end
+        w = math.max(w, x + last_w + style.font:get_width(" at " .. item.at))
+        if item.info then
+            for line in item.info:gmatch("[^\n]+") do
+                w = math.max(w, x + style.font:get_width(line))
+            end
+        end
+    end
+    return w > 0 and w + style.padding.x or 0
+end
+
 -- the base view reports an unbounded scrollable size, which let the log
 -- scroll into the void forever; measure the real height of the items so
 -- scrolling clamps to them, mirroring how draw lays them out

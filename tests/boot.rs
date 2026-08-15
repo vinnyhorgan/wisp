@@ -1577,3 +1577,87 @@ fn a_non_latin_project_dir_works() {
     editor.run_steps(300);
     assert_eq!(editor.window_title(), "x.txt - wisp");
 }
+
+#[test]
+fn logview_pans_sideways() {
+    let _serial = serial();
+    // a long error message was unreachable: the log view never opted
+    // into the §8 sideways-scroll protocol
+    let mut editor = boot();
+    editor.set_focus(false);
+    // fail to open a long nonexistent path: the error lands in the log
+    let long = format!("/nowhere/{}.txt", "a".repeat(120));
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    press(&editor, "o");
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(100);
+    editor.push_event(Event::TextInput(long));
+    editor.run_steps(100);
+    press(&editor, "return");
+    editor.run_steps(300);
+
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    editor.push_event(Event::KeyPressed("left shift".into()));
+    press(&editor, "p");
+    editor.push_event(Event::KeyReleased("left shift".into()));
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(100);
+    editor.push_event(Event::TextInput("core:open-log".into()));
+    editor.run_steps(100);
+    press(&editor, "return");
+    editor.run_steps(300);
+
+    editor.push_event(Event::MouseMoved(450, 300, 0, 0));
+    editor.run_steps(100);
+    let (before, _, _) = editor.last_frame();
+    editor.push_event(Event::MouseWheel(-2.0, 0.0));
+    editor.run_steps(500);
+    let (panned, _, _) = editor.last_frame();
+    assert_ne!(before, panned, "the log view did not pan sideways");
+    editor.push_event(Event::MouseWheel(2.0, 0.0));
+    editor.run_steps(500);
+    assert_eq!(
+        before,
+        editor.last_frame().0,
+        "panning back did not restore the log view"
+    );
+}
+
+#[test]
+fn search_results_pan_sideways() {
+    let _serial = serial();
+    // same hole as the log view: long result lines were unreachable
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("searchpan");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("x.txt"), format!("hello {}\n", "x".repeat(150))).unwrap();
+
+    let mut editor = Headless::boot(&dir.display().to_string(), 900, 600, 1.0);
+    editor.run_until_frames(1, 10_000);
+    editor.set_focus(false);
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    editor.push_event(Event::KeyPressed("left shift".into()));
+    press(&editor, "f");
+    editor.push_event(Event::KeyReleased("left shift".into()));
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(50);
+    editor.push_event(Event::TextInput("hello".into()));
+    editor.run_steps(50);
+    press(&editor, "return");
+    editor.run_steps(1000);
+
+    editor.push_event(Event::MouseMoved(450, 300, 0, 0));
+    editor.run_steps(100);
+    let (before, _, _) = editor.last_frame();
+    editor.push_event(Event::MouseWheel(-3.0, 0.0));
+    editor.run_steps(500);
+    let (panned, _, _) = editor.last_frame();
+    assert_ne!(before, panned, "the results view did not pan sideways");
+    editor.push_event(Event::MouseWheel(3.0, 0.0));
+    editor.run_steps(500);
+    assert_eq!(
+        before,
+        editor.last_frame().0,
+        "panning back did not restore the results view"
+    );
+}

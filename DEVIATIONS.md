@@ -222,6 +222,11 @@ fix is small and local:
 - **`data/core/logview.lua`** -- the log view scrolled into the void
   forever (the base view reports an unbounded scrollable size); it now
   measures its items, the same rule as §6.
+- **`data/core/logview.lua`**, **`data/plugins/projectsearch.lua`** --
+  both views held content wider than themselves with no way to reach
+  it; they opt into the §8 sideways-scroll protocol now. the log
+  measures its rows directly (items are capped), the results view
+  caches its widest row against the result count.
 - **`data/core/statusview.lua`** -- the column readout counted bytes, so
   multibyte text inflated it (lite issue #300); it counts characters
   now.
