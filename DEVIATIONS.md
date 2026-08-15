@@ -15,7 +15,7 @@ format a copy of it the same way first:
 
 ## 1. quit confirmation uses the CommandView, not an os dialog
 
-**file:** `data/core/init.lua`, `core.quit()`
+**files:** `data/core/init.lua` (`core.quit()`), `data/core/commandview.lua`
 
 lite called `system.show_confirm_dialog()` — the only use of that api in the
 entire codebase — to ask about unsaved changes on quit, putting an os message
@@ -42,8 +42,9 @@ override env var is `WISP_SCALE` (was `LITE_SCALE`).
 
 ## 3. one font: jetbrains mono nerd font
 
-**files:** `data/fonts/`, `data/core/style.lua`, `data/core/init.lua`,
-`data/core/statusview.lua`, `data/plugins/treeview.lua`
+**files:** `data/jetbrainsmono.ttf`, `data/core/style.lua`,
+`data/core/init.lua`, `data/core/statusview.lua`,
+`data/plugins/treeview.lua`
 
 lite's three fonts (`font.ttf`, `monospace.ttf`, `icons.ttf`) are replaced by
 a single `jetbrainsmono.ttf`: jetbrains mono regular patched by nerd fonts
@@ -56,16 +57,25 @@ looking squeezed. the icons are nerd font glyphs living in the font's
 private use area, named once in `style.icons` and referenced by name at
 every call site instead of lite's single-letter mappings ("f", "d", "g", ...).
 
+two spacings shrink with the font: the statusview separators (three
+spaces and ` | `, down from lite's six and `   |   `) and the treeview
+icon gap (one space, was two). the mono font's spaces are half a cell
+each, twice the width of lite's proportional ones, so lite's counts
+read double.
+
 ## 4. catppuccin mocha color scheme, green accent
 
-**file:** `data/core/style.lua`
+**files:** `data/core/style.lua`, `data/user/`
 
 the default theme is catppuccin mocha instead of lite's grayscale. colors
 come from the official palette (catppuccin/palette) and the syntax roles
 follow the official style guide (keywords mauve, strings green, numbers
 peach, functions blue, operators sky, comments overlay2, selection overlay2
 at 25%). the accent is green: caret and highlighted ui text. same palette
-structure as lite's, only the values changed.
+structure as lite's, only the values changed. lite's two bundled
+alternate schemes (`data/user/colors/` and the commented require in
+`data/user/init.lua`) went with the switch: one theme, tuned, instead
+of three half-tuned.
 
 ## 5. the treeview divider is actually draggable
 
@@ -105,7 +115,8 @@ with a message instead of dying.
 ## 8. horizontal scrolling
 
 **files:** `data/core/view.lua`, `data/core/docview.lua`,
-`data/core/doc/init.lua`, `data/core/init.lua`
+`data/core/doc/init.lua`, `data/core/init.lua`,
+`data/core/commandview.lua`
 
 lite had no horizontal scrolling: the wheel's x axis was dropped by the c
 core and the lua layer only handled y. wisp's core always delivered both
@@ -134,9 +145,10 @@ scrolls, and no further.
 
 ## 9. all user-facing text is lowercase
 
-**files:** `data/core/init.lua`, `data/core/docview.lua`,
-`data/core/logview.lua`, `data/core/statusview.lua`,
-`data/core/commands/*.lua`, `data/plugins/*.lua`
+**files:** `data/core/init.lua`, `data/core/command.lua`,
+`data/core/docview.lua`, `data/core/logview.lua`,
+`data/core/statusview.lua`, `data/core/commands/*.lua`,
+`data/plugins/*.lua`
 
 rxi's lowercase style covers lite's code and prose, but its ui strings were
 title case ("Open File From Project", "Save As", "Project"). wisp commits
@@ -270,6 +282,15 @@ fix is small and local:
   silently dropped empty fields (`a,,b` became `a,b`) and corrupted
   multi-character delimiters (`a->b` became `a->>b`). splitting is now a
   plain full-delimiter split that keeps empty fields.
+
+## kept on purpose
+
+lite behaviors evaluated deliberately and kept, recorded so they are
+not mistaken for oversights:
+
+- saving imposes a trailing newline on files that lack one (lite
+  issue #221): the doc model is a list of `"\n"`-terminated lines and
+  posix agrees with it.
 
 ## core behavior notes (rust core vs lite's c core)
 
