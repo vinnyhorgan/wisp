@@ -15,6 +15,27 @@ function LogView:get_name()
     return "log"
 end
 
+-- the base view reports an unbounded scrollable size, which let the log
+-- scroll into the void forever; measure the real height of the items so
+-- scrolling clamps to them, mirroring how draw lays them out
+function LogView:get_scrollable_size()
+    local th = style.font:get_height()
+    local h = style.padding.y * 2
+    for _, item in ipairs(core.log_items) do
+        local lines = 0
+        for _ in item.text:gmatch("[^\n]+") do
+            lines = lines + 1
+        end
+        if item.info then
+            for _ in item.info:gmatch("[^\n]+") do
+                lines = lines + 1
+            end
+        end
+        h = h + lines * th + style.padding.y
+    end
+    return h
+end
+
 function LogView:update()
     local item = core.log_items[#core.log_items]
     if self.last_item ~= item then

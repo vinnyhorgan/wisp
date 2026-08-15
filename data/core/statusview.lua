@@ -92,6 +92,10 @@ function StatusView:get_items()
         local dv = core.active_view
         local line, col = dv.doc:get_selection()
         local dirty = dv.doc:is_dirty()
+        -- col is a byte offset into the line; count characters so
+        -- multibyte text does not inflate the number (lite issue #300)
+        local _, chars = dv.doc.lines[line]:sub(1, col - 1):gsub("[^\128-\191]", "")
+        col = chars + 1
 
         return {
             dirty and style.accent or style.text,

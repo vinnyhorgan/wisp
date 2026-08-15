@@ -216,6 +216,15 @@ fix is small and local:
   are now merged through a seen-set, keeping whichever entry carries an
   info tag. latent in stock lite (the open-docs provider is a set), it
   bites as soon as a second provider exists -- which is what plugins do.
+- **`data/core/commands/findreplace.lua`** -- "previous find" before any
+  find popped from a nil history table; the raw lua error reached the
+  user. it now reports "no previous finds" like every other empty case.
+- **`data/core/logview.lua`** -- the log view scrolled into the void
+  forever (the base view reports an unbounded scrollable size); it now
+  measures its items, the same rule as §6.
+- **`data/core/statusview.lua`** -- the column readout counted bytes, so
+  multibyte text inflated it (lite issue #300); it counts characters
+  now.
 - **`data/plugins/tabularize.lua`** -- fields were split with a
   `[^d]+` pattern built from the delimiter's first character, which
   silently dropped empty fields (`a,,b` became `a,b`) and corrupted

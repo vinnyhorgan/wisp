@@ -1313,3 +1313,146 @@ autocomplete.add({ name = "test-b", items = { alpa = "from b", alpbb = false, al
         "a fourth suggestion exists for three distinct symbols"
     );
 }
+
+#[test]
+fn previous_find_before_any_find_reports_cleanly() {
+    let _serial = serial();
+    // shift+f3 with no find history popped from a nil table; the raw
+    // lua error surfaced instead of a message. a user-module hook
+    // mirrors core.error into a file so the test can read the message
+    fn copy_dir(from: &std::path::Path, to: &std::path::Path) {
+        std::fs::create_dir_all(to).unwrap();
+        for e in std::fs::read_dir(from).unwrap() {
+            let e = e.unwrap();
+            let t = to.join(e.file_name());
+            if e.file_type().unwrap().is_dir() {
+                copy_dir(&e.path(), &t);
+            } else {
+                std::fs::copy(e.path(), &t).unwrap();
+            }
+        }
+    }
+    let root = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("errroot");
+    let _ = std::fs::remove_dir_all(&root);
+    copy_dir(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("data"),
+        &root.join("data"),
+    );
+    let errlog = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("errlog.txt");
+    let _ = std::fs::remove_file(&errlog);
+    std::fs::write(
+        root.join("data/user/init.lua"),
+        format!(
+            r#"
+local core = require("core")
+local error_fn = core.error
+function core.error(...)
+    local fp = io.open({:?}, "a")
+    fp:write(string.format(...) .. "\n")
+    fp:close()
+    return error_fn(...)
+end
+"#,
+            errlog.display()
+        ),
+    )
+    .unwrap();
+
+    let mut editor =
+        Headless::boot_with_exedir(&root.display().to_string(), &project_dir(), 900, 600, 1.0);
+    editor.run_until_frames(1, 10_000);
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    press(&editor, "n");
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(100);
+    editor.push_event(Event::KeyPressed("left shift".into()));
+    press(&editor, "f3");
+    editor.push_event(Event::KeyReleased("left shift".into()));
+    editor.run_steps(200);
+
+    let logged = std::fs::read_to_string(&errlog).unwrap_or_default();
+    assert!(
+        logged.contains("no previous finds"),
+        "expected a clean message, got {logged:?}"
+    );
+    assert!(
+        !logged.contains("table expected"),
+        "the raw lua error still reaches the user: {logged:?}"
+    );
+}
+
+#[test]
+fn logview_scrolling_is_clamped_to_its_content() {
+    let _serial = serial();
+    // the base view reports an unbounded scrollable size, so the log
+    // scrolled into the void forever
+    let mut editor = boot();
+    editor.set_focus(false);
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    editor.push_event(Event::KeyPressed("left shift".into()));
+    press(&editor, "p");
+    editor.push_event(Event::KeyReleased("left shift".into()));
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(100);
+    editor.push_event(Event::TextInput("core:open-log".into()));
+    editor.run_steps(100);
+    press(&editor, "return");
+    editor.run_steps(300);
+
+    // the few boot messages fit the view, so wheeling down hard must
+    // change nothing at all
+    editor.push_event(Event::MouseMoved(450, 300, 0, 0));
+    editor.run_steps(50);
+    let (top, _, _) = editor.last_frame();
+    for _ in 0..10 {
+        editor.push_event(Event::MouseWheel(0.0, -50.0));
+        editor.run_steps(50);
+    }
+    editor.run_steps(1000);
+    assert_eq!(
+        top,
+        editor.last_frame().0,
+        "the log scrolled past its content"
+    );
+}
+
+#[test]
+fn statusbar_column_counts_characters_not_bytes() {
+    let _serial = serial();
+    // two files, same shape, one multibyte character: with the caret
+    // after two characters both status bars must read "col: 3" (lite
+    // issue #300 -- the byte offset said 4 for the accented file)
+    let run = |name: &str, content: &str| -> Vec<u32> {
+        let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("x.txt");
+        std::fs::write(&file, content).unwrap();
+        let mut editor = Headless::boot(&dir.display().to_string(), 900, 600, 1.0);
+        editor.run_until_frames(1, 10_000);
+        editor.set_focus(false);
+        // open by relative path: the status bar shows the doc name, and
+        // it must be the identical string ("x.txt") in both runs
+        editor.push_event(Event::KeyPressed("left ctrl".into()));
+        press(&editor, "o");
+        editor.push_event(Event::KeyReleased("left ctrl".into()));
+        editor.run_steps(100);
+        editor.push_event(Event::TextInput("x.txt".into()));
+        editor.run_steps(100);
+        press(&editor, "return");
+        editor.run_steps(500);
+        press(&editor, "right");
+        editor.run_steps(50);
+        press(&editor, "right");
+        editor.run_steps(300);
+        let (frame, w, h) = editor.last_frame();
+        // the status bar strip only: the doc text differs by design
+        frame[((h - 25) * w) as usize..].to_vec()
+    };
+    let plain = run("colplain", "hello\n");
+    let accented = run("colaccent", "h\u{e9}llo\n");
+    assert_eq!(
+        plain, accented,
+        "the status bar column differs after two characters"
+    );
+}

@@ -122,7 +122,9 @@ command.add("core.docview", {
     end,
 
     ["find-replace:previous-find"] = function()
-        local sel = table.remove(previous_finds)
+        -- before any find there is no history table at all; lite popped
+        -- from nil here
+        local sel = previous_finds and table.remove(previous_finds)
         if not sel or doc() ~= last_doc then
             core.error("no previous finds")
             return
