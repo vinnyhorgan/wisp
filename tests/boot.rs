@@ -639,3 +639,46 @@ fn renaming_a_file_moves_it_on_disk() {
         editor.window_title()
     );
 }
+
+#[test]
+fn tabularize_keeps_empty_fields() {
+    // the old single-character [^d]+ split dropped empty fields, so
+    // "a,,b" lost a column
+    let mut editor = boot();
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    press(&editor, "n");
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(50);
+    editor.push_event(Event::TextInput("a,,b\ncc,d,e".into()));
+    editor.run_steps(100);
+
+    // select all, then run tabularize from the command palette
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    press(&editor, "a");
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(50);
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    editor.push_event(Event::KeyPressed("left shift".into()));
+    press(&editor, "p");
+    editor.push_event(Event::KeyReleased("left shift".into()));
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(100);
+    editor.push_event(Event::TextInput("tabularize".into()));
+    editor.run_steps(100);
+    press(&editor, "return");
+    editor.run_steps(100);
+    editor.push_event(Event::TextInput(",".into()));
+    editor.run_steps(50);
+    press(&editor, "return");
+    editor.run_steps(200);
+
+    // copy everything and inspect the clipboard
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    press(&editor, "a");
+    press(&editor, "c");
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(200);
+    assert_eq!(editor.exited, None);
+    let clipboard = editor.engine.borrow_mut().platform.get_clipboard();
+    assert_eq!(clipboard.as_deref(), Some("a , ,b\ncc,d,e"));
+}

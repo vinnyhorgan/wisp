@@ -10,14 +10,26 @@ local function gmatch_to_array(text, ptn)
     return res
 end
 
+-- a plain split that keeps empty fields; a "[^d]+" pattern would drop
+-- them and could only ever split on a single character
+local function split_on_delim(text, delim)
+    local res = {}
+    local pos = 1
+    repeat
+        local s = text:find(delim, pos, true)
+        table.insert(res, text:sub(pos, (s or 0) - 1))
+        pos = s and s + #delim
+    until not pos
+    return res
+end
+
 local function tabularize_lines(lines, delim)
     local rows = {}
     local cols = {}
 
     -- split lines at delimiters and get maximum width of columns
-    local ptn = "[^" .. delim:sub(1, 1):gsub("%W", "%%%1") .. "]+"
     for i, line in ipairs(lines) do
-        rows[i] = gmatch_to_array(line, ptn)
+        rows[i] = split_on_delim(line, delim)
         for j, col in ipairs(rows[i]) do
             cols[j] = math.max(#col, cols[j] or 0)
         end

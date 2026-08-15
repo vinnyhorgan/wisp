@@ -152,6 +152,11 @@ fix is small and local:
   without limit (lite issues #185/#208; fix modeled on lite PR #218). The
   scan now stops at `config.max_project_files` (2000) and logs that it
   did.
+- **`data/plugins/tabularize.lua`** -- fields were split with a
+  `[^d]+` pattern built from the delimiter's first character, which
+  silently dropped empty fields (`a,,b` became `a,b`) and corrupted
+  multi-character delimiters (`a->b` became `a->>b`). Splitting is now a
+  plain full-delimiter split that keeps empty fields.
 
 ## Core behavior notes (rust core vs lite's c core)
 
