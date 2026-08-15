@@ -1661,3 +1661,38 @@ fn search_results_pan_sideways() {
         "panning back did not restore the results view"
     );
 }
+
+#[test]
+fn a_focus_loss_forgets_held_modifiers() {
+    let _serial = serial();
+    let mut editor = boot();
+
+    // open the project file so there is a tab to close later
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    press(&editor, "o");
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(50);
+    editor.push_event(Event::TextInput("hello.txt".into()));
+    editor.run_steps(50);
+    press(&editor, "return");
+    editor.run_steps(50);
+    assert_eq!(editor.window_title(), "hello.txt - wisp");
+
+    // alt goes down and focus leaves (alt+tab); the release lands in
+    // another window. wayland sends no key releases on focus loss, so
+    // the editor never sees alt go up
+    editor.push_event(Event::KeyPressed("left alt".into()));
+    editor.run_steps(5);
+    editor.set_focus(false);
+    editor.run_steps(5);
+    editor.set_focus(true);
+    editor.run_steps(5);
+
+    // with alt latched every chord was dead (ctrl+w arrived as
+    // alt+ctrl+w); the focus round-trip must have unstuck it
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    press(&editor, "w");
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(50);
+    assert_eq!(editor.window_title(), "wisp");
+}

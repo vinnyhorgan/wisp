@@ -379,7 +379,19 @@ function core.on_event(type, ...)
     return did_keymap
 end
 
+local window_focused = true
+
 function core.step()
+    -- wayland delivers no key releases when focus leaves mid-chord
+    -- (alt+tab, the overview), so a modifier held at that moment would
+    -- stay latched and turn every chord into a dead alt+... variant;
+    -- forget held modifiers the moment focus goes
+    local focus = system.window_has_focus()
+    if window_focused and not focus then
+        keymap.modkeys = {}
+    end
+    window_focused = focus
+
     -- handle events
     local did_keymap = false
     local mouse_moved = false

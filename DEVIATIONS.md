@@ -244,6 +244,11 @@ fix is small and local:
   save as, rename, path suggestions) use it, like every shell would.
 - **`data/plugins/language_c.lua`** -- `const` was defined twice in the
   symbol table (lite PR #224); one removed, no behavior change.
+- **`data/core/init.lua`** -- a modifier held while focus left the
+  window stayed latched forever: wayland delivers no key releases on
+  focus loss (x11 synthesizes them), so alt+tab with alt down turned
+  every later chord into a dead alt+... variant until restart. held
+  modifiers are now forgotten the moment focus goes.
 - **`data/plugins/tabularize.lua`** -- fields were split with a
   `[^d]+` pattern built from the delimiter's first character, which
   silently dropped empty fields (`a,,b` became `a,b`) and corrupted
