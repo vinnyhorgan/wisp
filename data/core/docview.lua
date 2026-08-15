@@ -194,10 +194,21 @@ function DocView:scroll_to_make_visible(line, col)
     local max = self:get_line_height() * (line + 2) - self.size.y
     self.scroll.to.y = math.min(self.scroll.to.y, min)
     self.scroll.to.y = math.max(self.scroll.to.y, max)
+    -- horizontally, scroll only when the caret would leave the view.
+    -- lite recomputed the scroll from the caret position alone, which
+    -- discarded the user's own sideways scroll on every caret move and
+    -- let long-line drag selection feed back into itself (the fix in
+    -- franko's unmerged lite PR #230)
     local gw = self:get_gutter_width()
     local xoffset = self:get_col_x_offset(line, col)
-    local max = xoffset - self.size.x + gw + self.size.x / 5
-    self.scroll.to.x = math.max(0, max)
+    local xmargin = 3 * self:get_font():get_width(" ")
+    local xsup = xoffset + gw + xmargin
+    local xinf = xoffset - xmargin
+    if xsup > self.scroll.to.x + self.size.x then
+        self.scroll.to.x = xsup - self.size.x
+    elseif xinf < self.scroll.to.x then
+        self.scroll.to.x = math.max(0, xinf)
+    end
 end
 
 local function mouse_selection(doc, clicks, line1, col1, line2, col2)

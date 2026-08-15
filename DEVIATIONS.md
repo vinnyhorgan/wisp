@@ -149,6 +149,14 @@ fix is small and local:
   `get_active_node_default()` falls back to the first unlocked leaf --
   the editing area, which always exists -- and the three open sites use
   it.
+- **`data/core/docview.lua`** -- the caret-follow scroll recomputed the
+  horizontal offset from the caret position alone, parking the caret at
+  4/5 of the view width on every caret move. that discarded the user's
+  own sideways scroll, and during a drag it fed back into the mouse
+  position: the view slid under the pointer, the next mouse event
+  resolved further into the line, and the selection galloped away. the
+  follow now scrolls only when the caret would leave the view (the fix
+  in franko's unmerged lite PR #230).
 - **`data/core/doc/translate.lua`** -- `previous_char`/`next_char` looped
   forever on a malformed utf-8 continuation byte at either end of the doc
   (a latin-1 file starting with a curly quote hung the editor on

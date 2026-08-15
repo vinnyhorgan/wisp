@@ -807,3 +807,93 @@ fn opening_views_works_while_the_treeview_has_focus() {
         "open-log failed with the treeview focused"
     );
 }
+
+#[test]
+fn caret_follow_keeps_the_users_scroll() {
+    let _serial = serial();
+    // lite recomputed the horizontal scroll from the caret position on
+    // every caret move -- a snap, not a keep-visible clamp. it discarded
+    // the view's scroll position whenever the caret moved, and during a
+    // drag it fed back into the mouse position and galloped down the
+    // line (the fix in franko's unmerged lite PR #230)
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("caretfollow");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("long.txt");
+    std::fs::write(&file, format!("{}\n", "a".repeat(300))).unwrap();
+
+    let mut editor = Headless::boot(&dir.display().to_string(), 900, 600, 1.0);
+    editor.run_until_frames(1, 10_000);
+    // an unfocused window draws no caret, so frames compare exactly
+    editor.set_focus(false);
+
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    press(&editor, "o");
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(100);
+    editor.push_event(Event::TextInput(file.display().to_string()));
+    editor.run_steps(100);
+    press(&editor, "return");
+    editor.run_steps(500);
+
+    // the doc area: everything above the status bar (whose column
+    // readout changes with the caret and must not fail the compare)
+    fn doc_area(frame: &[u32], w: i32) -> Vec<u32> {
+        frame[..(500 * w) as usize].to_vec()
+    }
+
+    // at the end of the line the view sits scrolled right; nudging the
+    // caret one column left must leave the scroll exactly where it is
+    press(&editor, "end");
+    editor.run_steps(500);
+    let (frame, w, _) = editor.last_frame();
+    let before = doc_area(&frame, w);
+    press(&editor, "left");
+    editor.run_steps(500);
+    let (frame, w, _) = editor.last_frame();
+    assert_eq!(
+        before,
+        doc_area(&frame, w),
+        "moving the caret one column moved the scroll"
+    );
+
+    // drag a selection rightward across the visible text: the scroll
+    // must hold still so the selection tracks the mouse, instead of the
+    // view sliding under the pointer and ballooning the selection
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    press(&editor, "home");
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(500);
+    editor.push_event(Event::MouseMoved(300, 8, 0, 0));
+    editor.run_steps(20);
+    editor.push_event(Event::MousePressed("left", 300, 8, 1));
+    editor.run_steps(10);
+    let mut x = 300;
+    while x < 860 {
+        x += 10;
+        editor.push_event(Event::MouseMoved(x, 8, 0, 0));
+        editor.run_steps(3);
+    }
+    editor.push_event(Event::MouseReleased("left", 860, 8));
+    editor.run_steps(100);
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    press(&editor, "c");
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(100);
+    let selected = editor
+        .engine
+        .borrow_mut()
+        .platform
+        .get_clipboard()
+        .unwrap_or_default();
+    assert!(
+        selected.len() > 30,
+        "drag selected almost nothing ({} chars)",
+        selected.len()
+    );
+    assert!(
+        selected.len() < 120,
+        "drag selection galloped: {} chars for a ~560px drag",
+        selected.len()
+    );
+}
