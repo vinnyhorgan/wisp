@@ -460,3 +460,48 @@ fn clipboard_round_trips_through_the_editor() {
     let clipboard = editor.engine.borrow_mut().platform.get_clipboard();
     assert_eq!(clipboard.as_deref(), Some("hello"));
 }
+
+#[test]
+fn malformed_utf8_never_hangs_the_caret() {
+    // a legacy-encoded (latin-1) file can start with a utf-8 continuation
+    // byte; translate.previous_char used to spin forever on it at 1,1.
+    // the editor runs in its own thread so a regression fails this test
+    // instead of hanging the whole suite
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("latin1");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("legacy.txt");
+    std::fs::write(&file, b"\x92hello\x92\n").unwrap();
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut editor = Headless::boot(&dir.display().to_string(), 900, 600, 1.0);
+        editor.run_until_frames(1, 10_000);
+        // ctrl+o, type the path, return
+        editor.push_event(Event::KeyPressed("left ctrl".into()));
+        press(&editor, "o");
+        editor.push_event(Event::KeyReleased("left ctrl".into()));
+        editor.run_steps(100);
+        editor.push_event(Event::TextInput(file.display().to_string()));
+        editor.run_steps(100);
+        press(&editor, "return");
+        editor.run_steps(500);
+        // backspace and left arrow at 1,1 both walk previous_char
+        press(&editor, "backspace");
+        editor.run_steps(100);
+        press(&editor, "left");
+        editor.run_steps(100);
+        // and right arrow at the end of the doc walks next_char
+        editor.push_event(Event::KeyPressed("left ctrl".into()));
+        press(&editor, "end");
+        editor.push_event(Event::KeyReleased("left ctrl".into()));
+        editor.run_steps(100);
+        press(&editor, "right");
+        editor.run_steps(100);
+        tx.send(editor.exited).unwrap();
+    });
+    let exited = rx
+        .recv_timeout(std::time::Duration::from_secs(120))
+        .expect("editor hung moving the caret over malformed utf-8");
+    assert_eq!(exited, None);
+}

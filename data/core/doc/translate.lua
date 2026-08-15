@@ -10,16 +10,26 @@ local function is_non_word(char)
     return config.non_word_chars:find(char, nil, true)
 end
 
+-- the offset pins at the ends of the doc, so a malformed continuation
+-- byte there would loop forever without the same-position check
 function translate.previous_char(doc, line, col)
     repeat
+        local line2, col2 = line, col
         line, col = doc:position_offset(line, col, -1)
+        if line == line2 and col == col2 then
+            break
+        end
     until not common.is_utf8_cont(doc:get_char(line, col))
     return line, col
 end
 
 function translate.next_char(doc, line, col)
     repeat
+        local line2, col2 = line, col
         line, col = doc:position_offset(line, col, 1)
+        if line == line2 and col == col2 then
+            break
+        end
     until not common.is_utf8_cont(doc:get_char(line, col))
     return line, col
 end

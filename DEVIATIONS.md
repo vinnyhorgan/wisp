@@ -123,6 +123,17 @@ fully: command view prompts, suggestions, log and error messages, view
 names and the status bar ("crlf"/"lf") are all lowercase. Internal assert
 messages (only ever visible on a bug) were left as lite wrote them.
 
+## 10. Assorted lua-layer fixes
+
+Bugs inherited from lite's `data/`, found in the stabilization pass. Each
+fix is small and local:
+
+- **`data/core/doc/translate.lua`** -- `previous_char`/`next_char` looped
+  forever on a malformed utf-8 continuation byte at either end of the doc
+  (a latin-1 file starting with a curly quote hung the editor on
+  backspace). They now use the same same-position guard rxi already used
+  in `start_of_word`.
+
 ## Core behavior notes (rust core vs lite's c core)
 
 The core fixes lite's bugs instead of reproducing them. The observable
