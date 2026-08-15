@@ -5,6 +5,16 @@
 use wisp::headless::Headless;
 use wisp::platform::Event;
 
+/// the editor chdirs the process into its project dir (on desktop it
+/// owns the process, so that is correct), but every test in this binary
+/// shares one process and one cwd: editors running concurrently race
+/// each other's relative paths. every test takes this lock first
+static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn serial() -> std::sync::MutexGuard<'static, ()> {
+    SERIAL.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 /// a minimal, stable project directory (its listing is rendered by the
 /// treeview, so it must not change between runs). written exactly once:
 /// tests run concurrently and editors scan this directory while others
@@ -42,6 +52,7 @@ fn open_dirty_doc(editor: &mut Headless) {
 
 #[test]
 fn editor_boots_and_draws_a_frame() {
+    let _serial = serial();
     let editor = boot();
     let (pixels, w, h) = editor.last_frame();
     assert_eq!(pixels.len(), (w * h) as usize);
@@ -68,6 +79,7 @@ fn editor_boots_and_draws_a_frame() {
 
 #[test]
 fn boot_is_deterministic() {
+    let _serial = serial();
     // same events, same virtual clock, same pixels -- twice. every
     // pixel-comparing test in this file stands on this property
     let a = boot();
@@ -81,6 +93,7 @@ fn boot_is_deterministic() {
 
 #[test]
 fn boot_is_deterministic_at_2x_scale() {
+    let _serial = serial();
     // the scale global reaches every style metric and font size; hidpi
     // must be just as reproducible as 1x, and actually different from it
     let mut a = Headless::boot(&project_dir(), 900, 600, 2.0);
@@ -101,6 +114,7 @@ fn boot_is_deterministic_at_2x_scale() {
 
 #[test]
 fn resizing_redraws_at_the_new_size() {
+    let _serial = serial();
     let mut editor = boot();
     let before = editor.frame_count();
     editor.resize(600, 400);
@@ -115,6 +129,7 @@ fn resizing_redraws_at_the_new_size() {
 
 #[test]
 fn exposed_event_repaints_identical_pixels() {
+    let _serial = serial();
     // an expose must invalidate the cache and present a full frame, and
     // that frame must be exactly what was on screen before
     let mut editor = boot();
@@ -138,6 +153,7 @@ fn exposed_event_repaints_identical_pixels() {
 
 #[test]
 fn clicking_the_treeview_opens_the_file() {
+    let _serial = serial();
     // hello.txt is the only row in the treeview; probe downward until the
     // click lands on it (its exact y depends on style metrics, which this
     // test deliberately does not hardcode)
@@ -158,6 +174,7 @@ fn clicking_the_treeview_opens_the_file() {
 
 #[test]
 fn idle_editor_stops_redrawing() {
+    let _serial = serial();
     // lite's most beloved property, enforced by machine: once quiescent
     // (no open doc, so no blinking caret), the editor must present no
     // new frames at all
@@ -177,6 +194,7 @@ fn idle_editor_stops_redrawing() {
 
 #[test]
 fn typing_in_a_new_doc_appears_on_screen() {
+    let _serial = serial();
     let mut editor = boot();
     editor.push_event(Event::KeyPressed("left ctrl".into()));
     press(&editor, "n");
@@ -199,6 +217,7 @@ fn typing_in_a_new_doc_appears_on_screen() {
 
 #[test]
 fn quit_event_exits_cleanly() {
+    let _serial = serial();
     let mut editor = boot();
     editor.push_event(Event::Quit);
     editor.run_steps(10_000);
@@ -211,6 +230,7 @@ fn quit_event_exits_cleanly() {
 
 #[test]
 fn quit_with_unsaved_changes_asks_in_the_editor() {
+    let _serial = serial();
     // wisp's one deviation from lite (see DEVIATIONS.md): the unsaved
     // changes confirmation is a commandview prompt, not an os dialog
     let mut editor = boot();
@@ -238,6 +258,7 @@ fn quit_with_unsaved_changes_asks_in_the_editor() {
 
 #[test]
 fn dragging_the_divider_resizes_the_treeview() {
+    let _serial = serial();
     // lite issue #113: the resize cursor appeared but dragging did
     // nothing. wisp's treeview opts into divider dragging
     let mut editor = boot();
@@ -293,6 +314,7 @@ fn dragging_the_divider_resizes_the_treeview() {
 
 #[test]
 fn treeview_scrolling_is_clamped_to_its_content() {
+    let _serial = serial();
     // stock lite scrolls the treeview into the void forever
     // (View:get_scrollable_size is math.huge); wisp clamps it
     let mut editor = boot();
@@ -319,6 +341,7 @@ fn treeview_scrolling_is_clamped_to_its_content() {
 
 #[test]
 fn binary_files_are_refused() {
+    let _serial = serial();
     let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("binary");
     std::fs::create_dir_all(&dir).unwrap();
     let blob = dir.join("blob.bin");
@@ -345,6 +368,7 @@ fn binary_files_are_refused() {
 
 #[test]
 fn wheel_scrolls_the_document() {
+    let _serial = serial();
     let mut editor = boot();
     editor.push_event(Event::KeyPressed("left ctrl".into()));
     press(&editor, "n");
@@ -384,6 +408,7 @@ fn wheel_scrolls_the_document() {
 
 #[test]
 fn horizontal_wheel_pans_long_lines_and_clamps() {
+    let _serial = serial();
     let mut editor = boot();
     // an unfocused window draws no caret, so frames compare exactly
     editor.set_focus(false);
@@ -463,6 +488,7 @@ fn horizontal_wheel_pans_long_lines_and_clamps() {
 
 #[test]
 fn clipboard_round_trips_through_the_editor() {
+    let _serial = serial();
     // ctrl+n, type, select all, copy: the platform clipboard must hold
     // exactly what was typed
     let mut editor = boot();
@@ -478,6 +504,7 @@ fn clipboard_round_trips_through_the_editor() {
 
 #[test]
 fn malformed_utf8_never_hangs_the_caret() {
+    let _serial = serial();
     // a legacy-encoded (latin-1) file can start with a utf-8 continuation
     // byte; translate.previous_char used to spin forever on it at 1,1.
     // the editor runs in its own thread so a regression fails this test
@@ -523,6 +550,7 @@ fn malformed_utf8_never_hangs_the_caret() {
 
 #[test]
 fn project_search_survives_an_empty_project() {
+    let _serial = serial();
     // drawing the results view used to divide by zero project files and
     // feed inf into %d, which errors -- on the draw path, outside
     // core.try, killing the editor
@@ -551,6 +579,7 @@ fn project_search_survives_an_empty_project() {
 
 #[test]
 fn autoreload_keeps_unsaved_changes() {
+    let _serial = serial();
     // autoreload used to replace the buffer and mark it clean even when
     // it held unsaved edits
     let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("reload");
@@ -598,6 +627,7 @@ fn autoreload_keeps_unsaved_changes() {
 
 #[test]
 fn renaming_a_file_moves_it_on_disk() {
+    let _serial = serial();
     let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("renametest");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
@@ -656,6 +686,7 @@ fn renaming_a_file_moves_it_on_disk() {
 
 #[test]
 fn tabularize_keeps_empty_fields() {
+    let _serial = serial();
     // the old single-character [^d]+ split dropped empty fields, so
     // "a,,b" lost a column
     let mut editor = boot();
@@ -699,6 +730,7 @@ fn tabularize_keeps_empty_fields() {
 
 #[test]
 fn quit_asks_even_while_a_prompt_is_open() {
+    let _serial = serial();
     // a busy commandview used to swallow the quit confirmation entirely:
     // clicking the window button appeared to do nothing
     let mut editor = boot();
@@ -725,6 +757,7 @@ fn quit_asks_even_while_a_prompt_is_open() {
 
 #[test]
 fn opening_views_works_while_the_treeview_has_focus() {
+    let _serial = serial();
     // clicking the treeview focuses a locked node, and by the time a
     // prompt submits the last active view is the (also locked) command
     // view -- lite's open_doc asserted on this instead of falling back

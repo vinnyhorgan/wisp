@@ -85,6 +85,10 @@ way rxi intended.
   project dir; custom scenarios boot their own dir under
   CARGO_TARGET_TMPDIR (remove_dir_all first: the dir persists across
   runs).
+- every boot test starts with `let _serial = serial();` -- the editor
+  chdirs the shared test process, so concurrent editors race each
+  other's relative paths (project scan, doc opens). one editor at a
+  time, no exceptions, or the suite flakes.
 - mouse moves are coalesced and dispatched at the end of core.step: move,
   `run_steps`, then press/wheel.
 - whole-frame comparisons need `editor.set_focus(false)` -- an unfocused
