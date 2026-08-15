@@ -93,7 +93,9 @@ function core.init()
     CommandView = require("core.commandview")
     Doc = require("core.doc")
 
-    local project_dir = EXEDIR
+    -- launched bare, the project is the directory we were launched from
+    -- (lite fell back to EXEDIR, opening its own installation, lite #153)
+    local project_dir = system.absolute_path(".")
     local files = {}
     for i = 2, #ARGS do
         local info = system.get_file_info(ARGS[i]) or {}

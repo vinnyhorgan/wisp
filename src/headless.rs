@@ -112,6 +112,12 @@ impl Headless {
         )
     }
 
+    /// boot with no directory argument, as `wisp` run bare from a shell:
+    /// the editor opens the process cwd as its project
+    pub fn boot_bare(width: i32, height: i32, scale: f64) -> Headless {
+        Self::boot_args(env!("CARGO_MANIFEST_DIR"), &[], width, height, scale)
+    }
+
     /// boot against a different editor root (a directory holding a `data/`
     /// tree): tests use this to inject a user module or a modified plugin
     /// without touching the repo's own data
@@ -122,9 +128,14 @@ impl Headless {
         height: i32,
         scale: f64,
     ) -> Headless {
+        Self::boot_args(exedir, &[project_dir], width, height, scale)
+    }
+
+    fn boot_args(exedir: &str, args: &[&str], width: i32, height: i32, scale: f64) -> Headless {
         let exedir = exedir.to_owned();
         let engine = Engine::shared(Box::new(HeadlessPlatform::new(width, height)));
-        let args = vec!["wisp".into(), std::ffi::OsString::from(project_dir)];
+        let mut args: Vec<std::ffi::OsString> = args.iter().map(|a| a.into()).collect();
+        args.insert(0, "wisp".into());
         let (lua, thread) = boot::init_lua(
             &engine,
             &exedir,

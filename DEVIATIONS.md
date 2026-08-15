@@ -283,6 +283,15 @@ fix is small and local:
   multi-character delimiters (`a->b` became `a->>b`). splitting is now a
   plain full-delimiter split that keeps empty fields.
 
+## 11. launched bare, wisp opens the current directory
+
+**file:** `data/core/init.lua`
+
+lite fell back to EXEDIR -- the directory holding the executable -- when
+the command line named no directory, so a bare `lite` opened its own
+installation as the project (lite issue #153). a bare `wisp` opens the
+directory it was launched from, like every other terminal program.
+
 ## kept on purpose
 
 lite behaviors evaluated deliberately and kept, recorded so they are

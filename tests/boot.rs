@@ -249,6 +249,26 @@ fn a_triple_click_on_the_last_line_keeps_the_doc_clean() {
 }
 
 #[test]
+fn a_bare_launch_opens_the_current_directory() {
+    let _serial = serial();
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("barecwd");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("marker.txt"), "here\n").unwrap();
+    std::env::set_current_dir(&dir).unwrap();
+    let mut editor = Headless::boot_bare(900, 600, 1.0);
+    editor.run_until_frames(1, 10_000);
+    // the launch directory is the project: its file must be findable
+    ctrl(&editor, "p");
+    editor.run_steps(100);
+    editor.push_event(Event::TextInput("marker".into()));
+    editor.run_steps(100);
+    press(&editor, "return");
+    editor.run_steps(500);
+    assert_eq!(editor.window_title(), "marker.txt - wisp");
+}
+
+#[test]
 fn idle_editor_stops_redrawing() {
     let _serial = serial();
     // lite's most beloved property, enforced by machine: once quiescent
