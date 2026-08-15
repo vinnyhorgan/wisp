@@ -102,16 +102,38 @@ way rxi intended.
 - window title is a cheap assertion surface: `"name* - wisp"` shows the
   open doc and its dirty flag.
 
-## open backlog (as of 2026-08, may rot -- git log is the truth)
+## roadmap (agreed 2026-08-15, may rot -- git log is the truth)
 
-tier 3 of the lua audit, confirmed but not yet fixed: locked-node asserts
-reach the user (open a file via ctrl+p right after clicking a treeview
-folder; also core:open-log and project search), ctrl+l at eof inserts a
-real newline (append_line_if_last_line), shift+f3 before any find errors,
-autocomplete dedup compares the wrong index and cross-contaminates info,
-long-line mouse selection races the caret-follow scroll (lite PR #230),
-projectsearch invalid-pattern wedge and mid-search refresh, treeview
-stale hover after wheel scroll / no scrollbar / no h-scroll, logview
-infinite scroll, status bar column is bytes not chars (#300). ideas
-queue: filename-weighted fuzzy open (#151), open nonexistent cli paths as
-unsaved docs (#56), project memory (treeview width, last query).
+- **phase a -- tier 3 of the lua audit** (confirmed, being fixed):
+  locked-node asserts reach the user (open a file via ctrl+p right after
+  clicking a treeview folder; also core:open-log and project search),
+  caret-follow x-snap discards h-scroll + long-line drag selection
+  gallops (one family; prior art: franko's unmerged lite PR #230 and
+  lite-xl's docview), projectsearch invalid-pattern wedge / mid-search
+  refresh / binary scanning, ctrl+l at eof inserts a real newline
+  (append_line_if_last_line) + move-lines-down blank stacking, treeview
+  stale hover after wheel scroll / no scrollbar / no h-scroll,
+  autocomplete dedup compares the wrong index and cross-contaminates
+  info, shift+f3 before any find errors, logview infinite scroll, status
+  bar column is bytes not chars (#300). second shelf: close-confirm nil
+  item, get_line_screen_position col (#313), fractional y-offset (#275),
+  gutter clip bleed, language fixes (#224/#171/#248),
+  doc-commands-during-prompt (#13), ~ expansion in path prompts.
+- **phase b -- core api milestone** (last core surgery, then re-freeze):
+  subprocess (`system.spawn(argv)`, poll-based, no shell; study lite-xl's
+  Process api) and images (pure-rust decode, draw-image rencache command
+  honoring the ink invariant; §7 binary refusal becomes "refused unless a
+  view claims it"). parked and staying parked: ime, lsp, ai, terminal,
+  gamma-correct blending, dynamic hidpi rescale.
+- **phase c -- v0.1.0, the plugin baseline**: pin the philosophy
+  (artifact-vs-tool, the monday morning test, the three declared
+  exceptions, "an api added speculatively is forever") in CLAUDE.md +
+  readme, fix the readme's hardcoded test count, tag and release.
+- **phase d -- essentials wave, road to v0.2.0** ("the monday morning
+  release"), each a plugin: runtime zoom, detectindent, auto-close
+  brackets + bracketmatch, trim whitespace on save, indent guides,
+  selection highlight, more languages, treeview file ops, project-wide
+  replace, session restore + project memory (treeview width, last
+  query), imageview, word wrap (#26), multi-cursor last. ideas queue:
+  filename-weighted fuzzy open (#151), open nonexistent cli paths as
+  unsaved docs (#56).
