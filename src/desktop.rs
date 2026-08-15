@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
-use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
+use winit::event::{ElementState, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::ModifiersState;
 use winit::platform::modifier_supplement::KeyEventExtModifierSupplement;
@@ -380,13 +380,25 @@ impl ApplicationHandler for App {
                     }
                 }
             }
-            WindowEvent::MouseWheel { delta, .. } => {
-                let (x, y) = match delta {
-                    MouseScrollDelta::LineDelta(x, y) => (x as f64, y as f64),
-                    MouseScrollDelta::PixelDelta(pos) => (pos.x / 40.0, pos.y / 40.0),
+            WindowEvent::MouseWheel { delta, phase, .. } => {
+                let (x, y, phase) = match delta {
+                    MouseScrollDelta::LineDelta(x, y) => (x as f64, y as f64, None),
+                    // a trackpad glide: pixel deltas arrive phased, and
+                    // the lua layer rails each gesture to one axis
+                    MouseScrollDelta::PixelDelta(pos) => (
+                        pos.x / 40.0,
+                        pos.y / 40.0,
+                        Some(match phase {
+                            TouchPhase::Started => "started",
+                            TouchPhase::Moved => "moved",
+                            TouchPhase::Ended | TouchPhase::Cancelled => "ended",
+                        }),
+                    ),
                 };
-                if x != 0.0 || y != 0.0 {
-                    self.push(Event::MouseWheel(x, y));
+                // zero deltas carry nothing -- except a gesture's end,
+                // which the lua layer needs to unlock its rails
+                if x != 0.0 || y != 0.0 || phase == Some("ended") {
+                    self.push(Event::MouseWheel(x, y, phase));
                 }
             }
             WindowEvent::DroppedFile(path) => {

@@ -100,8 +100,9 @@ way rxi intended.
   `File::set_modified` (+/- an hour) makes autoreload-style tests
   deterministic.
 - events: `KeyPressed("left ctrl")` + press("x") for chords, `TextInput`
-  for typing (works in prompts too), `MouseWheel(x, y)` on the rust side
-  arrives as `(y, x)` in lua. the command palette (`ctrl+shift+p` + type
+  for typing (works in prompts too), `MouseWheel(x, y, phase)` on the
+  rust side arrives as `(y, x, phase)` in lua -- phase is `Some("moved")`
+  etc for trackpad gestures, `None` for discrete wheels. the command palette (`ctrl+shift+p` + type
   + return) can drive any command that has no binding.
 - window title is a cheap assertion surface: `"name* - wisp"` shows the
   open doc and its dirty flag.

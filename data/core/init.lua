@@ -338,6 +338,9 @@ function core.try(fn, ...)
     return false, err
 end
 
+-- the axis a trackpad gesture is railed to, until the fingers lift
+local wheel_axis
+
 function core.on_event(type, ...)
     local did_keymap = false
     if type == "textinput" then
@@ -353,19 +356,29 @@ function core.on_event(type, ...)
     elseif type == "mousereleased" then
         core.root_view:on_mouse_released(...)
     elseif type == "mousewheel" then
-        local y, x = ...
+        local y, x, phase = ...
         -- shift turns a vertical wheel into a horizontal one; hardware
         -- that already scrolls sideways is left untouched
         if keymap.modkeys["shift"] and (x or 0) == 0 then
             y, x = 0, y
-        elseif (x or 0) ~= 0 and y ~= 0 then
+        elseif (x or 0) ~= 0 or y ~= 0 then
             -- a trackpad glide drifts on both axes at once, which pans
-            -- like a map; text wants rails, so the dominant axis wins
-            if math.abs(y) >= math.abs(x) then
+            -- like a map; text wants rails. a phased (trackpad) event
+            -- locks its whole gesture to the axis it starts on; a
+            -- phaseless (wheel) event stands alone and its bigger axis
+            -- wins
+            local axis = wheel_axis or (math.abs(y) >= math.abs(x or 0) and "y" or "x")
+            if phase then
+                wheel_axis = axis
+            end
+            if axis == "y" then
                 x = 0
             else
                 y = 0
             end
+        end
+        if phase == "ended" then
+            wheel_axis = nil
         end
         core.root_view:on_mouse_wheel(y, x)
     elseif type == "filedropped" then

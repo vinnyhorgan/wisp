@@ -24,8 +24,10 @@ pub enum Event {
     MousePressed(&'static str, i32, i32, i32),
     MouseReleased(&'static str, i32, i32),
     MouseMoved(i32, i32, i32, i32),
-    /// horizontal then vertical scroll, in lines
-    MouseWheel(f64, f64),
+    /// horizontal then vertical scroll in lines, plus the touch phase
+    /// ("started"/"moved"/"ended") when the source is a trackpad
+    /// gesture; discrete wheels have no phase
+    MouseWheel(f64, f64, Option<&'static str>),
 }
 
 pub trait Platform {

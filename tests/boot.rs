@@ -350,7 +350,7 @@ fn treeview_scrolling_is_clamped_to_its_content() {
     editor.push_event(Event::MouseMoved(100, 300, 0, 0));
     editor.run_steps(50);
     for _ in 0..10 {
-        editor.push_event(Event::MouseWheel(0.0, -50.0));
+        editor.push_event(Event::MouseWheel(0.0, -50.0, None));
         editor.run_steps(50);
     }
     editor.run_steps(1000);
@@ -410,7 +410,7 @@ fn wheel_scrolls_the_document() {
     // the sdl convention lite was written against)
     editor.push_event(Event::MouseMoved(w / 2, h / 2, 0, 0));
     editor.run_steps(50);
-    editor.push_event(Event::MouseWheel(0.0, 20.0));
+    editor.push_event(Event::MouseWheel(0.0, 20.0, None));
     editor.run_steps(200);
     assert_eq!(editor.exited, None, "editor died on a wheel event");
     let (after, _, _) = editor.last_frame();
@@ -426,7 +426,7 @@ fn wheel_scrolls_the_document() {
 
     // a horizontal wheel at the left edge has nowhere to go; it must be
     // clamped and harmless
-    editor.push_event(Event::MouseWheel(3.0, 0.0));
+    editor.push_event(Event::MouseWheel(3.0, 0.0, None));
     editor.run_steps(200);
     assert_eq!(editor.exited, None);
 }
@@ -455,7 +455,7 @@ fn horizontal_wheel_pans_long_lines_and_clamps() {
     // pan all the way back to the start of the line: positive x scrolls
     // left (the winit convention, mirroring positive y scrolling up)
     for _ in 0..10 {
-        editor.push_event(Event::MouseWheel(50.0, 0.0));
+        editor.push_event(Event::MouseWheel(50.0, 0.0, None));
         editor.run_steps(50);
     }
     editor.run_steps(1000);
@@ -469,11 +469,11 @@ fn horizontal_wheel_pans_long_lines_and_clamps() {
     // clamped to the widest line (~8000px) this lands back at 0 exactly;
     // unclamped it would strand the view in the void past the text
     for _ in 0..10 {
-        editor.push_event(Event::MouseWheel(-50.0, 0.0));
+        editor.push_event(Event::MouseWheel(-50.0, 0.0, None));
         editor.run_steps(50);
     }
     for _ in 0..4 {
-        editor.push_event(Event::MouseWheel(50.0, 0.0));
+        editor.push_event(Event::MouseWheel(50.0, 0.0, None));
         editor.run_steps(50);
     }
     editor.run_steps(1000);
@@ -488,7 +488,7 @@ fn horizontal_wheel_pans_long_lines_and_clamps() {
     // single line, so on a lua layer without the translation this wheel
     // would scroll vertically, which clamps to nothing and changes nothing
     editor.push_event(Event::KeyPressed("left shift".into()));
-    editor.push_event(Event::MouseWheel(0.0, -50.0));
+    editor.push_event(Event::MouseWheel(0.0, -50.0, None));
     editor.run_steps(50);
     editor.push_event(Event::KeyReleased("left shift".into()));
     editor.run_steps(1000);
@@ -499,8 +499,8 @@ fn horizontal_wheel_pans_long_lines_and_clamps() {
     // shift (the translation used to swap the axes, sending the sideways
     // component into a vertical scroll)
     editor.push_event(Event::KeyPressed("left shift".into()));
-    editor.push_event(Event::MouseWheel(50.0, 0.0));
-    editor.push_event(Event::MouseWheel(50.0, 0.0));
+    editor.push_event(Event::MouseWheel(50.0, 0.0, None));
+    editor.push_event(Event::MouseWheel(50.0, 0.0, None));
     editor.run_steps(50);
     editor.push_event(Event::KeyReleased("left shift".into()));
     editor.run_steps(1000);
@@ -1159,7 +1159,7 @@ fn treeview_hover_follows_a_wheel_scroll() {
         editor.push_event(Event::MouseMoved(40, 300, 0, 0));
         editor.run_steps(100);
         if scroll {
-            editor.push_event(Event::MouseWheel(0.0, -3.0));
+            editor.push_event(Event::MouseWheel(0.0, -3.0, None));
             editor.run_steps(500);
         }
         editor.push_event(Event::MousePressed("left", 40, 300, 1));
@@ -1219,11 +1219,11 @@ fn treeview_has_a_scrollbar_and_pans_sideways() {
     editor.push_event(Event::MouseMoved(40, 300, 0, 0));
     editor.run_steps(100);
     let (before, _, _) = editor.last_frame();
-    editor.push_event(Event::MouseWheel(-2.0, 0.0));
+    editor.push_event(Event::MouseWheel(-2.0, 0.0, None));
     editor.run_steps(500);
     let (panned, _, _) = editor.last_frame();
     assert_ne!(before, panned, "the treeview did not pan sideways");
-    editor.push_event(Event::MouseWheel(2.0, 0.0));
+    editor.push_event(Event::MouseWheel(2.0, 0.0, None));
     editor.run_steps(500);
     let (back, _, _) = editor.last_frame();
     assert_eq!(before, back, "panning back did not restore the view");
@@ -1396,7 +1396,7 @@ fn logview_scrolling_is_clamped_to_its_content() {
     editor.run_steps(50);
     let (top, _, _) = editor.last_frame();
     for _ in 0..10 {
-        editor.push_event(Event::MouseWheel(0.0, -50.0));
+        editor.push_event(Event::MouseWheel(0.0, -50.0, None));
         editor.run_steps(50);
     }
     editor.run_steps(1000);
@@ -1610,11 +1610,11 @@ fn logview_pans_sideways() {
     editor.push_event(Event::MouseMoved(450, 300, 0, 0));
     editor.run_steps(100);
     let (before, _, _) = editor.last_frame();
-    editor.push_event(Event::MouseWheel(-2.0, 0.0));
+    editor.push_event(Event::MouseWheel(-2.0, 0.0, None));
     editor.run_steps(500);
     let (panned, _, _) = editor.last_frame();
     assert_ne!(before, panned, "the log view did not pan sideways");
-    editor.push_event(Event::MouseWheel(2.0, 0.0));
+    editor.push_event(Event::MouseWheel(2.0, 0.0, None));
     editor.run_steps(500);
     assert_eq!(
         before,
@@ -1649,11 +1649,11 @@ fn search_results_pan_sideways() {
     editor.push_event(Event::MouseMoved(450, 300, 0, 0));
     editor.run_steps(100);
     let (before, _, _) = editor.last_frame();
-    editor.push_event(Event::MouseWheel(-3.0, 0.0));
+    editor.push_event(Event::MouseWheel(-3.0, 0.0, None));
     editor.run_steps(500);
     let (panned, _, _) = editor.last_frame();
     assert_ne!(before, panned, "the results view did not pan sideways");
-    editor.push_event(Event::MouseWheel(3.0, 0.0));
+    editor.push_event(Event::MouseWheel(3.0, 0.0, None));
     editor.run_steps(500);
     assert_eq!(
         before,
@@ -1716,7 +1716,7 @@ fn a_diagonal_wheel_snaps_to_its_dominant_axis() {
     editor.run_steps(50);
 
     let (before, _, _) = editor.last_frame();
-    editor.push_event(Event::MouseWheel(1.0, -3.0));
+    editor.push_event(Event::MouseWheel(1.0, -3.0, None));
     editor.run_steps(500);
     assert_eq!(
         before,
@@ -1725,11 +1725,53 @@ fn a_diagonal_wheel_snaps_to_its_dominant_axis() {
     );
 
     // the other way around, a mostly-horizontal glide must still pan
-    editor.push_event(Event::MouseWheel(30.0, -1.0));
+    editor.push_event(Event::MouseWheel(30.0, -1.0, None));
     editor.run_steps(500);
     assert_ne!(
         before,
         editor.last_frame().0,
         "a dominant x axis no longer pans"
+    );
+}
+
+#[test]
+fn a_trackpad_gesture_stays_railed_to_its_first_axis() {
+    let _serial = serial();
+    let mut editor = boot();
+    editor.set_focus(false);
+
+    // same fixture as the diagonal-wheel test: one long line, view
+    // scrolled right by caret-follow, no vertical scrolling possible
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    press(&editor, "n");
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(50);
+    editor.push_event(Event::TextInput("wide ".repeat(200)));
+    editor.run_steps(500);
+    editor.push_event(Event::MouseMoved(450, 300, 0, 0));
+    editor.run_steps(50);
+    let (before, _, _) = editor.last_frame();
+
+    // a gesture that starts vertical, then drifts hard sideways: the
+    // drift must stay railed to the starting axis, however dominant
+    editor.push_event(Event::MouseWheel(0.0, -3.0, Some("moved")));
+    editor.run_steps(50);
+    editor.push_event(Event::MouseWheel(2.0, -0.5, Some("moved")));
+    editor.run_steps(500);
+    assert_eq!(
+        before,
+        editor.last_frame().0,
+        "a vertical gesture's sideways drift leaked into a pan"
+    );
+
+    // fingers lift; the next gesture starts sideways and must pan
+    editor.push_event(Event::MouseWheel(0.0, 0.0, Some("ended")));
+    editor.run_steps(50);
+    editor.push_event(Event::MouseWheel(2.0, -0.5, Some("moved")));
+    editor.run_steps(500);
+    assert_ne!(
+        before,
+        editor.last_frame().0,
+        "the rail did not unlock when the gesture ended"
     );
 }

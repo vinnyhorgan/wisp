@@ -121,9 +121,11 @@ can mean scanning the whole document, which must never happen per frame
 command view opts out entirely: a wheeled-away prompt had no way to ever
 scroll back. shift turns a vertical wheel into a horizontal one, as in
 most editors; a wheel that already scrolls sideways is left untouched.
-a diagonal wheel event follows its dominant axis: trackpad glides drift
-on both axes at once, and letting both through feels like panning a map
-instead of scrolling text.
+diagonal input follows one axis: trackpad glides drift on both axes at
+once, and letting both through feels like panning a map instead of
+scrolling text. a trackpad gesture (the core forwards winit's touch
+phases) is railed to the axis it starts on until the fingers lift; a
+discrete wheel event stands alone and its bigger axis wins.
 
 ## 9. all user-facing text is lowercase
 
@@ -270,7 +272,9 @@ differences, all deliberate:
   (desktop only; headless boots ignore it so tests render identically on
   every machine).
 - the mousewheel event carries the horizontal axis as an extra value after
-  the vertical one; stock lua ignores it.
+  the vertical one, and a third value naming the touch phase of a trackpad
+  gesture ("started"/"moved"/"ended"; discrete wheels have none); stock
+  lua ignores both.
 - rapid clicks cycle caret, word, line, caret, ...; sdl counted up forever.
   observable only from the fifth rapid click onward.
 - numpad navigation keys with num lock off report their meaning ("home",
