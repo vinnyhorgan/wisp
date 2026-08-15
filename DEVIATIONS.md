@@ -141,6 +141,14 @@ a bug) were left as lite wrote them.
 bugs inherited from lite's `data/`, found in the stabilization pass. each
 fix is small and local:
 
+- **`data/core/rootview.lua`**, **`data/core/commands/core.lua`**,
+  **`data/plugins/projectsearch.lua`** -- opening a doc (or the log, or
+  search results) while the treeview or a prompt held focus tripped
+  "Cannot open doc on locked node": the fallback went to the last active
+  view, which by submit time is the also-locked command view. a new
+  `get_active_node_default()` falls back to the first unlocked leaf --
+  the editing area, which always exists -- and the three open sites use
+  it.
 - **`data/core/doc/translate.lua`** -- `previous_char`/`next_char` looped
   forever on a malformed utf-8 continuation byte at either end of the doc
   (a latin-1 file starting with a curly quote hung the editor on

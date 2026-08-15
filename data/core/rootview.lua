@@ -390,13 +390,30 @@ function RootView:get_active_node()
     return self.root_node:get_node_for_view(core.active_view)
 end
 
-function RootView:open_doc(doc)
+local function get_unlocked_leaf(node)
+    if node.type == "leaf" then
+        return not node.locked and node or nil
+    end
+    return get_unlocked_leaf(node.a) or get_unlocked_leaf(node.b)
+end
+
+-- the active node, but never a locked one: a view opened while the
+-- treeview or a prompt holds focus must land in the editing area, not
+-- assert (click a treeview folder, then ctrl+p: the active view and the
+-- last active view are both locked)
+function RootView:get_active_node_default()
     local node = self:get_active_node()
     if node.locked and core.last_active_view then
-        core.set_active_view(core.last_active_view)
-        node = self:get_active_node()
+        node = self.root_node:get_node_for_view(core.last_active_view) or node
     end
-    assert(not node.locked, "Cannot open doc on locked node")
+    if node.locked then
+        node = assert(get_unlocked_leaf(self.root_node))
+    end
+    return node
+end
+
+function RootView:open_doc(doc)
+    local node = self:get_active_node_default()
     for i, view in ipairs(node.views) do
         if view.doc == doc then
             node:set_active_view(node.views[i])

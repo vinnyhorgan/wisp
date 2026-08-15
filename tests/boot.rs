@@ -722,3 +722,53 @@ fn quit_asks_even_while_a_prompt_is_open() {
         "the quit prompt was swallowed by the open find prompt"
     );
 }
+
+#[test]
+fn opening_views_works_while_the_treeview_has_focus() {
+    // clicking the treeview focuses a locked node, and by the time a
+    // prompt submits the last active view is the (also locked) command
+    // view -- lite's open_doc asserted on this instead of falling back
+    // to the editing area
+    let mut editor = boot();
+    // focus the treeview: any click inside it counts, no row needed
+    editor.push_event(Event::MouseMoved(40, 300, 0, 0));
+    editor.run_steps(50);
+    editor.push_event(Event::MousePressed("left", 40, 300, 1));
+    editor.push_event(Event::MouseReleased("left", 40, 300));
+    editor.run_steps(50);
+
+    // ctrl+p, pick the project file
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    press(&editor, "p");
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(100);
+    editor.push_event(Event::TextInput("hello".into()));
+    editor.run_steps(100);
+    press(&editor, "return");
+    editor.run_steps(200);
+    assert_eq!(
+        editor.window_title(),
+        "hello.txt - wisp",
+        "open from the palette failed with the treeview focused"
+    );
+
+    // the same trap through core:open-log, which adds a view directly
+    editor.push_event(Event::MousePressed("left", 40, 300, 1));
+    editor.push_event(Event::MouseReleased("left", 40, 300));
+    editor.run_steps(50);
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    editor.push_event(Event::KeyPressed("left shift".into()));
+    press(&editor, "p");
+    editor.push_event(Event::KeyReleased("left shift".into()));
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(100);
+    editor.push_event(Event::TextInput("core:open-log".into()));
+    editor.run_steps(100);
+    press(&editor, "return");
+    editor.run_steps(200);
+    assert_eq!(
+        editor.window_title(),
+        "log - wisp",
+        "open-log failed with the treeview focused"
+    );
+}
