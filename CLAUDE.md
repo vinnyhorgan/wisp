@@ -114,36 +114,11 @@ way rxi intended.
   varies per boot. anything asserted through it must be made
   order-independent (e.g. break fuzzy-score ties).
 
-## roadmap (agreed 2026-08-15, may rot -- git log is the truth)
+## roadmap
 
-- **phase a -- tier 3 of the lua audit: DONE 2026-08-15.** all nine
-  primary items and the second shelf fixed with regression tests
-  (deviations §10 has the list). claims that died under verification,
-  recorded so they are not re-chased: the gutter clip bleed is not a
-  bug (Node:draw clips every view to its own rect), fractional y-offset
-  (#275) has no effect here (integer line height + rounded offsets),
-  the js regex pattern (#248) would misfire on division so it stays
-  out, lite #13 (non-latin startup dir) was already fixed by the core
-  (test pins it), and projectsearch refresh was mostly safe all along
-  -- rxi cancelled superseded searches via a weak thread key, wisp only
-  closed the gc-timing window.
-- **phase b -- core api milestone** (last core surgery, then re-freeze):
-  subprocess DONE 2026-08-15: `system.spawn(argv, opts)` in
-  src/process.rs, poll-based, never blocking, no shell; reads return ""
-  for nothing-yet and nil at eof (kills lite-xl's errno-style returns);
-  gc kills and reaps. remaining: images (pure-rust decode, draw-image
-  rencache command honoring the ink invariant; §7 binary refusal becomes
-  "refused unless a view claims it"). parked and staying parked: ime,
-  lsp, ai, terminal, gamma-correct blending, dynamic hidpi rescale.
-- **phase c -- v0.1.0, the plugin baseline**: pin the philosophy
-  (artifact-vs-tool, the monday morning test, the three declared
-  exceptions, "an api added speculatively is forever") in CLAUDE.md +
-  readme, fix the readme's hardcoded test count, tag and release.
-- **phase d -- essentials wave, road to v0.2.0** ("the monday morning
-  release"), each a plugin: runtime zoom, detectindent, auto-close
-  brackets + bracketmatch, trim whitespace on save, indent guides,
-  selection highlight, more languages, treeview file ops, project-wide
-  replace, session restore + project memory (treeview width, last
-  query), imageview, word wrap (#26), multi-cursor last. ideas queue:
-  filename-weighted fuzzy open (#151), open nonexistent cli paths as
-  unsaved docs (#56).
+the roadmap lives in ROADMAP.md (git log is the truth when they
+disagree). short version: phase b finishes the core api (audit fixes,
+embedded data, images) and re-freezes the core, phase c tags v0.1.0,
+phase d is the plugin pass to v0.2.0, and beyond that: linters, a real
+terminal, helix mode. ROADMAP.md also keeps the ledger of dead claims
+and deliberate noes, so they are not re-chased.
