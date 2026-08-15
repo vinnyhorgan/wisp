@@ -444,6 +444,21 @@ fn horizontal_wheel_pans_long_lines_and_clamps() {
     editor.run_steps(1000);
     let (shifted, _, _) = editor.last_frame();
     assert_ne!(line_start, shifted, "shift+wheel did not scroll sideways");
+
+    // a wheel that is already horizontal must stay horizontal under
+    // shift (the translation used to swap the axes, sending the sideways
+    // component into a vertical scroll)
+    editor.push_event(Event::KeyPressed("left shift".into()));
+    editor.push_event(Event::MouseWheel(50.0, 0.0));
+    editor.push_event(Event::MouseWheel(50.0, 0.0));
+    editor.run_steps(50);
+    editor.push_event(Event::KeyReleased("left shift".into()));
+    editor.run_steps(1000);
+    let (back, _, _) = editor.last_frame();
+    assert_eq!(
+        line_start, back,
+        "shift discarded the hardware horizontal wheel"
+    );
 }
 
 #[test]

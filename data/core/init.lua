@@ -355,9 +355,9 @@ function core.on_event(type, ...)
     elseif type == "mousewheel" then
         local y, x = ...
         -- shift turns a vertical wheel into a horizontal one; hardware
-        -- that scrolls sideways already delivers x directly
-        if keymap.modkeys["shift"] then
-            y, x = x or 0, y
+        -- that already scrolls sideways is left untouched
+        if keymap.modkeys["shift"] and (x or 0) == 0 then
+            y, x = 0, y
         end
         core.root_view:on_mouse_wheel(y, x)
     elseif type == "filedropped" then

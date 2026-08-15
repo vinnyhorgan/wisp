@@ -120,7 +120,7 @@ can mean scanning the whole document, which must never happen per frame
 (the other setter, caret-following, is in range by construction). The
 command view opts out entirely: a wheeled-away prompt had no way to ever
 scroll back. Shift turns a vertical wheel into a horizontal one, as in
-most editors.
+most editors; a wheel that already scrolls sideways is left untouched.
 
 ## 9. All user-facing text is lowercase
 
