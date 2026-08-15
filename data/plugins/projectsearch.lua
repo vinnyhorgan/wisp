@@ -23,6 +23,14 @@ local function find_all_matches_in_file(t, filename, fn)
     if not fp then
         return t
     end
+    -- a null byte in the first block means binary: skip the file, by
+    -- the same rule the doc loader uses to refuse them
+    local head = fp:read(4096)
+    if head and head:find("\0", 1, true) then
+        fp:close()
+        return t
+    end
+    fp:seek("set")
     local n = 1
     for line in fp:lines() do
         local s = fn(line)
@@ -46,9 +54,16 @@ function ResultsView:begin_search(text, fn)
     self.query = text
     self.searching = true
     self.selected_idx = 0
+    -- refreshing mid-search must cancel the running search thread, or
+    -- both threads interleave their matches into the same results list
+    self.search_id = (self.search_id or 0) + 1
+    local id = self.search_id
 
     core.add_thread(function()
         for i, file in ipairs(core.project_files) do
+            if self.search_id ~= id then
+                return
+            end
             if file.type == "file" then
                 find_all_matches_in_file(self.results, file.filename, fn)
             end
@@ -218,6 +233,13 @@ command.add(nil, {
 
     ["project-search:find-pattern"] = function()
         core.command_view:enter("find pattern in project", function(text)
+            -- validate now: a malformed pattern would otherwise raise
+            -- inside the search thread, far from the user
+            local ok, err = pcall(string.find, "", text)
+            if not ok then
+                core.error("invalid pattern: %s", err)
+                return
+            end
             begin_search(text, function(line_text)
                 return line_text:find(text)
             end)

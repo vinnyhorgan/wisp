@@ -897,3 +897,113 @@ fn caret_follow_keeps_the_users_scroll() {
         selected.len()
     );
 }
+
+#[test]
+fn an_invalid_search_pattern_does_not_kill_the_editor() {
+    let _serial = serial();
+    // "[" is a malformed lua pattern. it used to raise inside the search
+    // thread, and a crashed thread propagated straight out of the main
+    // loop: the whole editor died on a typo
+    let mut editor = boot();
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    editor.push_event(Event::KeyPressed("left shift".into()));
+    press(&editor, "p");
+    editor.push_event(Event::KeyReleased("left shift".into()));
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(100);
+    editor.push_event(Event::TextInput("project-search:find-pattern".into()));
+    editor.run_steps(100);
+    press(&editor, "return");
+    editor.run_steps(100);
+    editor.push_event(Event::TextInput("[".into()));
+    editor.run_steps(50);
+    press(&editor, "return");
+    editor.run_steps(1000);
+    assert_eq!(editor.exited, None, "invalid pattern killed the editor");
+    assert_eq!(
+        editor.window_title(),
+        "wisp",
+        "invalid pattern still opened a results view"
+    );
+}
+
+#[test]
+fn project_search_skips_binary_files() {
+    let _serial = serial();
+    // the search scanned binaries and matched garbage; the first result
+    // then pointed at a file the editor itself refuses to open
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("searchbin");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("aaa.bin"), b"hello\0hello\n").unwrap();
+    std::fs::write(dir.join("hello.txt"), "say hello\n").unwrap();
+
+    let mut editor = Headless::boot(&dir.display().to_string(), 900, 600, 1.0);
+    editor.run_until_frames(1, 10_000);
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    editor.push_event(Event::KeyPressed("left shift".into()));
+    press(&editor, "f");
+    editor.push_event(Event::KeyReleased("left shift".into()));
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(50);
+    editor.push_event(Event::TextInput("hello".into()));
+    editor.run_steps(50);
+    press(&editor, "return");
+    editor.run_steps(1000);
+
+    // the first (and only) result must be the text file
+    press(&editor, "down");
+    editor.run_steps(50);
+    press(&editor, "return");
+    editor.run_steps(500);
+    assert_eq!(
+        editor.window_title(),
+        "hello.txt - wisp",
+        "the first search result was not the text file"
+    );
+}
+
+#[test]
+fn refreshing_a_search_midway_does_not_duplicate_results() {
+    let _serial = serial();
+    // lite cancelled a superseded search thread through a weak table
+    // key, i.e. whenever the gc got around to it; wisp cancels it with
+    // an explicit generation check. either way, this must hold: a
+    // refresh mid-search leaves exactly one search's results
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("searchrefresh");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    // big enough that the search is still mid-flight when f5 arrives
+    let many = "hello\n".repeat(10_000);
+    std::fs::write(dir.join("aaa.txt"), &many).unwrap();
+    std::fs::write(dir.join("bbb.txt"), &many).unwrap();
+
+    // two identical editors run the same search; the second refreshes
+    // mid-search. the settled frames must be pixel-identical
+    let run = |refresh: bool| -> Vec<u32> {
+        let mut editor = Headless::boot(&dir.display().to_string(), 900, 600, 1.0);
+        editor.run_until_frames(1, 10_000);
+        editor.set_focus(false);
+        editor.push_event(Event::KeyPressed("left ctrl".into()));
+        editor.push_event(Event::KeyPressed("left shift".into()));
+        press(&editor, "f");
+        editor.push_event(Event::KeyReleased("left shift".into()));
+        editor.push_event(Event::KeyReleased("left ctrl".into()));
+        editor.run_steps(50);
+        editor.push_event(Event::TextInput("hello".into()));
+        editor.run_steps(50);
+        press(&editor, "return");
+        editor.run_steps(3);
+        if refresh {
+            press(&editor, "f5");
+        }
+        editor.run_steps(8000);
+        editor.last_frame().0
+    };
+    let clean = run(false);
+    let refreshed = run(true);
+    assert_eq!(
+        clean, refreshed,
+        "a refresh mid-search changed the settled results"
+    );
+}

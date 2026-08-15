@@ -446,7 +446,12 @@ local run_threads = coroutine.wrap(function()
         for k, thread in pairs(core.threads) do
             -- run thread
             if thread.wake < system.get_time() then
-                local _, wait = assert(coroutine.resume(thread.cr))
+                local ok, wait = coroutine.resume(thread.cr)
+                if not ok then
+                    -- a crashed background thread (a search, a plugin)
+                    -- must not take the whole main loop down with it
+                    core.error("%s", wait)
+                end
                 if coroutine.status(thread.cr) == "dead" then
                     if type(k) == "number" then
                         table.remove(core.threads, k)

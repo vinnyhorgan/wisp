@@ -166,6 +166,18 @@ fix is small and local:
   files divided by zero while drawing the progress header; the resulting
   `inf` made `%d` error on the draw path, outside any `core.try`, killing
   the editor.
+- **`data/plugins/projectsearch.lua`** (hardening) -- a malformed lua
+  pattern is rejected at the prompt with an error message instead of
+  raising inside the search thread; binary files are skipped by the same
+  null-byte rule the doc loader uses (§7); and a superseded search
+  cancels through an explicit generation check instead of lite's weak
+  thread key, which cancelled only whenever the gc got around to it (the
+  old thread could cross into the next file, and the new results list,
+  in the gap).
+- **`data/core/init.lua`** -- a background thread that raises no longer
+  takes the whole main loop down with it (lite asserted on the resume):
+  the error is shown via `core.error` and the dead thread is reaped. an
+  invalid search pattern used to kill the editor this way.
 - **`data/plugins/autoreload.lua`** -- a file changing on disk silently
   replaced the buffer and marked it clean, even when it held unsaved
   edits. a dirty doc now keeps its changes (with a status message)
