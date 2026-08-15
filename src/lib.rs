@@ -15,7 +15,7 @@ pub mod boot;
 pub mod desktop;
 pub mod font;
 pub mod headless;
-pub mod keys;
+mod keys;
 pub mod platform;
 pub mod process;
 pub mod rencache;

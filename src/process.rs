@@ -25,38 +25,38 @@ struct Buffer {
 }
 
 #[derive(Default)]
-struct Shared {
+struct Pipe {
     buf: Mutex<Buffer>,
     cond: Condvar,
 }
 
 /// pump a child output pipe into its buffer until eof
-fn read_into(shared: &Shared, mut stream: impl Read) {
+fn read_into(pipe: &Pipe, mut stream: impl Read) {
     let mut chunk = [0u8; 8192];
     loop {
         let n = match stream.read(&mut chunk) {
             Ok(0) | Err(_) => break,
             Ok(n) => n,
         };
-        let mut buf = shared.buf.lock().unwrap();
+        let mut buf = pipe.buf.lock().unwrap();
         while buf.data.len() >= BUFFER_CAP && !buf.closed {
-            buf = shared.cond.wait(buf).unwrap();
+            buf = pipe.cond.wait(buf).unwrap();
         }
         if buf.closed {
             return;
         }
         buf.data.extend(&chunk[..n]);
     }
-    shared.buf.lock().unwrap().closed = true;
+    pipe.buf.lock().unwrap().closed = true;
 }
 
 /// pump the stdin buffer into the child until it is closed and drained
-fn write_from(shared: &Shared, mut stream: impl Write) {
+fn write_from(pipe: &Pipe, mut stream: impl Write) {
     loop {
         let chunk: Vec<u8> = {
-            let mut buf = shared.buf.lock().unwrap();
+            let mut buf = pipe.buf.lock().unwrap();
             while buf.data.is_empty() && !buf.closed {
-                buf = shared.cond.wait(buf).unwrap();
+                buf = pipe.cond.wait(buf).unwrap();
             }
             if buf.data.is_empty() {
                 // closed and drained: dropping the stream is the eof
@@ -68,22 +68,19 @@ fn write_from(shared: &Shared, mut stream: impl Write) {
         if stream.write_all(&chunk).is_err() || stream.flush().is_err() {
             break;
         }
-        shared.cond.notify_all();
+        pipe.cond.notify_all();
     }
     // the pipe broke: further lua writes must fail, not queue forever
-    let mut buf = shared.buf.lock().unwrap();
+    let mut buf = pipe.buf.lock().unwrap();
     buf.closed = true;
     buf.data.clear();
 }
 
 fn exit_code(status: ExitStatus) -> i32 {
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::ExitStatusExt;
-        // python's convention: a process killed by signal n reports -n
-        if let Some(sig) = status.signal() {
-            return -sig;
-        }
+    use std::os::unix::process::ExitStatusExt;
+    // python's convention: a process killed by signal n reports -n
+    if let Some(sig) = status.signal() {
+        return -sig;
     }
     status.code().unwrap_or(-1)
 }
@@ -103,9 +100,9 @@ pub struct SpawnOptions {
 
 pub struct Process {
     child: Mutex<ChildState>,
-    stdout: Arc<Shared>,
-    stderr: Arc<Shared>,
-    stdin: Arc<Shared>,
+    stdout: Arc<Pipe>,
+    stderr: Arc<Pipe>,
+    stdin: Arc<Pipe>,
     threads: Mutex<Vec<std::thread::JoinHandle<()>>>,
 }
 
@@ -138,29 +135,29 @@ pub fn spawn(argv: &[String], opts: SpawnOptions) -> Result<Process, String> {
     // drop our copies of the child's pipe ends now, or eof never comes
     drop(cmd);
 
-    let stdout = Arc::new(Shared::default());
-    let stderr = Arc::new(Shared::default());
-    let stdin = Arc::new(Shared::default());
+    let stdout = Arc::new(Pipe::default());
+    let stderr = Arc::new(Pipe::default());
+    let stdin = Arc::new(Pipe::default());
     let mut threads = Vec::new();
 
     let out_src: Box<dyn Read + Send> = match merged {
         Some(rx) => Box::new(rx),
         None => Box::new(child.stdout.take().expect("stdout was piped")),
     };
-    let shared = stdout.clone();
+    let pipe = stdout.clone();
     threads.push(
         std::thread::Builder::new()
             .name("wisp-proc-stdout".to_owned())
-            .spawn(move || read_into(&shared, out_src))
+            .spawn(move || read_into(&pipe, out_src))
             .map_err(|e| e.to_string())?,
     );
 
     if let Some(err_src) = child.stderr.take() {
-        let shared = stderr.clone();
+        let pipe = stderr.clone();
         threads.push(
             std::thread::Builder::new()
                 .name("wisp-proc-stderr".to_owned())
-                .spawn(move || read_into(&shared, err_src))
+                .spawn(move || read_into(&pipe, err_src))
                 .map_err(|e| e.to_string())?,
         );
     } else {
@@ -169,11 +166,11 @@ pub fn spawn(argv: &[String], opts: SpawnOptions) -> Result<Process, String> {
     }
 
     let stdin_dst = child.stdin.take().expect("stdin was piped");
-    let shared = stdin.clone();
+    let pipe = stdin.clone();
     threads.push(
         std::thread::Builder::new()
             .name("wisp-proc-stdin".to_owned())
-            .spawn(move || write_from(&shared, stdin_dst))
+            .spawn(move || write_from(&pipe, stdin_dst))
             .map_err(|e| e.to_string())?,
     );
 
@@ -186,15 +183,15 @@ pub fn spawn(argv: &[String], opts: SpawnOptions) -> Result<Process, String> {
     })
 }
 
-fn take(shared: &Shared, max: Option<usize>) -> Option<Vec<u8>> {
-    let mut buf = shared.buf.lock().unwrap();
+fn take(pipe: &Pipe, max: Option<usize>) -> Option<Vec<u8>> {
+    let mut buf = pipe.buf.lock().unwrap();
     if buf.data.is_empty() {
         // an open-but-empty stream is an empty chunk; eof is none
         return if buf.closed { None } else { Some(Vec::new()) };
     }
     let n = max.unwrap_or(usize::MAX).min(buf.data.len());
     let out = buf.data.drain(..n).collect();
-    shared.cond.notify_all();
+    pipe.cond.notify_all();
     Some(out)
 }
 
@@ -252,17 +249,9 @@ impl Process {
         if st.exit.is_some() {
             return Err("process has exited".to_owned());
         }
-        #[cfg(unix)]
-        {
-            use nix::sys::signal::{Signal, kill};
-            use nix::unistd::Pid;
-            kill(Pid::from_raw(st.child.id() as i32), Signal::SIGTERM).map_err(|e| e.to_string())
-        }
-        #[cfg(not(unix))]
-        {
-            let mut st = st;
-            st.child.kill().map_err(|e| e.to_string())
-        }
+        use nix::sys::signal::{Signal, kill};
+        use nix::unistd::Pid;
+        kill(Pid::from_raw(st.child.id() as i32), Signal::SIGTERM).map_err(|e| e.to_string())
     }
 
     pub fn kill(&self) -> Result<(), String> {
@@ -447,13 +436,8 @@ mod tests {
         let pid = p.pid();
         drop(p);
         // the child is gone: signalling it now must fail
-        #[cfg(unix)]
-        {
-            use nix::sys::signal::kill;
-            use nix::unistd::Pid;
-            assert!(kill(Pid::from_raw(pid as i32), None).is_err());
-        }
-        #[cfg(not(unix))]
-        let _ = pid;
+        use nix::sys::signal::kill;
+        use nix::unistd::Pid;
+        assert!(kill(Pid::from_raw(pid as i32), None).is_err());
     }
 }

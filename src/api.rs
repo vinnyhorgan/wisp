@@ -165,7 +165,7 @@ fn event_to_multi(lua: &Lua, event: Event) -> mlua::Result<MultiValue> {
 
 /// the exact scoring function from lite's system.fuzzy_match, ported from
 /// c (with the out-of-bounds walk on trailing spaces fixed)
-pub fn fuzzy_match(mut s: &[u8], mut p: &[u8]) -> Option<i32> {
+fn fuzzy_match(mut s: &[u8], mut p: &[u8]) -> Option<i32> {
     let mut score: i32 = 0;
     let mut run: i32 = 0;
     while !s.is_empty() && !p.is_empty() {

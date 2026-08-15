@@ -1,6 +1,6 @@
 //! renders the readme screenshots with the same headless editor the
 //! tests use: boot on wisp's own lua layer, script some input, dump the
-//! framebuffer. run from the repo root:
+//! framebuffer.
 //!
 //!     cargo run --release --example screenshot
 //!     magick <out>.ppm <out>.png
@@ -31,7 +31,12 @@ fn dump(editor: &Headless, name: &str) {
 
 fn main() {
     std::fs::create_dir_all(concat!(env!("CARGO_MANIFEST_DIR"), "/.github")).unwrap();
-    let mut editor = Headless::boot("data", 1600, 1000, 2.0);
+    let mut editor = Headless::boot(
+        concat!(env!("CARGO_MANIFEST_DIR"), "/data"),
+        1600,
+        1000,
+        2.0,
+    );
     editor.run_until_frames(1, 10_000);
     editor.run_steps(500);
 
