@@ -209,6 +209,13 @@ fix is small and local:
   the mouse handlers call their base class), and long filenames pan
   sideways through the §8 protocol, with the hover highlight pinned to
   the view width.
+- **`data/plugins/autocomplete.lua`** -- the suggestion dedup walked the
+  sorted matches with the wrong index (the output slot instead of the
+  entry a duplicate run started at), so once two providers offered the
+  same symbol the list filled up with repeats of one entry. duplicates
+  are now merged through a seen-set, keeping whichever entry carries an
+  info tag. latent in stock lite (the open-docs provider is a set), it
+  bites as soon as a second provider exists -- which is what plugins do.
 - **`data/plugins/tabularize.lua`** -- fields were split with a
   `[^d]+` pattern built from the delimiter's first character, which
   silently dropped empty fields (`a,,b` became `a,b`) and corrupted

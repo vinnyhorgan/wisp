@@ -105,6 +105,12 @@ way rxi intended.
   + return) can drive any command that has no binding.
 - window title is a cheap assertion surface: `"name* - wisp"` shows the
   open doc and its dirty flag.
+- `Headless::boot_with_exedir` boots against a copied `data/` tree: the
+  way to inject a user module or a modified plugin (e.g. registering a
+  test autocomplete provider) without touching the repo's data.
+- lua 5.2 randomizes the string hash seed per state: `pairs()` order
+  varies per boot. anything asserted through it must be made
+  order-independent (e.g. break fuzzy-score ties).
 
 ## roadmap (agreed 2026-08-15, may rot -- git log is the truth)
 

@@ -1221,3 +1221,95 @@ fn treeview_has_a_scrollbar_and_pans_sideways() {
     let (dragged, _, _) = editor.last_frame();
     assert_ne!(back, dragged, "dragging the scrollbar did not scroll");
 }
+
+#[test]
+fn autocomplete_merges_duplicate_suggestions() {
+    let _serial = serial();
+    // two providers offering the same symbol: lite's dedup indexed the
+    // sorted list with the wrong variable and repeated one entry down
+    // the whole list once a duplicate had been collapsed. the fixture
+    // needs a second provider, so the editor boots on a copy of data/
+    // with a user module that registers two
+    fn copy_dir(from: &std::path::Path, to: &std::path::Path) {
+        std::fs::create_dir_all(to).unwrap();
+        for e in std::fs::read_dir(from).unwrap() {
+            let e = e.unwrap();
+            let t = to.join(e.file_name());
+            if e.file_type().unwrap().is_dir() {
+                copy_dir(&e.path(), &t);
+            } else {
+                std::fs::copy(e.path(), &t).unwrap();
+            }
+        }
+    }
+    let root = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("acroot");
+    let _ = std::fs::remove_dir_all(&root);
+    copy_dir(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("data"),
+        &root.join("data"),
+    );
+    // symbol lengths differ so the fuzzy scores differ: lua 5.2's
+    // randomized string hash makes pairs() order vary per boot, and
+    // score ties would preserve that varying order
+    std::fs::write(
+        root.join("data/user/init.lua"),
+        r#"
+local autocomplete = require("plugins.autocomplete")
+autocomplete.add({ name = "test-a", items = { alpa = "from a" } })
+autocomplete.add({ name = "test-b", items = { alpa = "from b", alpbb = false, alpccc = false } })
+"#,
+    )
+    .unwrap();
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("acproj");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("x.txt"), "x\n").unwrap();
+
+    // type "alp", walk to the nth suggestion, complete it, return the
+    // completed doc text
+    let complete_nth = |n: usize| -> String {
+        let mut editor = Headless::boot_with_exedir(
+            &root.display().to_string(),
+            &dir.display().to_string(),
+            900,
+            600,
+            1.0,
+        );
+        editor.run_until_frames(1, 10_000);
+        editor.push_event(Event::KeyPressed("left ctrl".into()));
+        press(&editor, "n");
+        editor.push_event(Event::KeyReleased("left ctrl".into()));
+        editor.run_steps(50);
+        editor.push_event(Event::TextInput("alp".into()));
+        editor.run_steps(10);
+        for _ in 1..n {
+            press(&editor, "down");
+            editor.run_steps(5);
+        }
+        press(&editor, "tab");
+        editor.run_steps(50);
+        editor.push_event(Event::KeyPressed("left ctrl".into()));
+        press(&editor, "a");
+        press(&editor, "c");
+        editor.push_event(Event::KeyReleased("left ctrl".into()));
+        editor.run_steps(100);
+        editor
+            .engine
+            .borrow_mut()
+            .platform
+            .get_clipboard()
+            .unwrap_or_default()
+    };
+    // three distinct symbols exist across the two providers, so the
+    // list must hold exactly those three, best score first, and walking
+    // past the end clamps to the last one. lite's dedup repeated an
+    // entry down the rest of the list once a duplicate was collapsed
+    assert_eq!(complete_nth(1), "alpa");
+    assert_eq!(complete_nth(2), "alpbb");
+    assert_eq!(complete_nth(3), "alpccc");
+    assert_eq!(
+        complete_nth(4),
+        "alpccc",
+        "a fourth suggestion exists for three distinct symbols"
+    );
+}

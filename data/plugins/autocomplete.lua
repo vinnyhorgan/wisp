@@ -110,15 +110,26 @@ local function update_suggestions()
         end
     end
 
-    -- fuzzy match, remove duplicates and store
+    -- fuzzy match, remove duplicates and store. lite walked the sorted
+    -- list with the wrong index (items[i], the slot number, instead of
+    -- the entry a run started at), which repeated one entry down the
+    -- whole list once a duplicate had been collapsed
     items = common.fuzzy_match(items, partial)
-    local j = 1
-    for i = 1, config.autocomplete_max_suggestions do
-        suggestions[i] = items[j]
-        while items[j] and items[i].text == items[j].text do
-            items[i].info = items[i].info or items[j].info
-            j = j + 1
+    local seen, n = {}, 0
+    for _, item in ipairs(items) do
+        local prev = seen[item.text]
+        if prev then
+            -- the same symbol from another provider: keep one entry,
+            -- prefer whichever carries an info tag
+            prev.info = prev.info or item.info
+        elseif n < config.autocomplete_max_suggestions then
+            n = n + 1
+            seen[item.text] = item
+            suggestions[n] = item
         end
+    end
+    for i = n + 1, config.autocomplete_max_suggestions do
+        suggestions[i] = nil
     end
 end
 

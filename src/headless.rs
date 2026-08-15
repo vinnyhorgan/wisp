@@ -103,7 +103,26 @@ impl Headless {
     /// and minimal, its listing is rendered by the treeview. the editor
     /// finds data/ via this crate's manifest dir
     pub fn boot(project_dir: &str, width: i32, height: i32, scale: f64) -> Headless {
-        let exedir = env!("CARGO_MANIFEST_DIR").to_owned();
+        Self::boot_with_exedir(
+            env!("CARGO_MANIFEST_DIR"),
+            project_dir,
+            width,
+            height,
+            scale,
+        )
+    }
+
+    /// boot against a different editor root (a directory holding a `data/`
+    /// tree): tests use this to inject a user module or a modified plugin
+    /// without touching the repo's own data
+    pub fn boot_with_exedir(
+        exedir: &str,
+        project_dir: &str,
+        width: i32,
+        height: i32,
+        scale: f64,
+    ) -> Headless {
+        let exedir = exedir.to_owned();
         let engine = Engine::shared(Box::new(HeadlessPlatform::new(width, height)));
         let args = vec!["wisp".into(), std::ffi::OsString::from(project_dir)];
         let (lua, thread) = boot::init_lua(
