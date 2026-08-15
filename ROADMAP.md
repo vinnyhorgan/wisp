@@ -86,6 +86,13 @@ ideas agreed in spirit, not yet scheduled or designed:
   practically purpose-built for a terminal grid). also quietly solves
   the ai dilemma: a real terminal runs any terminal-based agent, no ai
   integration required in the editor itself.
+- **a proper linux citizen.** the single binary unpacks everything --
+  config included -- into `$XDG_DATA_HOME/wisp` today. eventually the
+  split should follow the platform: config and user plugins in
+  `$XDG_CONFIG_HOME/wisp` (an obvious, stable place to drop a lua
+  plugin file: installing one = saving it into
+  `~/.config/wisp/plugins/`), the unpacked editor in
+  `$XDG_DATA_HOME/wisp`, nothing anywhere else.
 - **helix mode.** selection-first modal editing, kakoune-lineage.
   objectively cleaner than vim's operator-pending model: what you see
   selected is what the action operates on. sequencing is natural:
