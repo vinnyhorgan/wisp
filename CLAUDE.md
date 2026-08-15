@@ -114,21 +114,17 @@ way rxi intended.
 
 ## roadmap (agreed 2026-08-15, may rot -- git log is the truth)
 
-- **phase a -- tier 3 of the lua audit** (confirmed, being fixed):
-  locked-node asserts reach the user (open a file via ctrl+p right after
-  clicking a treeview folder; also core:open-log and project search),
-  caret-follow x-snap discards h-scroll + long-line drag selection
-  gallops (one family; prior art: franko's unmerged lite PR #230 and
-  lite-xl's docview), projectsearch invalid-pattern wedge / mid-search
-  refresh / binary scanning, ctrl+l at eof inserts a real newline
-  (append_line_if_last_line) + move-lines-down blank stacking, treeview
-  stale hover after wheel scroll / no scrollbar / no h-scroll,
-  autocomplete dedup compares the wrong index and cross-contaminates
-  info, shift+f3 before any find errors, logview infinite scroll, status
-  bar column is bytes not chars (#300). second shelf: close-confirm nil
-  item, get_line_screen_position col (#313), fractional y-offset (#275),
-  gutter clip bleed, language fixes (#224/#171/#248),
-  doc-commands-during-prompt (#13), ~ expansion in path prompts.
+- **phase a -- tier 3 of the lua audit: DONE 2026-08-15.** all nine
+  primary items and the second shelf fixed with regression tests
+  (deviations §10 has the list). claims that died under verification,
+  recorded so they are not re-chased: the gutter clip bleed is not a
+  bug (Node:draw clips every view to its own rect), fractional y-offset
+  (#275) has no effect here (integer line height + rounded offsets),
+  the js regex pattern (#248) would misfire on division so it stays
+  out, lite #13 (non-latin startup dir) was already fixed by the core
+  (test pins it), and projectsearch refresh was mostly safe all along
+  -- rxi cancelled superseded searches via a weak thread key, wisp only
+  closed the gc-timing window.
 - **phase b -- core api milestone** (last core surgery, then re-freeze):
   subprocess (`system.spawn(argv)`, poll-based, no shell; study lite-xl's
   Process api) and images (pure-rust decode, draw-image rencache command
