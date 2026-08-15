@@ -479,8 +479,9 @@ impl ApplicationHandler for App {
     }
 }
 
-/// directory that contains data/: next to the executable for installs,
-/// the crate root for cargo run
+/// directory that contains data/: next to the executable for checkouts
+/// and unpacked releases, the crate root for cargo run, and for a lone
+/// installed binary the embedded copy unpacked into the user data dir
 fn find_exedir() -> String {
     if let Ok(exe) = std::env::current_exe()
         && let Some(dir) = exe.parent()
@@ -488,7 +489,12 @@ fn find_exedir() -> String {
     {
         return dir.display().to_string();
     }
-    env!("CARGO_MANIFEST_DIR").to_owned()
+    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    if manifest.join("data").is_dir() {
+        return manifest.display().to_string();
+    }
+    let root = crate::embed::unpack().expect("failed to unpack the editor data");
+    root.display().to_string()
 }
 
 pub fn run() {

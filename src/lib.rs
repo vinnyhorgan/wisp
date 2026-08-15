@@ -13,6 +13,7 @@
 pub mod api;
 pub mod boot;
 pub mod desktop;
+mod embed;
 pub mod font;
 pub mod headless;
 mod keys;

@@ -20,6 +20,8 @@ softbuffer = "0.4"
 swash = "0.2"
 # clipboard, with wayland support
 arboard = { version = "3", features = ["wayland-data-control"] }
+# the data/ tree baked into the binary, unpacked on first run
+include_dir = "0.7"
 
 [target.'cfg(unix)'.dependencies]
 # safe wrapper for sigterm (process:terminate); compiles no c

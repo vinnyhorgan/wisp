@@ -331,6 +331,12 @@ differences, all deliberate:
   does, third-party plugins should not either).
 - the `renderer.show_debug` overlay tints the whole dirty rect; lite drew
   it under the frame's last clip, which could hide part of the overlay.
+- the desktop binary carries the whole data/ tree inside it: run with no
+  data/ beside the executable (and outside a checkout), it unpacks its
+  own copy into `$XDG_DATA_HOME/wisp` (`~/.local/share/wisp`) and runs
+  from there. one file to install; the unpacked tree stays live-editable,
+  as lite intended. core files are unpacked again when the version
+  changes, `user/` is never overwritten.
 - `system.spawn(argv, opts)` runs a subprocess with polled, never-blocking
   pipes; lite could only fire-and-forget through `system.exec`. argv is
   executed as given -- no shell, ever. reads follow the `file:read`
