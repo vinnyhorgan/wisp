@@ -151,7 +151,8 @@ function ResultsView:draw()
     -- status
     local ox, oy = self:get_content_offset()
     local x, y = ox + style.padding.x, oy + style.padding.y
-    local per = self.last_file_idx / #core.project_files
+    -- an empty project must not divide by zero: %d errors on inf
+    local per = self.last_file_idx / math.max(1, #core.project_files)
     local text
     if self.searching then
         text = string.format(

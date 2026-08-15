@@ -505,3 +505,32 @@ fn malformed_utf8_never_hangs_the_caret() {
         .expect("editor hung moving the caret over malformed utf-8");
     assert_eq!(exited, None);
 }
+
+#[test]
+fn project_search_survives_an_empty_project() {
+    // drawing the results view used to divide by zero project files and
+    // feed inf into %d, which errors -- on the draw path, outside
+    // core.try, killing the editor
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("emptyproj");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut editor = Headless::boot(&dir.display().to_string(), 900, 600, 1.0);
+    editor.run_until_frames(1, 10_000);
+
+    // ctrl+shift+f, type a needle, return
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    editor.push_event(Event::KeyPressed("left shift".into()));
+    press(&editor, "f");
+    editor.push_event(Event::KeyReleased("left shift".into()));
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(100);
+    editor.push_event(Event::TextInput("needle".into()));
+    editor.run_steps(100);
+    press(&editor, "return");
+    editor.run_steps(1000);
+    assert_eq!(
+        editor.exited,
+        None,
+        "project search crashed in an empty project"
+    );
+}

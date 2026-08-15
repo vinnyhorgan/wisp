@@ -133,6 +133,10 @@ fix is small and local:
   (a latin-1 file starting with a curly quote hung the editor on
   backspace). They now use the same same-position guard rxi already used
   in `start_of_word`.
+- **`data/plugins/projectsearch.lua`** -- searching a project with zero
+  files divided by zero while drawing the progress header; the resulting
+  `inf` made `%d` error on the draw path, outside any `core.try`, killing
+  the editor.
 
 ## Core behavior notes (rust core vs lite's c core)
 
