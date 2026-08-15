@@ -24,6 +24,12 @@ The quit confirmation is routed through `core.command_view:enter()` with
 yes/no suggestions instead, so the editor confirms with its own UI, in its own
 theme. Type `y`/`yes` to quit, anything else (or escape) to cancel.
 
+Because the confirmation is itself a prompt, `CommandView:enter` now cancels
+a pending prompt instead of silently refusing (lite's `enter` just returned).
+Without this, quitting -- or anything else that needs to ask -- would appear
+to do nothing while a find/rename/... prompt was open. The newest prompt
+wins; the old one is cancelled exactly as if escape had been pressed.
+
 ## 2. Branding says wisp, not lite
 
 **Files:** `data/core/init.lua`, `data/core/rootview.lua`,

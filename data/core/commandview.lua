@@ -92,7 +92,10 @@ end
 
 function CommandView:enter(text, submit, suggest, cancel)
     if self.state ~= default_state then
-        return
+        -- a pending prompt would silently swallow this one, making the
+        -- new request (quitting, closing a doc, ...) appear to do
+        -- nothing; cancel it instead, the newest prompt wins
+        self:exit()
     end
     self.state = {
         submit = submit or noop,

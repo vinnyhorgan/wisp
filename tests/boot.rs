@@ -682,3 +682,29 @@ fn tabularize_keeps_empty_fields() {
     let clipboard = editor.engine.borrow_mut().platform.get_clipboard();
     assert_eq!(clipboard.as_deref(), Some("a , ,b\ncc,d,e"));
 }
+
+#[test]
+fn quit_asks_even_while_a_prompt_is_open() {
+    // a busy commandview used to swallow the quit confirmation entirely:
+    // clicking the window button appeared to do nothing
+    let mut editor = boot();
+    open_dirty_doc(&mut editor);
+    // open the find prompt
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    press(&editor, "f");
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(200);
+
+    editor.push_event(Event::Quit);
+    editor.run_steps(200);
+    assert_eq!(editor.exited, None, "dirty editor must ask before quitting");
+
+    editor.push_event(Event::TextInput("yes".into()));
+    press(&editor, "return");
+    editor.run_steps(2000);
+    assert_eq!(
+        editor.exited,
+        Some(0),
+        "the quit prompt was swallowed by the open find prompt"
+    );
+}
