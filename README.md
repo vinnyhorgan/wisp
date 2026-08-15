@@ -1,6 +1,6 @@
 # wisp
 
-a lightweight text editor in pure rust, after rxi's [lite](https://github.com/rxi/lite)
+a lightweight text editor in rust, after rxi's [lite](https://github.com/rxi/lite)
 
 <p align="center"><img src=".github/editor.png" width="820"></p>
 
@@ -8,8 +8,8 @@ a lightweight text editor in pure rust, after rxi's [lite](https://github.com/rx
 
 [lite](https://github.com/rxi/lite) is a lovely idea: a tiny core that draws
 text and reads input, and a whole editor written on top of it in lua. wisp
-keeps the idea and rewrites the core -- c, sdl and stb replaced by ~3k lines
-of safe rust. the lua layer is still lite's, byte for byte where possible,
+keeps the idea and rewrites the core -- c, sdl and stb replaced by ~3.5k
+lines of safe rust. the lua layer is still lite's, byte for byte where possible,
 bug-fixed where not. every deliberate difference is written down in
 [DEVIATIONS.md](DEVIATIONS.md).
 
@@ -20,9 +20,9 @@ bug-fixed where not. every deliberate difference is written down in
   caret), one binary
 - `unsafe_code = "deny"`, with a single documented exception, and it's lua's
   fault
-- the whole editor boots headless in the test suite: 97 tests feed it fake
-  input and read the pixels coming back. the screenshots on this page were
-  rendered that way too
+- the whole editor boots headless in the test suite: 47 of its 98 tests
+  feed it fake input and read the pixels coming back. the screenshots on
+  this page were rendered that way too
 
 <p align="center"><img src=".github/palette.png" width="820"></p>
 

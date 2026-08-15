@@ -1,6 +1,6 @@
 //! wisp -- what lite could really be
 //!
-//! a tiny editor core in pure rust, running rxi's lite editor lua on top.
+//! a tiny editor core in rust, running rxi's lite editor lua on top.
 //! the core exposes just enough api (`system.*`, `renderer.*`) for the lua
 //! layer to build the entire editor; everything here exists to make that
 //! surface small, solid and pleasant.
