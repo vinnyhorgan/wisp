@@ -45,7 +45,8 @@ way rxi intended.
       stylua --config-path stylua.toml /tmp/lite-data
       diff -r /tmp/lite-data data
 
-- full suite: `cargo test --release` -- fast, run it before every push.
+- pre-push ritual, all three every time: `cargo fmt --check`, the stylua
+  check above, and the full suite (`cargo test --release` -- fast).
 - screenshots: `cargo run --release --example screenshot`, then
   `magick .github/<name>.ppm .github/<name>.png` and delete the ppm.
 
