@@ -117,6 +117,16 @@ end
 function View:clamp_scroll_position()
     local max = self:get_scrollable_size() - self.size.y
     self.scroll.to.y = common.clamp(self.scroll.to.y, 0, max)
+    -- sideways the clamp lives in the wheel handler (measuring content
+    -- width must not happen every frame); a resize is the one other way
+    -- the scroll can go stale, leaving the content hanging past its end
+    -- after the view grows. measure only then, and only when actually
+    -- scrolled sideways
+    if self.size.x ~= self.last_clamp_w and self.scroll.to.x > 0 then
+        self.last_clamp_w = self.size.x
+        local max = self:get_h_scrollable_size() - self.size.x
+        self.scroll.to.x = common.clamp(self.scroll.to.x, 0, math.max(0, max))
+    end
 end
 
 function View:update()

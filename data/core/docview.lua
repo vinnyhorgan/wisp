@@ -107,9 +107,11 @@ function DocView:get_widest_line_width()
 end
 
 function DocView:get_h_scrollable_size()
-    -- the gutter plus the widest line, with the same breathing room that
-    -- scroll_to_make_visible leaves past the caret
-    return self:get_gutter_width() + self:get_widest_line_width() + self.size.x / 5
+    -- the gutter plus the widest line, with the same three-space margin
+    -- scroll_to_make_visible leaves past the caret: the wheel reaches
+    -- exactly as far as caret-follow ever scrolls, and no further
+    local margin = 3 * self:get_font():get_width(" ")
+    return self:get_gutter_width() + self:get_widest_line_width() + margin
 end
 
 function DocView:get_font()

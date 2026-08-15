@@ -1850,3 +1850,48 @@ command.add(nil, {{
     let report = std::fs::read_to_string(&out).expect("the spawn thread never reported");
     assert_eq!(report, "ping\n|0");
 }
+
+#[test]
+fn growing_a_view_reclamps_a_stale_sideways_scroll() {
+    let _serial = serial();
+    // a line that overflows a 900px window (so caret-follow pans right)
+    // but fits an 1100px one
+    let text = "wide ".repeat(19);
+
+    let mut editor = boot();
+    editor.set_focus(false);
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    press(&editor, "n");
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(50);
+    editor.push_event(Event::TextInput(text.clone()));
+    editor.run_steps(500);
+    editor.resize(1100, 600);
+    editor.run_steps(500);
+    let (grown, _, _) = editor.last_frame();
+
+    // the reference was 1100 wide all along: the caret never left the
+    // view, so it never scrolled. growing the first editor must land it
+    // on this exact frame instead of leaving the stale pan in place
+    let mut reference = Headless::boot(&project_dir(), 1100, 600, 1.0);
+    reference.run_until_frames(1, 10_000);
+    reference.set_focus(false);
+    reference.push_event(Event::KeyPressed("left ctrl".into()));
+    press(&reference, "n");
+    reference.push_event(Event::KeyReleased("left ctrl".into()));
+    reference.run_steps(50);
+    reference.push_event(Event::TextInput(text));
+    reference.run_steps(500);
+    let refframe = reference.last_frame().0;
+    assert_eq!(grown.len(), refframe.len(), "frame sizes differ");
+    let mut rows = std::collections::BTreeSet::new();
+    for (i, (a, b)) in grown.iter().zip(refframe.iter()).enumerate() {
+        if a != b {
+            rows.insert(i / 1100);
+        }
+    }
+    assert_eq!(
+        grown, refframe,
+        "the grown view kept its stale sideways scroll"
+    );
+}

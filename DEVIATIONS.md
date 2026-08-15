@@ -125,7 +125,12 @@ diagonal input follows one axis: trackpad glides drift on both axes at
 once, and letting both through feels like panning a map instead of
 scrolling text. a trackpad gesture (the core forwards winit's touch
 phases) is railed to the axis it starts on until the fingers lift; a
-discrete wheel event stands alone and its bigger axis wins.
+discrete wheel event stands alone and its bigger axis wins. a resize
+re-clamps the sideways scroll -- growing a view must not leave the
+content hanging past its own end -- measuring only when the size
+actually changed. the docview's scrollable width leaves the same
+three-space margin as the caret band, so the wheel reaches exactly as
+far as caret-follow ever scrolls, and no further.
 
 ## 9. all user-facing text is lowercase
 
