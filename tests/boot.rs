@@ -40,6 +40,31 @@ fn press(editor: &Headless, key: &str) {
     editor.push_event(Event::KeyReleased(key.into()));
 }
 
+/// copies the repo's data/ into CARGO_TARGET_TMPDIR/<name>/data and
+/// returns the root, ready for `Headless::boot_with_exedir`; tests then
+/// overwrite data/user/init.lua in the copy to inject their fixture
+fn copy_data_root(name: &str) -> std::path::PathBuf {
+    fn copy_dir(from: &std::path::Path, to: &std::path::Path) {
+        std::fs::create_dir_all(to).unwrap();
+        for e in std::fs::read_dir(from).unwrap() {
+            let e = e.unwrap();
+            let t = to.join(e.file_name());
+            if e.file_type().unwrap().is_dir() {
+                copy_dir(&e.path(), &t);
+            } else {
+                std::fs::copy(e.path(), &t).unwrap();
+            }
+        }
+    }
+    let root = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
+    let _ = std::fs::remove_dir_all(&root);
+    copy_dir(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("data"),
+        &root.join("data"),
+    );
+    root
+}
+
 /// ctrl+n, then type some text into the fresh doc
 fn open_dirty_doc(editor: &mut Headless) {
     editor.push_event(Event::KeyPressed("left ctrl".into()));
@@ -1230,24 +1255,7 @@ fn autocomplete_merges_duplicate_suggestions() {
     // the whole list once a duplicate had been collapsed. the fixture
     // needs a second provider, so the editor boots on a copy of data/
     // with a user module that registers two
-    fn copy_dir(from: &std::path::Path, to: &std::path::Path) {
-        std::fs::create_dir_all(to).unwrap();
-        for e in std::fs::read_dir(from).unwrap() {
-            let e = e.unwrap();
-            let t = to.join(e.file_name());
-            if e.file_type().unwrap().is_dir() {
-                copy_dir(&e.path(), &t);
-            } else {
-                std::fs::copy(e.path(), &t).unwrap();
-            }
-        }
-    }
-    let root = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("acroot");
-    let _ = std::fs::remove_dir_all(&root);
-    copy_dir(
-        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("data"),
-        &root.join("data"),
-    );
+    let root = copy_data_root("acroot");
     // symbol lengths differ so the fuzzy scores differ: lua 5.2's
     // randomized string hash makes pairs() order vary per boot, and
     // score ties would preserve that varying order
@@ -1320,24 +1328,7 @@ fn previous_find_before_any_find_reports_cleanly() {
     // shift+f3 with no find history popped from a nil table; the raw
     // lua error surfaced instead of a message. a user-module hook
     // mirrors core.error into a file so the test can read the message
-    fn copy_dir(from: &std::path::Path, to: &std::path::Path) {
-        std::fs::create_dir_all(to).unwrap();
-        for e in std::fs::read_dir(from).unwrap() {
-            let e = e.unwrap();
-            let t = to.join(e.file_name());
-            if e.file_type().unwrap().is_dir() {
-                copy_dir(&e.path(), &t);
-            } else {
-                std::fs::copy(e.path(), &t).unwrap();
-            }
-        }
-    }
-    let root = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("errroot");
-    let _ = std::fs::remove_dir_all(&root);
-    copy_dir(
-        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("data"),
-        &root.join("data"),
-    );
+    let root = copy_data_root("errroot");
     let errlog = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("errlog.txt");
     let _ = std::fs::remove_file(&errlog);
     std::fs::write(
@@ -1455,4 +1446,134 @@ fn statusbar_column_counts_characters_not_bytes() {
         plain, accented,
         "the status bar column differs after two characters"
     );
+}
+
+#[test]
+fn saving_from_a_prompt_is_refused() {
+    let _serial = serial();
+    // the command view is a docview, so ctrl+s inside a prompt used to
+    // run doc:save on the prompt's one-line doc and offer to write the
+    // prompt text to disk
+    let mut editor = boot();
+    let leak = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("prompt-leak.txt");
+    let _ = std::fs::remove_file(&leak);
+
+    // open a doc, then a find prompt over it
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    press(&editor, "o");
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(100);
+    editor.push_event(Event::TextInput("hello.txt".into()));
+    editor.run_steps(100);
+    press(&editor, "return");
+    editor.run_steps(300);
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    press(&editor, "f");
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(100);
+
+    // ctrl+s must be a no-op here; if it opened save-as, the typed path
+    // would land in that prompt and return would write the file
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    press(&editor, "s");
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(100);
+    editor.push_event(Event::TextInput(leak.display().to_string()));
+    editor.run_steps(100);
+    press(&editor, "return");
+    editor.run_steps(300);
+
+    assert_eq!(editor.exited, None);
+    assert!(
+        !leak.exists(),
+        "saving from a prompt wrote the prompt text to disk"
+    );
+}
+
+#[test]
+fn plugin_position_and_home_expansion_api() {
+    let _serial = serial();
+    // two api holes plugins fall into: get_line_screen_position ignored
+    // its col argument (lite issue #313), and there was no way to expand
+    // "~" in paths. a user-module command probes both from inside
+    let root = copy_data_root("proberoot");
+    let out = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("probe-out.txt");
+    let _ = std::fs::remove_file(&out);
+    std::fs::write(
+        root.join("data/user/init.lua"),
+        format!(
+            r#"
+local core = require("core")
+local common = require("core.common")
+local command = require("core.command")
+command.add("core.docview", {{
+    ["test:probe"] = function()
+        local dv = core.active_view
+        local x1 = dv:get_line_screen_position(1)
+        local x5 = dv:get_line_screen_position(1, 5)
+        local fp = io.open({out:?}, "w")
+        fp:write(string.format("%d\n%s\n%s\n", x5 - x1, common.home_expand("~/x.txt"), os.getenv("HOME") or ""))
+        fp:close()
+    end,
+}})
+"#,
+            out = out.display().to_string()
+        ),
+    )
+    .unwrap();
+
+    let mut editor =
+        Headless::boot_with_exedir(&root.display().to_string(), &project_dir(), 900, 600, 1.0);
+    editor.run_until_frames(1, 10_000);
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    press(&editor, "n");
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(100);
+    editor.push_event(Event::TextInput("wide enough line".into()));
+    editor.run_steps(100);
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    editor.push_event(Event::KeyPressed("left shift".into()));
+    press(&editor, "p");
+    editor.push_event(Event::KeyReleased("left shift".into()));
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(100);
+    editor.push_event(Event::TextInput("test:probe".into()));
+    editor.run_steps(100);
+    press(&editor, "return");
+    editor.run_steps(300);
+
+    let probe = std::fs::read_to_string(&out).expect("the probe command never ran");
+    let mut lines = probe.lines();
+    let dx: i32 = lines.next().unwrap().parse().unwrap();
+    let expanded = lines.next().unwrap();
+    let home = lines.next().unwrap();
+    assert!(dx > 0, "get_line_screen_position ignored its col argument");
+    assert_eq!(
+        expanded,
+        format!("{home}/x.txt"),
+        "home_expand did not expand the tilde"
+    );
+}
+
+#[test]
+fn a_non_latin_project_dir_works() {
+    let _serial = serial();
+    // lite issue #13: starting from a directory with a non-latin name
+    // broke on lite's c core. wisp's raw-byte core must not care
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("проект-δοκιμή");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("x.txt"), "hi\n").unwrap();
+
+    let mut editor = Headless::boot(&dir.display().to_string(), 900, 600, 1.0);
+    editor.run_until_frames(1, 10_000);
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    press(&editor, "o");
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(100);
+    editor.push_event(Event::TextInput("x.txt".into()));
+    editor.run_steps(100);
+    press(&editor, "return");
+    editor.run_steps(300);
+    assert_eq!(editor.window_title(), "x.txt - wisp");
 }

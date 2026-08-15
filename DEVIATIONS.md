@@ -225,6 +225,20 @@ fix is small and local:
 - **`data/core/statusview.lua`** -- the column readout counted bytes, so
   multibyte text inflated it (lite issue #300); it counts characters
   now.
+- **`data/core/commands/doc.lua`** -- the command view is a docview, so
+  ctrl+s (or save-as, or rename) inside a prompt ran against the
+  prompt's one-line doc and offered to write the prompt's text to disk.
+  the file-facing commands now require a docview that is not a command
+  view; editing and movement commands stay shared, prompts need them.
+- **`data/core/docview.lua`** -- `get_line_screen_position` accepts an
+  optional column (lite issue #313): plugins that passed one silently
+  got the start of the line.
+- **`data/core/common.lua`**, **`data/core/commands/core.lua`**,
+  **`data/core/commands/doc.lua`** -- `common.home_expand` turns a
+  leading "~" into the home directory, and the path prompts (open file,
+  save as, rename, path suggestions) use it, like every shell would.
+- **`data/plugins/language_c.lua`** -- `const` was defined twice in the
+  symbol table (lite PR #224); one removed, no behavior change.
 - **`data/plugins/tabularize.lua`** -- fields were split with a
   `[^d]+` pattern built from the delimiter's first character, which
   silently dropped empty fields (`a,,b` became `a,b`) and corrupted

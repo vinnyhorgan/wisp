@@ -124,10 +124,15 @@ function DocView:get_gutter_width()
     return self:get_font():get_width(#self.doc.lines) + style.padding.x * 2
 end
 
-function DocView:get_line_screen_position(idx)
+function DocView:get_line_screen_position(idx, col)
     local x, y = self:get_content_offset()
     local lh = self:get_line_height()
     local gw = self:get_gutter_width()
+    -- lite silently ignored the col argument (issue #313), handing
+    -- plugins that pass one the start of the line instead
+    if col then
+        x = x + self:get_col_x_offset(idx, col)
+    end
     return x + gw, y + (idx - 1) * lh + style.padding.y
 end
 

@@ -73,7 +73,17 @@ function common.fuzzy_match(haystack, needle)
     return system.fuzzy_match(haystack, needle)
 end
 
+-- "~" means the home directory, the way every shell expects
+function common.home_expand(text)
+    local home = os.getenv("HOME")
+    if home and text:sub(1, 1) == "~" and (#text == 1 or text:find("^[/\\]", 2)) then
+        return home .. text:sub(2)
+    end
+    return text
+end
+
 function common.path_suggest(text)
+    text = common.home_expand(text)
     local path, name = text:match("^(.-)([^/\\]*)$")
     local files = system.list_dir(path == "" and "." or path) or {}
     local res = {}

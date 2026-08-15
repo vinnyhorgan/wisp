@@ -74,7 +74,7 @@ command.add(nil, {
 
     ["core:open-file"] = function()
         core.command_view:enter("open file", function(text)
-            core.root_view:open_doc(core.open_doc(text))
+            core.root_view:open_doc(core.open_doc(common.home_expand(text)))
         end, common.path_suggest)
     end,
 

@@ -309,13 +309,18 @@ local commands = {
     ["doc:toggle-line-ending"] = function()
         doc().crlf = not doc().crlf
     end,
+}
 
+-- saving and renaming act on the file behind the doc. the command view
+-- is a docview too, so with the shared predicate a ctrl+s inside a
+-- prompt would offer to write the prompt's text to disk
+local file_commands = {
     ["doc:save-as"] = function()
         if doc().filename then
             core.command_view:set_text(doc().filename)
         end
         core.command_view:enter("save as", function(filename)
-            save(filename)
+            save(common.home_expand(filename))
         end, common.path_suggest)
     end,
 
@@ -335,6 +340,7 @@ local commands = {
         end
         core.command_view:set_text(old_filename)
         core.command_view:enter("rename", function(filename)
+            filename = common.home_expand(filename)
             doc():save(filename)
             core.log('renamed "%s" to "%s"', old_filename, filename)
             -- on a case-insensitive filesystem a different string can
@@ -404,3 +410,8 @@ commands["doc:move-to-next-char"] = function()
 end
 
 command.add("core.docview", commands)
+
+local CommandView = require("core.commandview")
+command.add(function()
+    return core.active_view:is(DocView) and not core.active_view:is(CommandView)
+end, file_commands)
