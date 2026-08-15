@@ -147,6 +147,11 @@ fix is small and local:
   `Foo.txt` to `foo.txt` saved and then deleted the very same file. The
   old path is now removed only when its stats differ from the file just
   written; when in doubt nothing is deleted.
+- **`data/core/init.lua`**, **`data/core/config.lua`** -- the project scan
+  had no bound, so opening the editor in a huge directory tree ate memory
+  without limit (lite issues #185/#208; fix modeled on lite PR #218). The
+  scan now stops at `config.max_project_files` (2000) and logs that it
+  did.
 
 ## Core behavior notes (rust core vs lite's c core)
 

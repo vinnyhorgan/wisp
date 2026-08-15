@@ -47,22 +47,34 @@ local function project_scan_thread()
 
         table.sort(dirs, compare_file)
         for _, f in ipairs(dirs) do
+            if #t >= config.max_project_files then
+                return t
+            end
             table.insert(t, f)
             get_files(f.filename, t)
         end
 
         table.sort(files, compare_file)
         for _, f in ipairs(files) do
+            if #t >= config.max_project_files then
+                return t
+            end
             table.insert(t, f)
         end
 
         return t
     end
 
+    -- scanning without a cap can eat all memory on a huge directory
+    local warned = false
     while true do
         -- get project files and replace previous table if the new table is
         -- different
         local t = get_files(".")
+        if not warned and #t >= config.max_project_files then
+            core.log("project too large, stopped scanning at %d files", config.max_project_files)
+            warned = true
+        end
         if diff_files(core.project_files, t) then
             core.project_files = t
             core.redraw = true
