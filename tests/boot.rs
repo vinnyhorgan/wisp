@@ -1696,3 +1696,40 @@ fn a_focus_loss_forgets_held_modifiers() {
     editor.run_steps(50);
     assert_eq!(editor.window_title(), "wisp");
 }
+
+#[test]
+fn a_diagonal_wheel_snaps_to_its_dominant_axis() {
+    let _serial = serial();
+    let mut editor = boot();
+    editor.set_focus(false);
+
+    // one long line: caret-follow leaves the view scrolled right, and a
+    // one-line doc cannot scroll vertically at all, so the only thing a
+    // mostly-vertical diagonal wheel could do here is leak its x axis
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    press(&editor, "n");
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(50);
+    editor.push_event(Event::TextInput("wide ".repeat(200)));
+    editor.run_steps(500);
+    editor.push_event(Event::MouseMoved(450, 300, 0, 0));
+    editor.run_steps(50);
+
+    let (before, _, _) = editor.last_frame();
+    editor.push_event(Event::MouseWheel(1.0, -3.0));
+    editor.run_steps(500);
+    assert_eq!(
+        before,
+        editor.last_frame().0,
+        "the weak x axis of a vertical glide leaked into a pan"
+    );
+
+    // the other way around, a mostly-horizontal glide must still pan
+    editor.push_event(Event::MouseWheel(30.0, -1.0));
+    editor.run_steps(500);
+    assert_ne!(
+        before,
+        editor.last_frame().0,
+        "a dominant x axis no longer pans"
+    );
+}

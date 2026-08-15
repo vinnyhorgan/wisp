@@ -121,6 +121,9 @@ can mean scanning the whole document, which must never happen per frame
 command view opts out entirely: a wheeled-away prompt had no way to ever
 scroll back. shift turns a vertical wheel into a horizontal one, as in
 most editors; a wheel that already scrolls sideways is left untouched.
+a diagonal wheel event follows its dominant axis: trackpad glides drift
+on both axes at once, and letting both through feels like panning a map
+instead of scrolling text.
 
 ## 9. all user-facing text is lowercase
 

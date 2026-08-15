@@ -358,6 +358,14 @@ function core.on_event(type, ...)
         -- that already scrolls sideways is left untouched
         if keymap.modkeys["shift"] and (x or 0) == 0 then
             y, x = 0, y
+        elseif (x or 0) ~= 0 and y ~= 0 then
+            -- a trackpad glide drifts on both axes at once, which pans
+            -- like a map; text wants rails, so the dominant axis wins
+            if math.abs(y) >= math.abs(x) then
+                x = 0
+            else
+                y = 0
+            end
         end
         core.root_view:on_mouse_wheel(y, x)
     elseif type == "filedropped" then
