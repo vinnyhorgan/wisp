@@ -310,7 +310,17 @@ local commands = {
         core.command_view:enter("rename", function(filename)
             doc():save(filename)
             core.log('renamed "%s" to "%s"', old_filename, filename)
-            if filename ~= old_filename then
+            -- on a case-insensitive filesystem a different string can
+            -- still be the same file, and removing it would delete the
+            -- doc that was just saved; identical stats mean it is the
+            -- file just written, so when in doubt leave it alone
+            local old_info = system.get_file_info(old_filename)
+            local new_info = system.get_file_info(filename)
+            if
+                old_info
+                and new_info
+                and not (old_info.modified == new_info.modified and old_info.size == new_info.size)
+            then
                 os.remove(old_filename)
             end
         end, common.path_suggest)

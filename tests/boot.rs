@@ -581,3 +581,61 @@ fn autoreload_keeps_unsaved_changes() {
         editor.window_title()
     );
 }
+
+#[test]
+fn renaming_a_file_moves_it_on_disk() {
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("renametest");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let old = dir.join("old.txt");
+    std::fs::write(&old, "content\n").unwrap();
+    // age the old file's mtime so the same-file guard can tell the old
+    // file from the one the rename just wrote
+    let f = std::fs::OpenOptions::new().write(true).open(&old).unwrap();
+    f.set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(3600))
+        .unwrap();
+    drop(f);
+
+    let mut editor = Headless::boot(&dir.display().to_string(), 900, 600, 1.0);
+    editor.run_until_frames(1, 10_000);
+    // open the file
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    press(&editor, "o");
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(100);
+    editor.push_event(Event::TextInput(old.display().to_string()));
+    editor.run_steps(100);
+    press(&editor, "return");
+    editor.run_steps(500);
+
+    // run doc:rename through the command palette; the prompt comes
+    // prefilled with the old path, so select-all before typing the new
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    editor.push_event(Event::KeyPressed("left shift".into()));
+    press(&editor, "p");
+    editor.push_event(Event::KeyReleased("left shift".into()));
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(100);
+    editor.push_event(Event::TextInput("doc:rename".into()));
+    editor.run_steps(100);
+    press(&editor, "return");
+    editor.run_steps(100);
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    press(&editor, "a");
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(50);
+    let new = dir.join("new.txt");
+    editor.push_event(Event::TextInput(new.display().to_string()));
+    editor.run_steps(100);
+    press(&editor, "return");
+    editor.run_steps(500);
+
+    assert_eq!(editor.exited, None);
+    assert!(new.exists(), "renamed file missing on disk");
+    assert!(!old.exists(), "old file still on disk after rename");
+    assert!(
+        editor.window_title().contains("new.txt"),
+        "doc did not follow the rename (title: {:?})",
+        editor.window_title()
+    );
+}

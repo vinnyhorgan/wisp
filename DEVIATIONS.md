@@ -142,6 +142,11 @@ fix is small and local:
   edits. A dirty doc now keeps its changes (with a status message)
   instead. Reloads also refuse files that turned binary (matching §7) and
   update the doc's crlf flag to the file's actual line endings.
+- **`data/core/commands/doc.lua`** -- `doc:rename` decided "same file" by
+  comparing path strings, so on a case-insensitive filesystem renaming
+  `Foo.txt` to `foo.txt` saved and then deleted the very same file. The
+  old path is now removed only when its stats differ from the file just
+  written; when in doubt nothing is deleted.
 
 ## Core behavior notes (rust core vs lite's c core)
 
