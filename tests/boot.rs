@@ -544,8 +544,7 @@ fn project_search_survives_an_empty_project() {
     press(&editor, "return");
     editor.run_steps(1000);
     assert_eq!(
-        editor.exited,
-        None,
+        editor.exited, None,
         "project search crashed in an empty project"
     );
 }
