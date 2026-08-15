@@ -117,8 +117,10 @@ per frame would be too slow. Horizontal scroll is clamped to the content on
 both ends, like the vertical fix in §6. The clamp lives in the wheel handler
 -- the only source of sideways scrolling -- because measuring content width
 can mean scanning the whole document, which must never happen per frame
-(the other setter, caret-following, is in range by construction). Shift
-turns a vertical wheel into a horizontal one, as in most editors.
+(the other setter, caret-following, is in range by construction). The
+command view opts out entirely: a wheeled-away prompt had no way to ever
+scroll back. Shift turns a vertical wheel into a horizontal one, as in
+most editors.
 
 ## 9. All user-facing text is lowercase
 
