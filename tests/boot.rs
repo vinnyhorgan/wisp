@@ -40,6 +40,31 @@ fn press(editor: &Headless, key: &str) {
     editor.push_event(Event::KeyReleased(key.into()));
 }
 
+/// holds left ctrl around a key press
+fn ctrl(editor: &Headless, key: &str) {
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    press(editor, key);
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+}
+
+/// holds left ctrl and left shift around a key press
+fn ctrl_shift(editor: &Headless, key: &str) {
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    editor.push_event(Event::KeyPressed("left shift".into()));
+    press(editor, key);
+    editor.push_event(Event::KeyReleased("left shift".into()));
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+}
+
+/// drives any command through the palette: ctrl+shift+p, type, return
+fn palette(editor: &mut Headless, command: &str) {
+    ctrl_shift(editor, "p");
+    editor.run_steps(100);
+    editor.push_event(Event::TextInput(command.into()));
+    editor.run_steps(100);
+    press(editor, "return");
+}
+
 /// copies the repo's data/ into CARGO_TARGET_TMPDIR/<name>/data and
 /// returns the root, ready for `Headless::boot_with_exedir`; tests then
 /// overwrite data/user/init.lua in the copy to inject their fixture
@@ -247,9 +272,7 @@ fn idle_editor_stops_redrawing() {
 fn typing_in_a_new_doc_appears_on_screen() {
     let _serial = serial();
     let mut editor = boot();
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    press(&editor, "n");
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl(&editor, "n");
     let before = editor.frame_count();
     editor.run_until_frames(before + 1, 10_000);
     let (frame_empty_doc, _, _) = editor.last_frame();
@@ -400,9 +423,7 @@ fn binary_files_are_refused() {
 
     let mut editor = boot();
     // ctrl+o, type the absolute path, return
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    press(&editor, "o");
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl(&editor, "o");
     editor.run_steps(100);
     editor.push_event(Event::TextInput(blob.display().to_string()));
     editor.run_steps(100);
@@ -421,9 +442,7 @@ fn binary_files_are_refused() {
 fn wheel_scrolls_the_document() {
     let _serial = serial();
     let mut editor = boot();
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    press(&editor, "n");
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl(&editor, "n");
     editor.run_steps(50);
     editor.push_event(Event::TextInput("line\n".repeat(200)));
     editor.run_steps(200);
@@ -466,9 +485,7 @@ fn horizontal_wheel_pans_long_lines_and_clamps() {
 
     // a fresh doc with a single very long line; typing leaves the view
     // scrolled right, following the caret to the end of the line
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    press(&editor, "n");
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl(&editor, "n");
     editor.run_steps(50);
     editor.push_event(Event::TextInput(format!("start {}", "wide ".repeat(200))));
     editor.run_steps(500);
@@ -571,9 +588,7 @@ fn malformed_utf8_never_hangs_the_caret() {
         let mut editor = Headless::boot(&dir.display().to_string(), 900, 600, 1.0);
         editor.run_until_frames(1, 10_000);
         // ctrl+o, type the path, return
-        editor.push_event(Event::KeyPressed("left ctrl".into()));
-        press(&editor, "o");
-        editor.push_event(Event::KeyReleased("left ctrl".into()));
+        ctrl(&editor, "o");
         editor.run_steps(100);
         editor.push_event(Event::TextInput(file.display().to_string()));
         editor.run_steps(100);
@@ -585,9 +600,7 @@ fn malformed_utf8_never_hangs_the_caret() {
         press(&editor, "left");
         editor.run_steps(100);
         // and right arrow at the end of the doc walks next_char
-        editor.push_event(Event::KeyPressed("left ctrl".into()));
-        press(&editor, "end");
-        editor.push_event(Event::KeyReleased("left ctrl".into()));
+        ctrl(&editor, "end");
         editor.run_steps(100);
         press(&editor, "right");
         editor.run_steps(100);
@@ -612,11 +625,7 @@ fn project_search_survives_an_empty_project() {
     editor.run_until_frames(1, 10_000);
 
     // ctrl+shift+f, type a needle, return
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    editor.push_event(Event::KeyPressed("left shift".into()));
-    press(&editor, "f");
-    editor.push_event(Event::KeyReleased("left shift".into()));
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl_shift(&editor, "f");
     editor.run_steps(100);
     editor.push_event(Event::TextInput("needle".into()));
     editor.run_steps(100);
@@ -642,9 +651,7 @@ fn autoreload_keeps_unsaved_changes() {
     let mut editor = Headless::boot(&dir.display().to_string(), 900, 600, 1.0);
     editor.run_until_frames(1, 10_000);
     // open the file and dirty it
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    press(&editor, "o");
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl(&editor, "o");
     editor.run_steps(100);
     editor.push_event(Event::TextInput(file.display().to_string()));
     editor.run_steps(100);
@@ -694,9 +701,7 @@ fn renaming_a_file_moves_it_on_disk() {
     let mut editor = Headless::boot(&dir.display().to_string(), 900, 600, 1.0);
     editor.run_until_frames(1, 10_000);
     // open the file
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    press(&editor, "o");
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl(&editor, "o");
     editor.run_steps(100);
     editor.push_event(Event::TextInput(old.display().to_string()));
     editor.run_steps(100);
@@ -705,19 +710,9 @@ fn renaming_a_file_moves_it_on_disk() {
 
     // run doc:rename through the command palette; the prompt comes
     // prefilled with the old path, so select-all before typing the new
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    editor.push_event(Event::KeyPressed("left shift".into()));
-    press(&editor, "p");
-    editor.push_event(Event::KeyReleased("left shift".into()));
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    palette(&mut editor, "doc:rename");
     editor.run_steps(100);
-    editor.push_event(Event::TextInput("doc:rename".into()));
-    editor.run_steps(100);
-    press(&editor, "return");
-    editor.run_steps(100);
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    press(&editor, "a");
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl(&editor, "a");
     editor.run_steps(50);
     let new = dir.join("new.txt");
     editor.push_event(Event::TextInput(new.display().to_string()));
@@ -741,27 +736,15 @@ fn tabularize_keeps_empty_fields() {
     // the old single-character [^d]+ split dropped empty fields, so
     // "a,,b" lost a column
     let mut editor = boot();
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    press(&editor, "n");
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl(&editor, "n");
     editor.run_steps(50);
     editor.push_event(Event::TextInput("a,,b\ncc,d,e".into()));
     editor.run_steps(100);
 
     // select all, then run tabularize from the command palette
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    press(&editor, "a");
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl(&editor, "a");
     editor.run_steps(50);
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    editor.push_event(Event::KeyPressed("left shift".into()));
-    press(&editor, "p");
-    editor.push_event(Event::KeyReleased("left shift".into()));
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
-    editor.run_steps(100);
-    editor.push_event(Event::TextInput("tabularize".into()));
-    editor.run_steps(100);
-    press(&editor, "return");
+    palette(&mut editor, "tabularize");
     editor.run_steps(100);
     editor.push_event(Event::TextInput(",".into()));
     editor.run_steps(50);
@@ -787,9 +770,7 @@ fn quit_asks_even_while_a_prompt_is_open() {
     let mut editor = boot();
     open_dirty_doc(&mut editor);
     // open the find prompt
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    press(&editor, "f");
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl(&editor, "f");
     editor.run_steps(200);
 
     editor.push_event(Event::Quit);
@@ -823,9 +804,7 @@ fn opening_views_works_while_the_treeview_has_focus() {
 
     // open the project file from a prompt (absolute path: the process
     // cwd races other tests' editors, so the project scan is off limits)
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    press(&editor, "o");
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl(&editor, "o");
     editor.run_steps(100);
     let path = format!("{}/hello.txt", project_dir());
     editor.push_event(Event::TextInput(path));
@@ -842,15 +821,7 @@ fn opening_views_works_while_the_treeview_has_focus() {
     editor.push_event(Event::MousePressed("left", 40, 300, 1));
     editor.push_event(Event::MouseReleased("left", 40, 300));
     editor.run_steps(50);
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    editor.push_event(Event::KeyPressed("left shift".into()));
-    press(&editor, "p");
-    editor.push_event(Event::KeyReleased("left shift".into()));
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
-    editor.run_steps(100);
-    editor.push_event(Event::TextInput("core:open-log".into()));
-    editor.run_steps(100);
-    press(&editor, "return");
+    palette(&mut editor, "core:open-log");
     editor.run_steps(200);
     assert_eq!(
         editor.window_title(),
@@ -878,9 +849,7 @@ fn caret_follow_keeps_the_users_scroll() {
     // an unfocused window draws no caret, so frames compare exactly
     editor.set_focus(false);
 
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    press(&editor, "o");
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl(&editor, "o");
     editor.run_steps(100);
     editor.push_event(Event::TextInput(file.display().to_string()));
     editor.run_steps(100);
@@ -911,9 +880,7 @@ fn caret_follow_keeps_the_users_scroll() {
     // drag a selection rightward across the visible text: the scroll
     // must hold still so the selection tracks the mouse, instead of the
     // view sliding under the pointer and ballooning the selection
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    press(&editor, "home");
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl(&editor, "home");
     editor.run_steps(500);
     editor.push_event(Event::MouseMoved(300, 8, 0, 0));
     editor.run_steps(20);
@@ -927,9 +894,7 @@ fn caret_follow_keeps_the_users_scroll() {
     }
     editor.push_event(Event::MouseReleased("left", 860, 8));
     editor.run_steps(100);
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    press(&editor, "c");
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl(&editor, "c");
     editor.run_steps(100);
     let selected = editor
         .engine
@@ -956,15 +921,7 @@ fn an_invalid_search_pattern_does_not_kill_the_editor() {
     // thread, and a crashed thread propagated straight out of the main
     // loop: the whole editor died on a typo
     let mut editor = boot();
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    editor.push_event(Event::KeyPressed("left shift".into()));
-    press(&editor, "p");
-    editor.push_event(Event::KeyReleased("left shift".into()));
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
-    editor.run_steps(100);
-    editor.push_event(Event::TextInput("project-search:find-pattern".into()));
-    editor.run_steps(100);
-    press(&editor, "return");
+    palette(&mut editor, "project-search:find-pattern");
     editor.run_steps(100);
     editor.push_event(Event::TextInput("[".into()));
     editor.run_steps(50);
@@ -991,11 +948,7 @@ fn project_search_skips_binary_files() {
 
     let mut editor = Headless::boot(&dir.display().to_string(), 900, 600, 1.0);
     editor.run_until_frames(1, 10_000);
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    editor.push_event(Event::KeyPressed("left shift".into()));
-    press(&editor, "f");
-    editor.push_event(Event::KeyReleased("left shift".into()));
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl_shift(&editor, "f");
     editor.run_steps(50);
     editor.push_event(Event::TextInput("hello".into()));
     editor.run_steps(50);
@@ -1035,11 +988,7 @@ fn refreshing_a_search_midway_does_not_duplicate_results() {
         let mut editor = Headless::boot(&dir.display().to_string(), 900, 600, 1.0);
         editor.run_until_frames(1, 10_000);
         editor.set_focus(false);
-        editor.push_event(Event::KeyPressed("left ctrl".into()));
-        editor.push_event(Event::KeyPressed("left shift".into()));
-        press(&editor, "f");
-        editor.push_event(Event::KeyReleased("left shift".into()));
-        editor.push_event(Event::KeyReleased("left ctrl".into()));
+        ctrl_shift(&editor, "f");
         editor.run_steps(50);
         editor.push_event(Event::TextInput("hello".into()));
         editor.run_steps(50);
@@ -1066,11 +1015,6 @@ fn line_commands_on_the_last_line_leave_the_doc_intact() {
     // the end of the doc (append_line_if_last_line) -- a real edit:
     // ctrl+l on the last line dirtied the doc, and moving the last line
     // down fed blank lines into it
-    fn ctrl(editor: &Headless, key: &str) {
-        editor.push_event(Event::KeyPressed("left ctrl".into()));
-        press(editor, key);
-        editor.push_event(Event::KeyReleased("left ctrl".into()));
-    }
     let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("lastline");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
@@ -1138,20 +1082,12 @@ fn line_commands_on_the_last_line_leave_the_doc_intact() {
     // duplicating the last line
     ctrl(&editor, "end");
     editor.run_steps(50);
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    editor.push_event(Event::KeyPressed("left shift".into()));
-    press(&editor, "d");
-    editor.push_event(Event::KeyReleased("left shift".into()));
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl_shift(&editor, "d");
     editor.run_steps(100);
     assert_eq!(save_and_read(&mut editor), "aa\ncc\nbb\nbb\n");
 
     // deleting the last line
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    editor.push_event(Event::KeyPressed("left shift".into()));
-    press(&editor, "k");
-    editor.push_event(Event::KeyReleased("left shift".into()));
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl_shift(&editor, "k");
     editor.run_steps(100);
     assert_eq!(save_and_read(&mut editor), "aa\ncc\nbb\n");
 
@@ -1310,9 +1246,7 @@ autocomplete.add({ name = "test-b", items = { alpa = "from b", alpbb = false, al
             1.0,
         );
         editor.run_until_frames(1, 10_000);
-        editor.push_event(Event::KeyPressed("left ctrl".into()));
-        press(&editor, "n");
-        editor.push_event(Event::KeyReleased("left ctrl".into()));
+        ctrl(&editor, "n");
         editor.run_steps(50);
         editor.push_event(Event::TextInput("alp".into()));
         editor.run_steps(10);
@@ -1378,9 +1312,7 @@ end
     let mut editor =
         Headless::boot_with_exedir(&root.display().to_string(), &project_dir(), 900, 600, 1.0);
     editor.run_until_frames(1, 10_000);
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    press(&editor, "n");
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl(&editor, "n");
     editor.run_steps(100);
     editor.push_event(Event::KeyPressed("left shift".into()));
     press(&editor, "f3");
@@ -1405,15 +1337,7 @@ fn logview_scrolling_is_clamped_to_its_content() {
     // scrolled into the void forever
     let mut editor = boot();
     editor.set_focus(false);
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    editor.push_event(Event::KeyPressed("left shift".into()));
-    press(&editor, "p");
-    editor.push_event(Event::KeyReleased("left shift".into()));
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
-    editor.run_steps(100);
-    editor.push_event(Event::TextInput("core:open-log".into()));
-    editor.run_steps(100);
-    press(&editor, "return");
+    palette(&mut editor, "core:open-log");
     editor.run_steps(300);
 
     // the few boot messages fit the view, so wheeling down hard must
@@ -1450,9 +1374,7 @@ fn statusbar_column_counts_characters_not_bytes() {
         editor.set_focus(false);
         // open by relative path: the status bar shows the doc name, and
         // it must be the identical string ("x.txt") in both runs
-        editor.push_event(Event::KeyPressed("left ctrl".into()));
-        press(&editor, "o");
-        editor.push_event(Event::KeyReleased("left ctrl".into()));
+        ctrl(&editor, "o");
         editor.run_steps(100);
         editor.push_event(Event::TextInput("x.txt".into()));
         editor.run_steps(100);
@@ -1485,24 +1407,18 @@ fn saving_from_a_prompt_is_refused() {
     let _ = std::fs::remove_file(&leak);
 
     // open a doc, then a find prompt over it
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    press(&editor, "o");
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl(&editor, "o");
     editor.run_steps(100);
     editor.push_event(Event::TextInput("hello.txt".into()));
     editor.run_steps(100);
     press(&editor, "return");
     editor.run_steps(300);
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    press(&editor, "f");
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl(&editor, "f");
     editor.run_steps(100);
 
     // ctrl+s must be a no-op here; if it opened save-as, the typed path
     // would land in that prompt and return would write the file
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    press(&editor, "s");
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl(&editor, "s");
     editor.run_steps(100);
     editor.push_event(Event::TextInput(leak.display().to_string()));
     editor.run_steps(100);
@@ -1551,21 +1467,11 @@ command.add("core.docview", {{
     let mut editor =
         Headless::boot_with_exedir(&root.display().to_string(), &project_dir(), 900, 600, 1.0);
     editor.run_until_frames(1, 10_000);
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    press(&editor, "n");
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl(&editor, "n");
     editor.run_steps(100);
     editor.push_event(Event::TextInput("wide enough line".into()));
     editor.run_steps(100);
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    editor.push_event(Event::KeyPressed("left shift".into()));
-    press(&editor, "p");
-    editor.push_event(Event::KeyReleased("left shift".into()));
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
-    editor.run_steps(100);
-    editor.push_event(Event::TextInput("test:probe".into()));
-    editor.run_steps(100);
-    press(&editor, "return");
+    palette(&mut editor, "test:probe");
     editor.run_steps(300);
 
     let probe = std::fs::read_to_string(&out).expect("the probe command never ran");
@@ -1593,9 +1499,7 @@ fn a_non_latin_project_dir_works() {
 
     let mut editor = Headless::boot(&dir.display().to_string(), 900, 600, 1.0);
     editor.run_until_frames(1, 10_000);
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    press(&editor, "o");
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl(&editor, "o");
     editor.run_steps(100);
     editor.push_event(Event::TextInput("x.txt".into()));
     editor.run_steps(100);
@@ -1613,24 +1517,14 @@ fn logview_pans_sideways() {
     editor.set_focus(false);
     // fail to open a long nonexistent path: the error lands in the log
     let long = format!("/nowhere/{}.txt", "a".repeat(120));
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    press(&editor, "o");
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl(&editor, "o");
     editor.run_steps(100);
     editor.push_event(Event::TextInput(long));
     editor.run_steps(100);
     press(&editor, "return");
     editor.run_steps(300);
 
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    editor.push_event(Event::KeyPressed("left shift".into()));
-    press(&editor, "p");
-    editor.push_event(Event::KeyReleased("left shift".into()));
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
-    editor.run_steps(100);
-    editor.push_event(Event::TextInput("core:open-log".into()));
-    editor.run_steps(100);
-    press(&editor, "return");
+    palette(&mut editor, "core:open-log");
     editor.run_steps(300);
 
     editor.push_event(Event::MouseMoved(450, 300, 0, 0));
@@ -1661,11 +1555,7 @@ fn search_results_pan_sideways() {
     let mut editor = Headless::boot(&dir.display().to_string(), 900, 600, 1.0);
     editor.run_until_frames(1, 10_000);
     editor.set_focus(false);
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    editor.push_event(Event::KeyPressed("left shift".into()));
-    press(&editor, "f");
-    editor.push_event(Event::KeyReleased("left shift".into()));
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl_shift(&editor, "f");
     editor.run_steps(50);
     editor.push_event(Event::TextInput("hello".into()));
     editor.run_steps(50);
@@ -1694,9 +1584,7 @@ fn a_focus_loss_forgets_held_modifiers() {
     let mut editor = boot();
 
     // open the project file so there is a tab to close later
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    press(&editor, "o");
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl(&editor, "o");
     editor.run_steps(50);
     editor.push_event(Event::TextInput("hello.txt".into()));
     editor.run_steps(50);
@@ -1716,9 +1604,7 @@ fn a_focus_loss_forgets_held_modifiers() {
 
     // with alt latched every chord was dead (ctrl+w arrived as
     // alt+ctrl+w); the focus round-trip must have unstuck it
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    press(&editor, "w");
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl(&editor, "w");
     editor.run_steps(50);
     assert_eq!(editor.window_title(), "wisp");
 }
@@ -1732,9 +1618,7 @@ fn a_diagonal_wheel_snaps_to_its_dominant_axis() {
     // one long line: caret-follow leaves the view scrolled right, and a
     // one-line doc cannot scroll vertically at all, so the only thing a
     // mostly-vertical diagonal wheel could do here is leak its x axis
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    press(&editor, "n");
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl(&editor, "n");
     editor.run_steps(50);
     editor.push_event(Event::TextInput("wide ".repeat(200)));
     editor.run_steps(500);
@@ -1768,9 +1652,7 @@ fn a_trackpad_gesture_stays_railed_to_its_first_axis() {
 
     // same fixture as the diagonal-wheel test: one long line, view
     // scrolled right by caret-follow, no vertical scrolling possible
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    press(&editor, "n");
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl(&editor, "n");
     editor.run_steps(50);
     editor.push_event(Event::TextInput("wide ".repeat(200)));
     editor.run_steps(500);
@@ -1854,15 +1736,7 @@ command.add(nil, {{
     let mut editor =
         Headless::boot_with_exedir(&root.display().to_string(), &project_dir(), 900, 600, 1.0);
     editor.run_until_frames(1, 10_000);
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    editor.push_event(Event::KeyPressed("left shift".into()));
-    press(&editor, "p");
-    editor.push_event(Event::KeyReleased("left shift".into()));
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
-    editor.run_steps(100);
-    editor.push_event(Event::TextInput("test:spawn".into()));
-    editor.run_steps(100);
-    press(&editor, "return");
+    palette(&mut editor, "test:spawn");
 
     // the editor clock is virtual but cat runs in real time: keep
     // stepping (resuming the reader coroutine) until the report lands
@@ -1886,9 +1760,7 @@ fn growing_a_view_reclamps_a_stale_sideways_scroll() {
 
     let mut editor = boot();
     editor.set_focus(false);
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    press(&editor, "n");
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl(&editor, "n");
     editor.run_steps(50);
     editor.push_event(Event::TextInput(text.clone()));
     editor.run_steps(500);
@@ -1902,9 +1774,7 @@ fn growing_a_view_reclamps_a_stale_sideways_scroll() {
     let mut reference = Headless::boot(&project_dir(), 1100, 600, 1.0);
     reference.run_until_frames(1, 10_000);
     reference.set_focus(false);
-    reference.push_event(Event::KeyPressed("left ctrl".into()));
-    press(&reference, "n");
-    reference.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl(&reference, "n");
     reference.run_steps(50);
     reference.push_event(Event::TextInput(text));
     reference.run_steps(500);
@@ -1924,19 +1794,13 @@ fn deleting_the_widest_line_brings_the_view_home() {
     // left hanging off-screen
     let mut editor = boot();
     editor.set_focus(false);
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    press(&editor, "n");
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl(&editor, "n");
     editor.run_steps(50);
     editor.push_event(Event::TextInput("bb".into()));
     press(&editor, "return");
     editor.push_event(Event::TextInput("wide ".repeat(40)));
     editor.run_steps(500);
-    editor.push_event(Event::KeyPressed("left ctrl".into()));
-    editor.push_event(Event::KeyPressed("left shift".into()));
-    press(&editor, "k");
-    editor.push_event(Event::KeyReleased("left shift".into()));
-    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl_shift(&editor, "k");
     editor.run_steps(500);
     let (after_delete, _, _) = editor.last_frame();
 
@@ -1944,9 +1808,7 @@ fn deleting_the_widest_line_brings_the_view_home() {
     // lands on the same spot, so the frames must be identical
     let mut reference = boot();
     reference.set_focus(false);
-    reference.push_event(Event::KeyPressed("left ctrl".into()));
-    press(&reference, "n");
-    reference.push_event(Event::KeyReleased("left ctrl".into()));
+    ctrl(&reference, "n");
     reference.run_steps(50);
     reference.push_event(Event::TextInput("bb".into()));
     // delete-lines parks the caret at column 1; match it, or the
