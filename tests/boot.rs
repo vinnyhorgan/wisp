@@ -1895,3 +1895,105 @@ fn growing_a_view_reclamps_a_stale_sideways_scroll() {
         "the grown view kept its stale sideways scroll"
     );
 }
+
+#[test]
+fn deleting_the_widest_line_brings_the_view_home() {
+    let _serial = serial();
+    // pan right by typing a long second line, then delete it: between
+    // caret-follow and the clamp, the short first line must never be
+    // left hanging off-screen
+    let mut editor = boot();
+    editor.set_focus(false);
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    press(&editor, "n");
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(50);
+    editor.push_event(Event::TextInput("bb".into()));
+    press(&editor, "return");
+    editor.push_event(Event::TextInput("wide ".repeat(40)));
+    editor.run_steps(500);
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    editor.push_event(Event::KeyPressed("left shift".into()));
+    press(&editor, "k");
+    editor.push_event(Event::KeyReleased("left shift".into()));
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(500);
+    let (after_delete, _, _) = editor.last_frame();
+
+    // the reference typed the short line and nothing else; the caret
+    // lands on the same spot, so the frames must be identical
+    let mut reference = boot();
+    reference.set_focus(false);
+    reference.push_event(Event::KeyPressed("left ctrl".into()));
+    press(&reference, "n");
+    reference.push_event(Event::KeyReleased("left ctrl".into()));
+    reference.run_steps(50);
+    reference.push_event(Event::TextInput("bb".into()));
+    // delete-lines parks the caret at column 1; match it, or the
+    // status bar's column readout differs
+    press(&reference, "home");
+    reference.run_steps(500);
+    let refframe = reference.last_frame().0;
+    assert_eq!(
+        after_delete, refframe,
+        "the deleted line's width still holds the view panned"
+    );
+}
+
+#[test]
+fn collapsing_a_wide_folder_reclamps_the_scroll() {
+    let _serial = serial();
+    // the content input of the clamp invariant, with no caret to come
+    // to the rescue: expand a folder holding a very long name, pan the
+    // treeview right, collapse the folder. the pan must come home, not
+    // leave the short root row hanging off-screen
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("collapseroot");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("deep")).unwrap();
+    std::fs::write(
+        dir.join("deep")
+            .join(format!("{}.txt", "long-name-".repeat(8))),
+        "x\n",
+    )
+    .unwrap();
+
+    let mut editor = Headless::boot(&dir.display().to_string(), 900, 600, 1.0);
+    editor.run_until_frames(1, 10_000);
+    editor.set_focus(false);
+    editor.run_steps(200);
+    let (collapsed, _, _) = editor.last_frame();
+
+    // find the folder row the way clicking_the_treeview does: probe
+    // downward until a click changes the frame (the child row appears)
+    let mut row_y = None;
+    for row in 0..8 {
+        let y = 8 + row * 12;
+        editor.push_event(Event::MouseMoved(40, y, 0, 0));
+        editor.run_steps(50);
+        editor.push_event(Event::MousePressed("left", 40, y, 1));
+        editor.push_event(Event::MouseReleased("left", 40, y));
+        editor.run_steps(200);
+        if editor.last_frame().0 != collapsed {
+            row_y = Some(y);
+            break;
+        }
+    }
+    let y = row_y.expect("no click expanded the folder");
+
+    // pan right (the long child name gives the view sideways room)
+    editor.push_event(Event::MouseWheel(-5.0, 0.0, None));
+    editor.run_steps(300);
+
+    // collapse again, then park the mouse over the docview so no
+    // hover highlight is left behind for the frame comparison
+    editor.push_event(Event::MousePressed("left", 40, y, 1));
+    editor.push_event(Event::MouseReleased("left", 40, y));
+    editor.run_steps(100);
+    editor.push_event(Event::MouseMoved(600, 300, 0, 0));
+    editor.run_steps(300);
+    assert_eq!(
+        collapsed,
+        editor.last_frame().0,
+        "the collapsed folder's width still holds the treeview panned"
+    );
+}

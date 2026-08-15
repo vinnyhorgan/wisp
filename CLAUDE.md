@@ -71,9 +71,10 @@ way rxi intended.
   core.try, so an error there kills the editor).
 - locked views opt into divider dragging by implementing
   `set_target_size(axis, value)`; views opt into sideways scrolling via
-  `get_h_scrollable_size()` (default 0). the horizontal clamp lives in
-  `View:on_mouse_wheel`, not per-frame update: measuring content width
-  can scan a whole document.
+  `get_h_scrollable_size()` (default 0). the horizontal clamp runs in
+  `clamp_scroll_position` but only while panned sideways: scroll, size
+  and content can all move it out of range, and the docview's widest-line
+  cache makes the measurement cheap.
 - `Doc.change_count` bumps on every content change; views key caches on
   it (e.g. the docview widest-line cache).
 - `WISP_SCALE` overrides display scale on desktop; headless boots ignore

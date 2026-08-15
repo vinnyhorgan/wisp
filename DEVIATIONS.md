@@ -114,10 +114,12 @@ width through `get_h_scrollable_size()` (default 0: no sideways scrolling),
 and the docview reports its widest line -- measured once and cached against
 a new `Doc.change_count`, bumped on every edit, since measuring every line
 per frame would be too slow. horizontal scroll is clamped to the content on
-both ends, like the vertical fix in §6. the clamp lives in the wheel handler
--- the only source of sideways scrolling -- because measuring content width
-can mean scanning the whole document, which must never happen per frame
-(the other setter, caret-following, is in range by construction). the
+both ends, like the vertical fix in §6. the clamp is an invariant over
+scroll, size and content, and any of the three can move (a wheel, a
+divider drag, collapsing the folder that held the widest name), so it is
+enforced in update like the vertical one -- but only while actually
+panned sideways, which keeps the common case free; the docview's cached
+widest line keeps the panned case as cheap as the vertical measurement. the
 command view opts out entirely: a wheeled-away prompt had no way to ever
 scroll back. shift turns a vertical wheel into a horizontal one, as in
 most editors; a wheel that already scrolls sideways is left untouched.
@@ -125,12 +127,10 @@ diagonal input follows one axis: trackpad glides drift on both axes at
 once, and letting both through feels like panning a map instead of
 scrolling text. a trackpad gesture (the core forwards winit's touch
 phases) is railed to the axis it starts on until the fingers lift; a
-discrete wheel event stands alone and its bigger axis wins. a resize
-re-clamps the sideways scroll -- growing a view must not leave the
-content hanging past its own end -- measuring only when the size
-actually changed. the docview's scrollable width leaves the same
-three-space margin as the caret band, so the wheel reaches exactly as
-far as caret-follow ever scrolls, and no further.
+discrete wheel event stands alone and its bigger axis wins. the
+docview's scrollable width leaves the same three-space margin as the
+caret band, so the wheel reaches exactly as far as caret-follow ever
+scrolls, and no further.
 
 ## 9. all user-facing text is lowercase
 
