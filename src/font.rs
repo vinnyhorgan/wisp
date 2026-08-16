@@ -26,6 +26,11 @@ pub struct Glyph {
 }
 
 pub struct Font {
+    /// process-unique identity for the render cache: an rc pointer can
+    /// be reused by the allocator the moment a font is freed, a counter
+    /// never can (the image side solves the same problem with a content
+    /// hash; fonts have no content worth hashing per frame)
+    id: u64,
     data: Vec<u8>,
     offset: u32,
     key: CacheKey,
@@ -43,7 +48,9 @@ impl Font {
         let font_ref = FontRef::from_index(&data, 0)
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "not a valid font"))?;
         let (offset, key) = (font_ref.offset, font_ref.key);
+        static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let font = Font {
+            id: NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             data,
             offset,
             key,
@@ -86,6 +93,10 @@ impl Font {
 
     pub fn size(&self) -> f32 {
         self.size.get()
+    }
+
+    pub fn id(&self) -> u64 {
+        self.id
     }
 
     /// swash's borrowed view into the font data; cheap to construct
@@ -164,24 +175,14 @@ impl Font {
         glyph
     }
 
-    /// width of `text` in pixels, honoring the current tab advance
-    pub fn width_of(&self, text: &str) -> i32 {
-        let mut x: i64 = 0;
-        for ch in text.chars() {
-            if ch == '\t' {
-                x += self.tab_advance.get() as i64;
-            } else {
-                x += self.glyph(ch).advance as i64;
-            }
-        }
-        x.clamp(i32::MIN as i64, i32::MAX as i64) as i32
-    }
-
-    /// ink bounding box of `text` as (x, y, width, height) relative to the
-    /// draw origin (top-left of the line box), or none for invisible text.
-    /// ink can escape the metric box: nerd font icons fill the em square
-    /// and overhang their advance, accents can rise above the ascent
-    pub fn ink_box_of(&self, text: &str) -> Option<(i32, i32, i32, i32)> {
+    /// width and ink box of `text` in one pass -- the record path needs
+    /// both per draw command, and the glyph cache lookup is the cost.
+    /// the width honors the current tab advance; the ink box is (x, y,
+    /// width, height) relative to the draw origin (top-left of the line
+    /// box), or none for invisible text. ink can escape the metric box:
+    /// nerd font icons fill the em square and overhang their advance,
+    /// accents can rise above the ascent
+    pub fn measure(&self, text: &str) -> (i32, Option<(i32, i32, i32, i32)>) {
         let (mut pen, mut b): (i64, Option<[i64; 4]>) = (0, None);
         for ch in text.chars() {
             if ch == '\t' {
@@ -201,10 +202,21 @@ impl Font {
             }
             pen += g.advance as i64;
         }
-        b.map(|[x0, y0, x1, y1]| {
-            let c = |v: i64| v.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
-            (c(x0), c(y0), c(x1 - x0), c(y1 - y0))
-        })
+        let c = |v: i64| v.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+        (
+            c(pen),
+            b.map(|[x0, y0, x1, y1]| (c(x0), c(y0), c(x1 - x0), c(y1 - y0))),
+        )
+    }
+
+    /// width of `text` in pixels, honoring the current tab advance
+    pub fn width_of(&self, text: &str) -> i32 {
+        self.measure(text).0
+    }
+
+    /// ink bounding box alone; see `measure`
+    pub fn ink_box_of(&self, text: &str) -> Option<(i32, i32, i32, i32)> {
+        self.measure(text).1
     }
 }
 
@@ -282,6 +294,18 @@ mod tests {
         font.set_size(1e9);
         assert_eq!(font.size(), 2048.0);
         assert!(!font.glyph('m').mask.is_empty());
+    }
+
+    #[test]
+    fn font_identity_survives_allocator_reuse() {
+        // the render cache hashes this id: unlike an rc pointer, it can
+        // never be handed to a second font by the allocator, so a font
+        // freed and replaced between frames always hashes differently
+        let a = Font::load(&font_path(), 14.0).unwrap();
+        let id_a = a.id();
+        drop(a);
+        let b = Font::load(&font_path(), 14.0).unwrap();
+        assert_ne!(id_a, b.id());
     }
 
     #[test]

@@ -102,12 +102,12 @@ impl Command {
                 ..
             } => {
                 h.write(&[2, color.r, color.g, color.b, color.a]);
-                // the pointer identifies the font, but an rc freed by lua
-                // can be reallocated at the same address between frames
-                // (inherited from lite's rencache.c); hashing the size
-                // too closes the window for every realistic swap, and
-                // makes an in-place `set_size` dirty every text cell
-                h.write(&(Rc::as_ptr(font) as usize).to_le_bytes());
+                // the font's process-unique id, never its pointer: an rc
+                // freed by lua can be reallocated at the same address
+                // between frames (the bug class lite inherited by hashing
+                // raw RenFont pointers). the size rides along so an
+                // in-place `set_size` dirties every text cell
+                h.write(&font.id().to_le_bytes());
                 h.write(&font.size().to_bits().to_le_bytes());
                 h.write_i32(*x);
                 h.write_i32(*y);
@@ -144,6 +144,10 @@ pub struct RenCache {
     grid_w: i32,
     grid_h: i32,
     screen: Rect,
+    /// the clip in force while recording; draws fully outside it would
+    /// paint nothing at replay, so they are dropped at the door (lite
+    /// culled against the screen only; lite-xl tightened it like this)
+    clip: Rect,
     show_debug: bool,
     rng: XorShift,
 }
@@ -163,6 +167,7 @@ impl RenCache {
             grid_w: 0,
             grid_h: 0,
             screen: Rect::default(),
+            clip: Rect::default(),
             show_debug: false,
             rng: XorShift(0x12345678),
         }
@@ -187,28 +192,29 @@ impl RenCache {
             self.cells_prev.clear();
             self.cells_prev.resize(n, u32::MAX);
         }
+        self.clip = self.screen;
     }
 
     pub fn set_clip_rect(&mut self, rect: Rect) {
-        self.commands.push(Command::SetClip {
-            rect: rect.intersect(self.screen),
-        });
+        let rect = rect.intersect(self.screen);
+        self.clip = rect;
+        self.commands.push(Command::SetClip { rect });
     }
 
     pub fn draw_rect(&mut self, rect: Rect, color: Color) {
-        if !self.screen.overlaps(rect) {
+        if !self.clip.overlaps(rect) {
             return;
         }
         self.commands.push(Command::DrawRect { rect, color });
     }
 
     pub fn draw_text(&mut self, font: &Rc<Font>, text: &str, x: i32, y: i32, color: Color) -> i32 {
-        let width = font.width_of(text);
+        let (width, ink) = font.measure(text);
         let mut rect = Rect::new(x, y, width, font.height());
         // the command is hashed into the cells this rect overlaps, so it
         // must cover every pixel the text can ink -- grow it by the true
         // ink box when glyphs escape their metrics (nerd font icons)
-        if let Some((ix, iy, iw, ih)) = font.ink_box_of(text) {
+        if let Some((ix, iy, iw, ih)) = ink {
             rect = rect.merge(Rect::new(
                 x.saturating_add(ix),
                 y.saturating_add(iy),
@@ -216,7 +222,7 @@ impl RenCache {
                 ih,
             ));
         }
-        if self.screen.overlaps(rect) {
+        if self.clip.overlaps(rect) {
             self.commands.push(Command::DrawText {
                 font: Rc::clone(font),
                 text: text.to_owned(),
@@ -231,7 +237,7 @@ impl RenCache {
     }
 
     pub fn draw_image(&mut self, image: &Rc<Image>, rect: Rect, tint: Color) {
-        if !self.screen.overlaps(rect) {
+        if !self.clip.overlaps(rect) {
             return;
         }
         self.commands.push(Command::DrawImage {
