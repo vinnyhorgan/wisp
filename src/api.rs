@@ -19,6 +19,7 @@ use mlua::{
 };
 
 use crate::font::Font;
+use crate::image::Image;
 use crate::platform::{Event, Platform};
 use crate::process;
 use crate::rencache::RenCache;
@@ -57,6 +58,17 @@ impl UserData for LuaFont {
         methods.add_method("get_width", |_, this, text: LuaString| {
             Ok(this.0.width_of(&String::from_utf8_lossy(&text.as_bytes())))
         });
+        methods.add_method("get_height", |_, this, ()| Ok(this.0.height()));
+    }
+}
+
+/// the `Image` userdata lua sees; wraps a shared image so pending draw
+/// commands keep it alive after lua drops it, exactly like fonts
+struct LuaImage(Rc<Image>);
+
+impl UserData for LuaImage {
+    fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
+        methods.add_method("get_width", |_, this, ()| Ok(this.0.width()));
         methods.add_method("get_height", |_, this, ()| Ok(this.0.height()));
     }
 }
@@ -491,6 +503,60 @@ pub fn register(lua: &Lua, engine: &Shared) -> mlua::Result<()> {
         )?,
     )?;
 
+    let eng = engine.clone();
+    renderer.set(
+        "draw_image",
+        lua.create_function(
+            // draw_image(image, x, y)              natural size
+            // draw_image(image, x, y, color)       natural size, tinted
+            // draw_image(image, x, y, w, h)        scaled
+            // draw_image(image, x, y, w, h, color) scaled, tinted
+            move |_,
+                  (img, x, y, fourth, h, color): (
+                AnyUserData,
+                f64,
+                f64,
+                Option<Value>,
+                Option<f64>,
+                Option<Table>,
+            )| {
+                let img = img.borrow::<LuaImage>()?;
+                let (w, h, color) = match fourth {
+                    None | Some(Value::Nil) => (img.0.width(), img.0.height(), None),
+                    Some(Value::Table(t)) => (img.0.width(), img.0.height(), Some(t)),
+                    // as_f64 alone would miss this: mlua hands integral
+                    // lua numbers over as Value::Integer
+                    Some(v) => match (
+                        match v {
+                            Value::Integer(n) => Some(n as f64),
+                            Value::Number(n) => Some(n),
+                            _ => None,
+                        },
+                        h,
+                    ) {
+                        (Some(w), Some(h)) => (w as i32, h as i32, color),
+                        (Some(_), None) => {
+                            return Err(mlua::Error::runtime(
+                                "draw_image: width given without height",
+                            ));
+                        }
+                        (None, _) => {
+                            return Err(mlua::Error::runtime(
+                                "draw_image: expected a width or a color as the fourth argument",
+                            ));
+                        }
+                    },
+                };
+                eng.borrow_mut().cache.draw_image(
+                    &img.0,
+                    Rect::new(x as i32, y as i32, w, h),
+                    check_color(color)?,
+                );
+                Ok(())
+            },
+        )?,
+    )?;
+
     let font = lua.create_table()?;
     font.set(
         "load",
@@ -505,6 +571,23 @@ pub fn register(lua: &Lua, engine: &Shared) -> mlua::Result<()> {
         })?,
     )?;
     renderer.set("font", font)?;
+
+    let image = lua.create_table()?;
+    image.set(
+        "load",
+        lua.create_function(|_, filename: LuaString| {
+            match Image::load(&lua_path(&filename)) {
+                Ok(image) => Ok(LuaImage(Rc::new(image))),
+                // raises like font.load: the renderer.*.load pair share
+                // one error contract
+                Err(err) => Err(mlua::Error::runtime(format!(
+                    "failed to load image: {}: {err}",
+                    lua_path(&filename).display()
+                ))),
+            }
+        })?,
+    )?;
+    renderer.set("image", image)?;
 
     // register like lite's luaL_requiref: as globals and in package.loaded
     let loaded: Table = lua

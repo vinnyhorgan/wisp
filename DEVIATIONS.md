@@ -112,6 +112,11 @@ message in the status bar. files passed on the command line get the same
 treatment (wrapped in `core.try`), so `wisp some.bin` starts the editor
 with a message instead of dying.
 
+the refusal is the default, not a dogma: the core can draw images now
+(see the core notes), so a view that claims a file type can open it --
+phase d's imageview will claim pngs and jpegs, and the docview keeps
+refusing everything binary that nothing claims.
+
 ## 8. horizontal scrolling
 
 **files:** `data/core/view.lua`, `data/core/docview.lua`,
@@ -346,3 +351,13 @@ differences, all deliberate:
   options: `cwd`, `env` (merged over the parent's), `stderr = "stdout"`
   to interleave. there is no blocking wait, by design: poll from a
   `core.add_thread` coroutine, like every other background task.
+- `renderer.image.load(filename)` decodes a png or jpeg (sniffed by
+  content, not extension) into an immutable image;
+  `renderer.draw_image(image, x, y [, w, h] [, color])` draws it,
+  scaled nearest-neighbor to `w`x`h` when given (natural size
+  otherwise) and tinted by `color` (white is identity, like
+  draw_text). immutability is the design: a draw command snapshots the
+  image by reference, so the pixels painted are the pixels seen when
+  the command was recorded -- the trap that sank lite-xl's canvas
+  attempts. load raises on failure, exactly like `renderer.font.load`.
+  lite had no image surface at all.

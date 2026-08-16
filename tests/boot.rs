@@ -1899,3 +1899,61 @@ fn collapsing_a_wide_folder_reclamps_the_scroll() {
         "the collapsed folder's width still holds the treeview panned"
     );
 }
+
+// the image api's consumer, proven in-suite before the core freezes: a
+// view (here the rootview, standing in for phase d's imageview) loads a
+// png and draws it natural, scaled, and tinted
+#[test]
+fn lua_can_load_and_draw_images() {
+    let _serial = serial();
+    let root = copy_data_root("imageroot");
+    // the 2x2 test card: red, green / blue, white, fully opaque
+    let card = image::RgbaImage::from_fn(2, 2, |x, y| match (x, y) {
+        (0, 0) => image::Rgba([255, 0, 0, 255]),
+        (1, 0) => image::Rgba([0, 255, 0, 255]),
+        (0, 1) => image::Rgba([0, 0, 255, 255]),
+        _ => image::Rgba([255, 255, 255, 255]),
+    });
+    let fixture = root.join("card.png");
+    card.save(&fixture).unwrap();
+    std::fs::write(
+        root.join("data/user/init.lua"),
+        format!(
+            r#"
+local RootView = require "core.rootview"
+local img = renderer.image.load [[{}]]
+assert(img:get_width() == 2 and img:get_height() == 2)
+local draw = RootView.draw
+function RootView:draw(...)
+  draw(self, ...)
+  renderer.draw_image(img, 100, 100, 64, 64)
+  renderer.draw_image(img, 300, 100)
+  renderer.draw_rect(500, 100, 64, 64, {{ 0, 0, 0, 255 }})
+  renderer.draw_image(img, 500, 100, 64, 64, {{ 255, 255, 255, 128 }})
+end
+"#,
+            fixture.display()
+        ),
+    )
+    .unwrap();
+
+    let mut editor =
+        Headless::boot_with_exedir(&root.display().to_string(), &project_dir(), 900, 600, 1.0);
+    editor.run_until_frames(1, 10_000);
+    let (pixels, w, _) = editor.last_frame();
+    let at = |x: i32, y: i32| pixels[(y * w + x) as usize];
+
+    // scaled 2x2 -> 64x64: each source pixel is a clean 32x32 block
+    assert_eq!(at(110, 110), 0xff0000);
+    assert_eq!(at(150, 110), 0x00ff00);
+    assert_eq!(at(110, 150), 0x0000ff);
+    assert_eq!(at(150, 150), 0xffffff);
+    // natural size: exactly 2x2, not a pixel more
+    assert_eq!(at(300, 100), 0xff0000);
+    assert_eq!(at(301, 100), 0x00ff00);
+    assert_eq!(at(300, 101), 0x0000ff);
+    assert_eq!(at(301, 101), 0xffffff);
+    assert_ne!(at(302, 100), 0x00ff00);
+    // half-alpha tint over the black square: exactly half red
+    assert_eq!(at(510, 110), 0x800000);
+}
