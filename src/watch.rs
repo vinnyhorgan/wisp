@@ -11,11 +11,20 @@
 //! murky to trust -- the consumer's cue to walk the tree again. a
 //! rename reports both paths when the backend has them.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 
 use notify::event::ModifyKind;
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+
+/// queue cap between the backend thread and `poll()`: a mass churn (a
+/// branch switch, a build) must not grow memory without bound on a slow
+/// poller. overflow collapses into a single "rescan" -- the honest
+/// answer to more activity than anyone wants itemized
+const QUEUE_CAP: usize = 4096;
 
 pub struct Change {
     pub kind: &'static str,
@@ -27,14 +36,28 @@ pub struct Watch {
     /// kept alive for the stream; dropping it stops the backend thread
     _watcher: RecommendedWatcher,
     rx: mpsc::Receiver<notify::Result<notify::Event>>,
+    /// the backend hit a full queue; latched until the next poll
+    overflowed: Arc<AtomicBool>,
+    /// the backend died; reported as one final "rescan", then silence
+    dead: bool,
 }
 
 impl Watch {
     /// watches `root` and everything under it
     pub fn open(root: &Path) -> Result<Watch, String> {
-        let (tx, rx) = mpsc::channel();
+        Watch::open_with_cap(root, QUEUE_CAP)
+    }
+
+    fn open_with_cap(root: &Path, cap: usize) -> Result<Watch, String> {
+        let (tx, rx) = mpsc::sync_channel(cap);
+        let overflowed = Arc::new(AtomicBool::new(false));
+        let flag = overflowed.clone();
         let mut watcher = notify::recommended_watcher(move |res| {
-            let _ = tx.send(res);
+            // never block the backend thread: on a full queue, drop the
+            // event and latch the flag instead
+            if let Err(mpsc::TrySendError::Full(_)) = tx.try_send(res) {
+                flag.store(true, Ordering::Relaxed);
+            }
         })
         .map_err(|err| format!("failed to watch: {err}"))?;
         watcher
@@ -44,19 +67,39 @@ impl Watch {
             root: root.to_owned(),
             _watcher: watcher,
             rx,
+            overflowed,
+            dead: false,
         })
     }
 
     /// everything that happened since the last poll; never blocks
     pub fn poll(&mut self) -> Vec<Change> {
         let mut out: Vec<Change> = Vec::new();
-        let push = |out: &mut Vec<Change>, kind: &'static str, path: PathBuf| {
-            // fs activity comes in bursts of duplicates; keep one
-            if !out.iter().any(|c| c.kind == kind && c.path == path) {
+        // fs activity comes in bursts of duplicates; keep one of each
+        let mut seen: HashSet<(&'static str, PathBuf)> = HashSet::new();
+        let mut push = |out: &mut Vec<Change>, kind: &'static str, path: PathBuf| {
+            if seen.insert((kind, path.clone())) {
                 out.push(Change { kind, path });
             }
         };
-        while let Ok(res) = self.rx.try_recv() {
+        if self.overflowed.swap(false, Ordering::Relaxed) {
+            push(&mut out, "rescan", self.root.clone());
+        }
+        loop {
+            let res = match self.rx.try_recv() {
+                Ok(res) => res,
+                Err(mpsc::TryRecvError::Empty) => break,
+                // the backend thread is gone: whatever happens on disk
+                // from here on is invisible. say "rescan" once so the
+                // consumer falls back to scanning, then stay quiet
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    if !self.dead {
+                        self.dead = true;
+                        push(&mut out, "rescan", self.root.clone());
+                    }
+                    break;
+                }
+            };
             let event = match res {
                 Ok(event) => event,
                 // a backend error means changes may have been missed
@@ -181,5 +224,52 @@ mod tests {
     #[test]
     fn watching_a_missing_path_is_an_error_not_a_panic() {
         assert!(Watch::open(Path::new("/nonexistent/wisp-void")).is_err());
+    }
+
+    #[test]
+    fn a_flood_overflows_into_a_single_rescan() {
+        // more events than the queue holds must not grow memory or get
+        // lost silently: the overflow is reported as a rescan
+        let dir = scratch("flood");
+        let mut w = Watch::open_with_cap(&dir, 4).unwrap();
+        for i in 0..50 {
+            std::fs::write(dir.join(format!("f{i}")), b"x").unwrap();
+        }
+        assert!(
+            poll_until(&mut w, 5000, |seen| seen.iter().any(|c| c.kind == "rescan")),
+            "queue overflow never reported a rescan"
+        );
+    }
+
+    #[test]
+    fn a_dead_backend_says_rescan_once_then_stays_quiet() {
+        let dir = scratch("dead");
+        let mut w = Watch::open(&dir).unwrap();
+        // sever the channel the way a dying backend thread would: by
+        // dropping the sender side
+        let (_, rx) = mpsc::sync_channel(1);
+        w.rx = rx;
+        let first = w.poll();
+        assert!(
+            first.iter().any(|c| c.kind == "rescan"),
+            "backend death went silent instead of saying rescan"
+        );
+        assert!(w.poll().is_empty(), "the final rescan repeated");
+    }
+
+    #[test]
+    fn deleting_the_watched_root_is_reported() {
+        let dir = scratch("gone");
+        let mut w = Watch::open(&dir).unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        // the exact shape is backend-specific (a delete of the root or
+        // a rescan); what matters is that it is not silence
+        assert!(
+            poll_until(&mut w, 5000, |seen| {
+                seen.iter()
+                    .any(|c| c.kind == "delete" || c.kind == "rescan")
+            }),
+            "root deletion went unreported"
+        );
     }
 }
