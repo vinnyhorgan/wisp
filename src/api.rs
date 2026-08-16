@@ -456,7 +456,9 @@ pub fn register(lua: &Lua, engine: &Shared) -> mlua::Result<()> {
             let mode = mode.unwrap_or_else(|| "normal".to_owned());
             // same contract as set_cursor: lite raised on unknown modes
             if !["normal", "maximized", "fullscreen"].contains(&mode.as_str()) {
-                return Err(mlua::Error::runtime(format!("invalid window mode {mode:?}")));
+                return Err(mlua::Error::runtime(format!(
+                    "invalid window mode {mode:?}"
+                )));
             }
             eng.borrow_mut().platform.set_window_mode(&mode);
             Ok(())

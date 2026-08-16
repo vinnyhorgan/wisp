@@ -273,7 +273,11 @@ impl App {
 /// nothing, and the wait loop re-parks on the still-infinite deadline
 fn clamp_deadline(now: f64, t: f64) -> f64 {
     let far = now + 86_400.0;
-    if t.is_finite() { t.clamp(0.0, far) } else { far }
+    if t.is_finite() {
+        t.clamp(0.0, far)
+    } else {
+        far
+    }
 }
 
 impl ApplicationHandler for App {
@@ -402,11 +406,9 @@ impl ApplicationHandler for App {
                     ElementState::Pressed => {
                         // the double-click slop scales with the display,
                         // so 2x screens keep the same physical feel
-                        let radius =
-                            8.0 * self
-                                .with_platform(|p| {
-                                    p.window.as_ref().map(|w| w.scale_factor())
-                                })
+                        let radius = 8.0
+                            * self
+                                .with_platform(|p| p.window.as_ref().map(|w| w.scale_factor()))
                                 .unwrap_or(1.0);
                         let clicks = self.clicks.press(name, self.now(), pos, radius);
                         self.push(Event::MousePressed(name, x, y, clicks));
