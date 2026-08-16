@@ -22,3 +22,4 @@ pub mod platform;
 pub mod process;
 pub mod rencache;
 pub mod renderer;
+pub mod terminal;
