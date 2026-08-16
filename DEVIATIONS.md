@@ -400,3 +400,11 @@ differences, all deliberate:
   `nil, error`. lua's `os` library is iso c only, which has no mkdir --
   the same hole lite-xl patched the same way. directory trees are a lua
   loop, like lite-xl's `common.mkdirp`.
+- `system.watch(path)` opens a recursive native fs watcher (inotify on
+  linux) returning `watcher, nil` or `nil, error`. `watcher:poll()`
+  drains everything since the last poll as `{kind, path}` pairs --
+  "create", "modify", "delete", "rename" (both ends when known), or
+  "rescan" when events were lost and the consumer should walk the tree
+  itself. never blocks; poll from a `core.add_thread` coroutine like
+  the process and terminal handles. lite rescans the project on a
+  timer; this exists so that rescan can one day be deleted.

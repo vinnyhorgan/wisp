@@ -23,3 +23,4 @@ pub mod process;
 pub mod rencache;
 pub mod renderer;
 pub mod terminal;
+pub mod watch;

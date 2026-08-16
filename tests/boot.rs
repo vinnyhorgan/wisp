@@ -2017,6 +2017,45 @@ io.open([[{}]], "w"):close()
     assert!(marker.exists(), "set_size misbehaved; see the user module");
 }
 
+#[test]
+fn fs_events_reach_a_lua_coroutine() {
+    let _serial = serial();
+    let root = copy_data_root("watchroot");
+    let marker = root.join("watch-ok");
+    std::fs::write(
+        root.join("data/user/init.lua"),
+        format!(
+            r#"
+-- the dirmonitor pattern: watch a tree, poll from a core thread,
+-- exactly how the project scan will one day stop being a timer
+local core = require "core"
+local w = assert(system.watch([[{root}]]))
+core.add_thread(function()
+  while true do
+    for _, change in ipairs(w:poll()) do
+      if change[2]:find("sentinel", 1, true) then
+        io.open([[{marker}]], "w"):close()
+        return
+      end
+    end
+    coroutine.yield(0.05)
+  end
+end)
+"#,
+            root = root.display(),
+            marker = marker.display()
+        ),
+    )
+    .unwrap();
+    let mut editor =
+        Headless::boot_with_exedir(&root.display().to_string(), &project_dir(), 900, 600, 1.0);
+    editor.run_until_frames(1, 10_000);
+    // an outside change: the editor must notice without any rescan
+    std::fs::write(root.join("sentinel.txt"), b"changed").unwrap();
+    let ok = poll_editor(&mut editor, 10, |_| marker.exists());
+    assert!(ok, "the fs event never reached the lua thread");
+}
+
 // --- the terminal: a real shell inside the editor ----------------------
 
 /// boots an editor whose terminal runs the given argv (written into the

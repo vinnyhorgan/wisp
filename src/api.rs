@@ -25,6 +25,7 @@ use crate::process;
 use crate::rencache::RenCache;
 use crate::renderer::{Color, Framebuffer, Rect};
 use crate::terminal;
+use crate::watch;
 
 /// everything the api closures share: the platform, the framebuffer and
 /// the draw-command cache
@@ -272,6 +273,27 @@ impl UserData for LuaTerminal {
         methods.add_method("running", |_, this, ()| Ok(this.0.borrow().running()));
         methods.add_method("returncode", |_, this, ()| Ok(this.0.borrow().exit_code()));
         methods.add_method("pid", |_, this, ()| Ok(this.0.borrow().pid()));
+    }
+}
+
+/// the watcher userdata behind `system.watch`: native fs events,
+/// drained by polling like every other background source. each change
+/// is a {kind, path} pair; "rescan" means events were lost and the
+/// consumer should walk the tree itself
+struct LuaWatch(RefCell<watch::Watch>);
+
+impl UserData for LuaWatch {
+    fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
+        methods.add_method("poll", |lua, this, ()| {
+            let out = lua.create_table()?;
+            for (i, change) in this.0.borrow_mut().poll().into_iter().enumerate() {
+                let pair = lua.create_table()?;
+                pair.set(1, change.kind)?;
+                pair.set(2, lua.create_string(change.path.as_os_str().as_bytes())?)?;
+                out.set(i + 1, pair)?;
+            }
+            Ok(out)
+        });
     }
 }
 
@@ -599,6 +621,16 @@ pub fn register(lua: &Lua, engine: &Shared) -> mlua::Result<()> {
                 Err(e) => Ok((None, Some(e))),
             }
         })?,
+    )?;
+
+    system.set(
+        "watch",
+        lua.create_function(
+            |_, path: LuaString| match watch::Watch::open(&lua_path(&path)) {
+                Ok(w) => Ok((Some(LuaWatch(RefCell::new(w))), None)),
+                Err(err) => Ok((None, Some(err))),
+            },
+        )?,
     )?;
 
     system.set(

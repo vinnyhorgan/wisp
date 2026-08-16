@@ -27,6 +27,9 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 # alacritty's vt engine and pty spawn -- the emulation, not the app.
 # its event loop threads are deliberately unused (see src/terminal.rs)
 alacritty_terminal = { version = "0.26", default-features = false }
+# native fs events (inotify on linux, pure rust over the syscalls);
+# its watcher thread stays inside the core, lua polls (src/watch.rs)
+notify = "8.2"
 
 [target.'cfg(unix)'.dependencies]
 # safe wrappers for sigterm (process:terminate) and o_nonblock on the
