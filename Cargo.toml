@@ -22,6 +22,8 @@ swash = "0.2"
 arboard = { version = "3", features = ["wayland-data-control"] }
 # the data/ tree baked into the binary, unpacked on first run
 include_dir = "0.7"
+# png and jpeg decoding, pure rust all the way down
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 
 [target.'cfg(unix)'.dependencies]
 # safe wrapper for sigterm (process:terminate); compiles no c

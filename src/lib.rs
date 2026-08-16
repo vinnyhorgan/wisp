@@ -16,6 +16,7 @@ pub mod desktop;
 mod embed;
 pub mod font;
 pub mod headless;
+pub mod image;
 mod keys;
 pub mod platform;
 pub mod process;
