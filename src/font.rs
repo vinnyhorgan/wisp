@@ -66,10 +66,16 @@ impl Font {
     /// chase down every captured reference (lite-xl's set_size, same
     /// shape). the glyph cache is dropped; the tab advance is left
     /// alone because the docview recomputes it on every draw. sizes
-    /// are clamped to at least 1px: a zero line height on the draw
-    /// path is fatal, not cosmetic
+    /// clamp to [1, 2048]: a zero line height on the draw path is
+    /// fatal, not cosmetic, and a glyph mask grows with the square of
+    /// the size -- unclamped, a huge size is an abortable multi-gb
+    /// allocation the moment anything rasterizes
     pub fn set_size(&self, size: f32) {
-        let size = if size.is_finite() { size.max(1.0) } else { 1.0 };
+        let size = if size.is_finite() {
+            size.clamp(1.0, 2048.0)
+        } else {
+            1.0
+        };
         let m = self.font_ref().metrics(&[]).scale(size);
         self.size.set(size);
         self.height
@@ -271,6 +277,11 @@ mod tests {
         assert!(font.height() >= 1);
         font.set_size(f32::NAN);
         assert!(font.height() >= 1);
+        // and the top end clamps too: unclamped, rasterizing a glyph at
+        // a huge size is a multi-gb allocation that aborts the process
+        font.set_size(1e9);
+        assert_eq!(font.size(), 2048.0);
+        assert!(!font.glyph('m').mask.is_empty());
     }
 
     #[test]
