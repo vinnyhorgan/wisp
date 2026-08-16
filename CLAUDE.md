@@ -79,6 +79,13 @@ way rxi intended.
   it (e.g. the docview widest-line cache).
 - `WISP_SCALE` overrides display scale on desktop; headless boots ignore
   it so tests render identically everywhere.
+- images are immutable by design: `renderer.image.load` decodes once
+  (png/jpeg, sniffed by content), draw commands snapshot by `Rc`, and
+  the rencache hashes the image's content hash, never its pointer.
+  `draw_image`'s nearest-neighbor mapping is a pure function of the
+  absolute offset inside the dest rect, so clipping skips pixels but
+  cannot shift them -- partial redraws of a scaled image are exact
+  (the artifact class that sank lite-xl's canvas, their #1438).
 
 ## headless testing patterns
 
@@ -117,8 +124,9 @@ way rxi intended.
 ## roadmap
 
 the roadmap lives in ROADMAP.md (git log is the truth when they
-disagree). short version: phase b finishes the core api (audit fixes,
-embedded data, images) and re-freezes the core, phase c tags v0.1.0,
-phase d is the plugin pass to v0.2.0, and beyond that: linters, a real
-terminal, helix mode. ROADMAP.md also keeps the ledger of dead claims
-and deliberate noes, so they are not re-chased.
+disagree). short version: phase b is done -- the core api is complete
+(audit fixes, embedded data, images) and re-frozen. phase c tags
+v0.1.0, phase d is the plugin pass to v0.2.0, and beyond that:
+linters, a real terminal (its pty is a deliberate core reopening when
+built, not before), helix mode. ROADMAP.md also keeps the ledger of
+dead claims and deliberate noes, so they are not re-chased.

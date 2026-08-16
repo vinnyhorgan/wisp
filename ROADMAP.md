@@ -1,8 +1,7 @@
 # roadmap
 
-updated 2026-08-15, after maxi-review #2. phases may rot -- git log is
-the truth. CLAUDE.md's roadmap section should eventually point here
-instead of duplicating this.
+updated 2026-08-16, at the close of phase b. phases may rot -- git log
+is the truth.
 
 ## done
 
@@ -20,20 +19,18 @@ instead of duplicating this.
   nothing-yet and nil at eof, gc kills and reaps. lite-xl's own
   maintainer retrospective (lite-xl #2087) later proposed exactly this
   convention as the fix for their api -- shipped here first.
-
-## phase b -- core api milestone (the last core surgery, then re-freeze)
-
-- **audit fix plan** (see AUDIT-FIX-PLAN.md): the maxi-review's bug
-  fixes, polish, cwd default, and embedded data/ single binary.
-- **images**: pure-rust decode, a draw-image rencache command honoring
-  the painted-pixels-subset-of-hashed-cells ink invariant, §7's binary
-  refusal becomes "refused unless a view claims it". lite-xl's one
-  canvas attempt (#1438) never merged and documents the two hard
-  problems: snapshot pixel data at command-record time (rencache
-  defers execution), and never paint outside the hashed rect under
-  scaling.
-- **terminal groundwork lands here too if we take it** (see below) --
-  a pty is core surface, and the core freezes after phase b.
+- **phase b -- the core api milestone.** the maxi-review's fix plan
+  (bug fixes, polish, cwd default, ci, embedded-data single binary)
+  and the image surface: pure-rust png/jpeg decode, an immutable
+  `Image` snapshotted by `Rc` into the rencache and hashed by content
+  (never by pointer), nearest-neighbor scaling whose source mapping is
+  absolute so partial redraws are exact -- the two traps that sank
+  lite-xl's canvas attempts (#1438, #2198), both impossible here by
+  construction. `renderer.image.load` + `renderer.draw_image`, proven
+  in-suite by a drawing view before the freeze. the terminal's pty was
+  deliberately not landed: its consumer lives beyond v0.2.0, and an
+  api that sits unconsumed through the whole plugin pass is exactly
+  the speculation the constitution forbids. the core is re-frozen.
 
 ## phase c -- v0.1.0, the plugin baseline
 
@@ -83,7 +80,10 @@ ideas agreed in spirit, not yet scheduled or designed:
   candidate is `alacritty_terminal` -- pure rust, battle-tested, used
   by other editors; wisp draws its grid through the renderer it
   already has (the mono nerd font and rencache's cell hashing are
-  practically purpose-built for a terminal grid). also quietly solves
+  practically purpose-built for a terminal grid). decided at phase b's
+  close: the pty enters the core the day the terminal is built,
+  together with the view that consumes it -- a deliberate reopening,
+  same bar as spawn cleared, never a parked api. also quietly solves
   the ai dilemma: a real terminal runs any terminal-based agent, no ai
   integration required in the editor itself.
 - **fs events (a dirmonitor).** stronger than it first looks: the
