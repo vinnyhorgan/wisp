@@ -1958,6 +1958,35 @@ end
     assert_eq!(at(510, 110), 0x800000);
 }
 
+#[test]
+fn mkdir_creates_a_directory_once() {
+    let _serial = serial();
+    let root = copy_data_root("mkdirroot");
+    let marker = root.join("mkdir-ok");
+    std::fs::write(
+        root.join("data/user/init.lua"),
+        format!(
+            r#"
+local made = [[{root}]] .. "/made"
+assert(system.mkdir(made) == true)
+local info = system.get_file_info(made)
+assert(info and info.type == "dir")
+-- a second creation reports the failure instead of raising
+local again, err = system.mkdir(made)
+assert(again == nil and type(err) == "string")
+io.open([[{marker}]], "w"):close()
+"#,
+            root = root.display(),
+            marker = marker.display()
+        ),
+    )
+    .unwrap();
+    let mut editor =
+        Headless::boot_with_exedir(&root.display().to_string(), &project_dir(), 900, 600, 1.0);
+    editor.run_until_frames(1, 10_000);
+    assert!(marker.exists(), "mkdir did not behave; see the user module");
+}
+
 // --- the terminal: a real shell inside the editor ----------------------
 
 /// boots an editor whose terminal runs the given argv (written into the

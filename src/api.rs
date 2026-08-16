@@ -435,6 +435,18 @@ pub fn register(lua: &Lua, engine: &Shared) -> mlua::Result<()> {
         })?,
     )?;
 
+    // not lite: lua's os library is iso c only, which has no mkdir.
+    // single level, like lite-xl's -- directory trees are a lua loop
+    system.set(
+        "mkdir",
+        lua.create_function(
+            |lua, path: LuaString| match std::fs::create_dir(lua_path(&path)) {
+                Ok(()) => true.into_lua_multi(lua),
+                Err(err) => (Value::Nil, err.to_string()).into_lua_multi(lua),
+            },
+        )?,
+    )?;
+
     system.set(
         "absolute_path",
         lua.create_function(
