@@ -13,6 +13,7 @@
 use std::rc::Rc;
 
 use crate::font::Font;
+use crate::image::Image;
 use crate::renderer::{Color, Framebuffer, Rect};
 
 const CELL_SIZE: i32 = 96;
@@ -59,6 +60,14 @@ enum Command {
         color: Color,
         tab_advance: i32,
     },
+    DrawImage {
+        /// the rc is the snapshot: images are immutable, so the pixels
+        /// painted at end of frame are the pixels seen when recorded,
+        /// even if lua dropped the image in between
+        image: Rc<Image>,
+        rect: Rect,
+        tint: Color,
+    },
 }
 
 impl Command {
@@ -66,7 +75,8 @@ impl Command {
         match self {
             Command::SetClip { rect }
             | Command::DrawRect { rect, .. }
-            | Command::DrawText { rect, .. } => *rect,
+            | Command::DrawText { rect, .. }
+            | Command::DrawImage { rect, .. } => *rect,
         }
     }
 
@@ -102,6 +112,12 @@ impl Command {
                 h.write_i32(*y);
                 h.write_i32(*tab_advance);
                 h.write(text.as_bytes());
+            }
+            Command::DrawImage { image, tint, .. } => {
+                h.write(&[3, tint.r, tint.g, tint.b, tint.a]);
+                // the content hash, not the pointer: a new image loaded
+                // at a freed image's address can never be mistaken for it
+                h.write(&image.content_hash().to_le_bytes());
             }
         }
         h.0
@@ -213,6 +229,17 @@ impl RenCache {
         x.saturating_add(width)
     }
 
+    pub fn draw_image(&mut self, image: &Rc<Image>, rect: Rect, tint: Color) {
+        if !self.screen.overlaps(rect) {
+            return;
+        }
+        self.commands.push(Command::DrawImage {
+            image: Rc::clone(image),
+            rect,
+            tint,
+        });
+    }
+
     fn update_overlapping_cells(&mut self, r: Rect, h: u32) {
         let x1 = (r.x / CELL_SIZE).max(0);
         let y1 = (r.y / CELL_SIZE).max(0);
@@ -297,6 +324,12 @@ impl RenCache {
                         font.set_tab_advance(*tab_advance);
                         fb.draw_text(font, text, *x, *y, *color);
                         fb.set_clip(cr);
+                    }
+                    // ink is exactly the dest rect, which is the hashed
+                    // rect, so the current clip already suffices -- same
+                    // footing as DrawRect
+                    Command::DrawImage { image, rect, tint } => {
+                        fb.draw_image(image, *rect, *tint);
                     }
                 }
             }
@@ -426,6 +459,42 @@ mod tests {
     }
 
     #[test]
+    fn swapping_an_image_for_an_equal_sized_one_is_detected() {
+        // same dimensions, same dest rect, different pixels: only the
+        // content hash can tell these apart -- a pointer-based hash would
+        // go stale the moment an allocation is reused
+        let solid = |v: u8| {
+            let mut d = [v; 16];
+            for a in d.iter_mut().skip(3).step_by(4) {
+                *a = 255;
+            }
+            d
+        };
+        let a = Rc::new(Image::from_rgba(2, 2, &solid(10)).unwrap());
+        let b = Rc::new(Image::from_rgba(2, 2, &solid(200)).unwrap());
+        let dest = Rect::new(20, 20, 40, 40);
+        let mut cache = RenCache::new();
+        let mut fb = Framebuffer::new(400, 300);
+
+        let mut frame = |img: &Rc<Image>, cache: &mut RenCache, fb: &mut Framebuffer| {
+            cache.begin_frame(fb.width, fb.height);
+            cache.set_clip_rect(Rect::new(0, 0, fb.width, fb.height));
+            cache.draw_image(img, dest, WHITE);
+            cache.end_frame(fb)
+        };
+
+        frame(&a, &mut cache, &mut fb);
+        let unchanged = frame(&a, &mut cache, &mut fb);
+        assert!(unchanged.is_empty(), "same image redrew {unchanged:?}");
+        let rects = frame(&b, &mut cache, &mut fb);
+        assert!(
+            rects.iter().any(|r| r.intersect(dest) == dest),
+            "dirty rects {rects:?} must cover the swapped image"
+        );
+        assert_eq!(fb.pixels[(30 * 400 + 30) as usize], 0xc8c8c8);
+    }
+
+    #[test]
     fn clip_rect_limits_dirty_region() {
         let mut cache = RenCache::new();
         let mut fb = Framebuffer::new(400, 300);
@@ -447,6 +516,10 @@ mod tests {
     enum Cmd {
         Clip(Rect),
         Fill(Rect, Color),
+        // a fresh 2x2 image is built from these bytes on every replay, so
+        // these tests also pin the hash to content: were the rc pointer
+        // hashed instead, repeating a frame would never be free
+        Blit(Rect, [u8; 16], Color),
     }
 
     fn arb_rect() -> impl Strategy<Value = Rect> {
@@ -454,11 +527,16 @@ mod tests {
             .prop_map(|(x, y, w, h)| Rect::new(x, y, w, h))
     }
 
+    fn arb_color() -> impl Strategy<Value = Color> {
+        any::<(u8, u8, u8, u8)>().prop_map(|(r, g, b, a)| Color { r, g, b, a })
+    }
+
     fn arb_cmd() -> impl Strategy<Value = Cmd> {
         prop_oneof![
             1 => arb_rect().prop_map(Cmd::Clip),
-            4 => (arb_rect(), any::<(u8, u8, u8, u8)>())
-                .prop_map(|(r, (cr, cg, cb, ca))| Cmd::Fill(r, Color { r: cr, g: cg, b: cb, a: ca })),
+            4 => (arb_rect(), arb_color()).prop_map(|(r, c)| Cmd::Fill(r, c)),
+            2 => (arb_rect(), any::<[u8; 16]>(), arb_color())
+                .prop_map(|(r, px, c)| Cmd::Blit(r, px, c)),
         ]
     }
 
@@ -483,6 +561,10 @@ mod tests {
             match *cmd {
                 Cmd::Clip(r) => cache.set_clip_rect(r),
                 Cmd::Fill(r, c) => cache.draw_rect(r, c),
+                Cmd::Blit(r, px, c) => {
+                    let img = Rc::new(Image::from_rgba(2, 2, &px).unwrap());
+                    cache.draw_image(&img, r, c);
+                }
             }
         }
         cache.end_frame(fb)

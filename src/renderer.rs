@@ -6,6 +6,7 @@
 //! overflowing.
 
 use crate::font::Font;
+use crate::image::Image;
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
 pub struct Color {
@@ -171,6 +172,46 @@ impl Framebuffer {
         }
     }
 
+    /// draws `image` scaled to fill `dest` (nearest neighbor), tinted by
+    /// `color` -- white is identity, like draw_text. every output pixel
+    /// maps to its source pixel from its absolute offset in `dest` alone,
+    /// so clipping skips pixels but can never shift the mapping: a scaled
+    /// image redrawn in parts is pixel-identical to one drawn whole. the
+    /// rounding artifacts that sank lite-xl's first canvas (#1438) came
+    /// from scaling the clipped subrect instead
+    pub fn draw_image(&mut self, image: &Image, dest: Rect, color: Color) {
+        if color.a == 0 || dest.is_empty() {
+            return;
+        }
+        let sub = dest.intersect(self.clip);
+        if sub.is_empty() {
+            return;
+        }
+        for j in 0..sub.height {
+            let oy = sub.y as i64 - dest.y as i64 + j as i64;
+            let sy = (oy * image.height() as i64 / dest.height as i64) as i32;
+            let dst_row = ((sub.y + j) * self.width + sub.x) as usize;
+            for i in 0..sub.width {
+                let ox = sub.x as i64 - dest.x as i64 + i as i64;
+                let sx = (ox * image.width() as i64 / dest.width as i64) as i32;
+                let c = image.pixel(sx, sy);
+                let a = mul255(c.a, color.a);
+                if a == 0 {
+                    continue;
+                }
+                let r = mul255(c.r, color.r);
+                let g = mul255(c.g, color.g);
+                let b = mul255(c.b, color.b);
+                let px = &mut self.pixels[dst_row + i as usize];
+                *px = if a == 255 {
+                    pack(r, g, b)
+                } else {
+                    blend(*px, r, g, b, a)
+                };
+            }
+        }
+    }
+
     /// draws `text` with its top-left corner at (x, y); returns the pen x
     /// position after the last glyph
     pub fn draw_text(&mut self, font: &Font, text: &str, x: i32, y: i32, color: Color) -> i32 {
@@ -268,6 +309,85 @@ mod tests {
         assert!(a.intersect(Rect::new(20, 20, 5, 5)).is_empty());
     }
 
+    /// a 2x2 test card: red, green / blue, white
+    fn card() -> Image {
+        Image::from_rgba(
+            2,
+            2,
+            &[
+                255, 0, 0, 255, 0, 255, 0, 255, //
+                0, 0, 255, 255, 255, 255, 255, 255,
+            ],
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn image_draws_at_natural_size() {
+        let mut fb = Framebuffer::new(6, 6);
+        fb.draw_image(&card(), Rect::new(1, 2, 2, 2), color(255, 255, 255, 255));
+        assert_eq!(fb.pixels[(2 * 6 + 1) as usize], pack(255, 0, 0));
+        assert_eq!(fb.pixels[(2 * 6 + 2) as usize], pack(0, 255, 0));
+        assert_eq!(fb.pixels[(3 * 6 + 1) as usize], pack(0, 0, 255));
+        assert_eq!(fb.pixels[(3 * 6 + 2) as usize], pack(255, 255, 255));
+        // and not a pixel more
+        let inked = fb.pixels.iter().filter(|&&p| p != 0).count();
+        assert_eq!(inked, 4);
+    }
+
+    #[test]
+    fn nearest_upscale_maps_pixels_exactly() {
+        let mut fb = Framebuffer::new(4, 4);
+        fb.draw_image(&card(), Rect::new(0, 0, 4, 4), color(255, 255, 255, 255));
+        // each source pixel becomes a clean 2x2 block
+        for (x, y, want) in [
+            (0, 0, pack(255, 0, 0)),
+            (1, 1, pack(255, 0, 0)),
+            (3, 0, pack(0, 255, 0)),
+            (0, 3, pack(0, 0, 255)),
+            (3, 3, pack(255, 255, 255)),
+        ] {
+            assert_eq!(fb.pixels[(y * 4 + x) as usize], want, "at ({x}, {y})");
+        }
+    }
+
+    #[test]
+    fn image_alpha_and_tint_blend_exactly() {
+        // a half-transparent white source pixel over black must give 128,
+        // and a tint must multiply both color and alpha
+        let img = Image::from_rgba(1, 1, &[255, 255, 255, 128]).unwrap();
+        let mut fb = Framebuffer::new(1, 1);
+        fb.draw_image(&img, Rect::new(0, 0, 1, 1), color(255, 255, 255, 255));
+        assert_eq!(fb.pixels[0], pack(128, 128, 128));
+
+        let mut fb = Framebuffer::new(1, 1);
+        let opaque = Image::from_rgba(1, 1, &[255, 255, 255, 255]).unwrap();
+        fb.draw_image(&opaque, Rect::new(0, 0, 1, 1), color(255, 0, 0, 128));
+        assert_eq!(fb.pixels[0], pack(128, 0, 0));
+    }
+
+    // the regression lite-xl's first canvas shipped (#1438): repainting
+    // part of a scaled image produced different pixels than painting it
+    // whole, because the clipped subrect was scaled instead of the whole
+    // image. wisp's mapping is absolute, so any partition of the screen
+    // into clips must reproduce the unclipped frame bit for bit
+    #[test]
+    fn a_scaled_image_redrawn_in_parts_matches_the_whole() {
+        let img =
+            Image::from_rgba(3, 3, &(0..36).map(|i| (i * 7) as u8).collect::<Vec<_>>()).unwrap();
+        // awkward scale and offset on purpose: 3x3 into 17x13 at (-2, 3)
+        let dest = Rect::new(-2, 3, 17, 13);
+        let mut whole = Framebuffer::new(16, 16);
+        whole.draw_image(&img, dest, color(255, 255, 255, 255));
+
+        let mut parts = Framebuffer::new(16, 16);
+        for (cx, cy, cw, ch) in [(0, 0, 7, 16), (7, 0, 9, 5), (7, 5, 9, 11)] {
+            parts.set_clip(Rect::new(cx, cy, cw, ch));
+            parts.draw_image(&img, dest, color(255, 255, 255, 255));
+        }
+        assert_eq!(whole.pixels, parts.pixels);
+    }
+
     #[test]
     fn extreme_rects_do_not_overflow() {
         let huge = Rect::new(i32::MIN, i32::MIN, i32::MAX, i32::MAX);
@@ -295,6 +415,31 @@ mod tests {
             )),
             ..ProptestConfig::default()
         })]
+
+        // any destination with any clip must never panic, and must never
+        // write a single pixel outside the clip region
+        #[test]
+        fn draw_image_respects_clip_for_any_input(
+            dx in any::<i32>(), dy in any::<i32>(),
+            dw in any::<i32>(), dh in any::<i32>(),
+            cx in -20..20i32, cy in -20..20i32,
+            cw in 0..30i32, ch in 0..30i32,
+        ) {
+            let mut fb = Framebuffer::new(16, 16);
+            fb.set_clip(Rect::new(cx, cy, cw, ch));
+            let img = Image::from_rgba(2, 2, &[255; 16]).unwrap();
+            fb.draw_image(&img, Rect::new(dx, dy, dw, dh), color(255, 255, 255, 255));
+            let clip = Rect::new(cx, cy, cw, ch).intersect(Rect::new(0, 0, 16, 16));
+            for y in 0..16 {
+                for x in 0..16 {
+                    let inside = x >= clip.x && x < clip.x + clip.width
+                        && y >= clip.y && y < clip.y + clip.height;
+                    if !inside {
+                        prop_assert_eq!(fb.pixels[(y * 16 + x) as usize], 0);
+                    }
+                }
+            }
+        }
 
         // any rect with any clip must never panic, and must never write a
         // single pixel outside the clip region
