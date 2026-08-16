@@ -1957,3 +1957,91 @@ end
     // half-alpha tint over the black square: exactly half red
     assert_eq!(at(510, 110), 0x800000);
 }
+
+// --- the terminal: a real shell inside the editor ----------------------
+
+/// boots an editor whose terminal runs the given argv (written into the
+/// user module of a copied data tree)
+fn boot_terminal_editor(name: &str, argv_lua: &str) -> Headless {
+    let root = copy_data_root(name);
+    std::fs::write(
+        root.join("data/user/init.lua"),
+        format!("local config = require \"core.config\"\nconfig.terminal_argv = {argv_lua}\n"),
+    )
+    .unwrap();
+    let mut editor =
+        Headless::boot_with_exedir(&root.display().to_string(), &project_dir(), 900, 600, 1.0);
+    editor.run_until_frames(1, 10_000);
+    editor
+}
+
+/// real-time polling: terminal output arrives on the real clock even
+/// though the editor's clock is virtual
+fn poll_editor(
+    editor: &mut Headless,
+    secs: u64,
+    mut done: impl FnMut(&mut Headless) -> bool,
+) -> bool {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(secs);
+    while std::time::Instant::now() < deadline {
+        editor.run_steps(200);
+        if done(editor) {
+            return true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    false
+}
+
+#[test]
+fn a_real_shell_runs_inside_the_editor() {
+    let _serial = serial();
+    let mut editor = boot_terminal_editor("termshell", r#"{ "/bin/sh" }"#);
+    ctrl(&editor, "`");
+    editor.run_steps(200);
+    assert!(
+        editor.window_title().contains("terminal"),
+        "terminal view did not focus: {}",
+        editor.window_title()
+    );
+    // ask the shell to paint four cells in ansi red; the plugin maps
+    // color 1 to catppuccin red #f38ba8, so the pixels are exact
+    editor.push_event(Event::TextInput(r"printf '\033[41m    \033[0m'".into()));
+    editor.run_steps(50);
+    press(&editor, "return");
+    let red = 0xf38ba8;
+    let ok = poll_editor(&mut editor, 10, |e| {
+        e.last_frame().0.iter().filter(|&&p| p == red).count() > 100
+    });
+    assert!(ok, "no ansi-red pixels appeared within the timeout");
+}
+
+#[test]
+fn the_palette_still_opens_over_a_focused_terminal() {
+    let _serial = serial();
+    let mut editor = boot_terminal_editor("termpalette", r#"{ "/bin/sh" }"#);
+    ctrl(&editor, "`");
+    editor.run_steps(200);
+    assert!(editor.window_title().contains("terminal"));
+    // ctrl+shift+p is on the pass-through list: it must reach the
+    // editor, not the shell, and the palette must work normally
+    palette(&mut editor, "core: open user module");
+    let ok = poll_editor(&mut editor, 5, |e| e.window_title().contains("init.lua"));
+    assert!(
+        ok,
+        "palette did not run over the terminal: {}",
+        editor.window_title()
+    );
+}
+
+#[test]
+fn a_finished_shell_closes_its_tab() {
+    let _serial = serial();
+    let mut editor = boot_terminal_editor("termexit", r#"{ "/bin/sh", "-c", "exit 0" }"#);
+    ctrl(&editor, "`");
+    editor.run_steps(100);
+    // the shell exits immediately; the poller must notice and close the
+    // tab, dropping the title back to the document view
+    let ok = poll_editor(&mut editor, 5, |e| !e.window_title().contains("terminal"));
+    assert!(ok, "terminal tab never closed: {}", editor.window_title());
+}

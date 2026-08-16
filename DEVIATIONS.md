@@ -297,6 +297,22 @@ the command line named no directory, so a bare `lite` opened its own
 installation as the project (lite issue #153). a bare `wisp` opens the
 directory it was launched from, like every other terminal program.
 
+## 12. a real terminal
+
+**files:** `data/plugins/terminal.lua` (new)
+
+lite's answer to a terminal was the toy console plugin. wisp ships a
+real one: the core embeds alacritty's vt engine on a polled pty
+(`system.terminal`, see the core notes), and this plugin is everything
+visible -- the grid drawn as style runs in the code font, catppuccin
+mocha's official terminal palette, key-to-escape translation, 10k
+lines of scrollback on the wheel, osc titles in the tab. while a
+terminal has focus its keys belong to the shell; the handful of
+editor keys that stay editor keys live in
+`config.terminal_pass_through` (the palette, `ctrl+\``, tab and split
+navigation). `terminal:toggle` on `ctrl+\`` jumps between the
+terminal and the last view; a finished shell closes its own tab.
+
 ## kept on purpose
 
 lite behaviors evaluated deliberately and kept, recorded so they are
@@ -361,3 +377,11 @@ differences, all deliberate:
   the command was recorded -- the trap that sank lite-xl's canvas
   attempts. load raises on failure, exactly like `renderer.font.load`.
   lite had no image surface at all.
+- `system.terminal(cols, rows, opts)` opens a pty running `opts.argv`
+  (or the user's own shell) with alacritty's vt engine behind it --
+  the emulation is byte-for-byte what alacritty ships, wisp draws the
+  grid. the handle follows the process api's polling contract: every
+  method returns immediately, `update()` drains the pty from a lua
+  coroutine, and a terminal the editor lets go of is killed and
+  reaped. TERM is xterm-256color; colors resolve through the app's
+  own osc overrides first, then the palette the lua theme sets.
