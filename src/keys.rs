@@ -24,6 +24,10 @@ pub fn key_name(key: &Key, location: KeyLocation) -> Option<String> {
                 NamedKey::Alt => return side("left alt", "right alt"),
                 NamedKey::AltGraph => "right alt",
                 NamedKey::Super | NamedKey::Meta => return side("left gui", "right gui"),
+                // enter is the one named key that keeps sdl's keypad
+                // prefix (the stock keymap binds "keypad enter"); numpad
+                // home/end/arrows deliberately name like their standard
+                // twins, so numlock-off navigation just works
                 NamedKey::Enter => {
                     if location == KeyLocation::Numpad {
                         "keypad enter"
@@ -63,6 +67,20 @@ pub fn key_name(key: &Key, location: KeyLocation) -> Option<String> {
                 NamedKey::F10 => "f10",
                 NamedKey::F11 => "f11",
                 NamedKey::F12 => "f12",
+                // sdl named these too; a user keymap must be able to
+                // bind the extended function row and the menu key
+                NamedKey::F13 => "f13",
+                NamedKey::F14 => "f14",
+                NamedKey::F15 => "f15",
+                NamedKey::F16 => "f16",
+                NamedKey::F17 => "f17",
+                NamedKey::F18 => "f18",
+                NamedKey::F19 => "f19",
+                NamedKey::F20 => "f20",
+                NamedKey::F21 => "f21",
+                NamedKey::F22 => "f22",
+                NamedKey::F23 => "f23",
+                NamedKey::F24 => "f24",
                 _ => return None,
             };
             Some(name.to_owned())
@@ -133,6 +151,10 @@ mod tests {
         assert_eq!(named(NamedKey::NumLock), "numlock");
         assert_eq!(named(NamedKey::ContextMenu), "application");
         assert_eq!(named(NamedKey::CapsLock), "capslock");
+        // the extended function row: unnamed keys are unbindable, so
+        // these must not fall into the catch-all
+        assert_eq!(named(NamedKey::F13), "f13");
+        assert_eq!(named(NamedKey::F24), "f24");
         for c in "abcdefghijklmnopqrstuvwxyz0123456789[]/\\-=".chars() {
             assert_eq!(ch(&c.to_string()), c.to_string());
         }
