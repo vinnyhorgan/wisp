@@ -1987,6 +1987,36 @@ io.open([[{marker}]], "w"):close()
     assert!(marker.exists(), "mkdir did not behave; see the user module");
 }
 
+#[test]
+fn set_size_rescales_a_font_for_every_holder() {
+    let _serial = serial();
+    let root = copy_data_root("fontsizeroot");
+    let marker = root.join("size-ok");
+    std::fs::write(
+        root.join("data/user/init.lua"),
+        format!(
+            r#"
+-- runtime zoom's core affordance: resize in place, every holder of
+-- the font object sees the new metrics, no references to chase
+local style = require "core.style"
+local h = style.code_font:get_height()
+local s = style.code_font:get_size()
+style.code_font:set_size(s * 2)
+assert(style.code_font:get_size() > s)
+assert(style.code_font:get_height() > h)
+io.open([[{}]], "w"):close()
+"#,
+            marker.display()
+        ),
+    )
+    .unwrap();
+    let mut editor =
+        Headless::boot_with_exedir(&root.display().to_string(), &project_dir(), 900, 600, 1.0);
+    // the frame itself is part of the proof: it drew at the new size
+    editor.run_until_frames(1, 10_000);
+    assert!(marker.exists(), "set_size misbehaved; see the user module");
+}
+
 // --- the terminal: a real shell inside the editor ----------------------
 
 /// boots an editor whose terminal runs the given argv (written into the

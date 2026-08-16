@@ -60,6 +60,13 @@ impl UserData for LuaFont {
             Ok(this.0.width_of(&String::from_utf8_lossy(&text.as_bytes())))
         });
         methods.add_method("get_height", |_, this, ()| Ok(this.0.height()));
+        // not lite: in-place resize for runtime zoom (lite-xl's shape).
+        // every holder of the font sees the new metrics immediately
+        methods.add_method("set_size", |_, this, size: f64| {
+            this.0.set_size(size as f32);
+            Ok(())
+        });
+        methods.add_method("get_size", |_, this, ()| Ok(this.0.size()));
     }
 }
 

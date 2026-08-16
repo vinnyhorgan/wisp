@@ -29,9 +29,9 @@ pub struct Font {
     data: Vec<u8>,
     offset: u32,
     key: CacheKey,
-    size: f32,
-    height: i32,
-    ascent: i32,
+    size: Cell<f32>,
+    height: Cell<i32>,
+    ascent: Cell<i32>,
     tab_advance: Cell<i32>,
     glyphs: RefCell<HashMap<char, Rc<Glyph>>>,
     context: RefCell<ScaleContext>,
@@ -43,24 +43,43 @@ impl Font {
         let font_ref = FontRef::from_index(&data, 0)
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "not a valid font"))?;
         let (offset, key) = (font_ref.offset, font_ref.key);
-        let m = font_ref.metrics(&[]).scale(size);
-        let height = (m.ascent + m.descent + m.leading + 0.5) as i32;
-        let ascent = (m.ascent + 0.5) as i32;
         let font = Font {
             data,
             offset,
             key,
-            size,
-            height,
-            ascent,
+            size: Cell::new(0.0),
+            height: Cell::new(0),
+            ascent: Cell::new(0),
             tab_advance: Cell::new(0),
             glyphs: RefCell::new(HashMap::new()),
             context: RefCell::new(ScaleContext::new()),
         };
+        font.set_size(size);
         // a sane default until lua calls set_tab_width; lite left this as
         // whatever the font baked for the tab glyph
         font.tab_advance.set(font.glyph(' ').advance * 2);
         Ok(font)
+    }
+
+    /// re-scales the font in place: every holder of this font sees the
+    /// new metrics, which is the whole point -- runtime zoom cannot
+    /// chase down every captured reference (lite-xl's set_size, same
+    /// shape). the glyph cache is dropped; the tab advance is left
+    /// alone because the docview recomputes it on every draw. sizes
+    /// are clamped to at least 1px: a zero line height on the draw
+    /// path is fatal, not cosmetic
+    pub fn set_size(&self, size: f32) {
+        let size = if size.is_finite() { size.max(1.0) } else { 1.0 };
+        let m = self.font_ref().metrics(&[]).scale(size);
+        self.size.set(size);
+        self.height
+            .set((m.ascent + m.descent + m.leading + 0.5) as i32);
+        self.ascent.set((m.ascent + 0.5) as i32);
+        self.glyphs.borrow_mut().clear();
+    }
+
+    pub fn size(&self) -> f32 {
+        self.size.get()
     }
 
     /// swash's borrowed view into the font data; cheap to construct
@@ -73,11 +92,11 @@ impl Font {
     }
 
     pub fn height(&self) -> i32 {
-        self.height
+        self.height.get()
     }
 
     pub fn ascent(&self) -> i32 {
-        self.ascent
+        self.ascent.get()
     }
 
     pub fn tab_advance(&self) -> i32 {
@@ -97,7 +116,7 @@ impl Font {
         let id = font_ref.charmap().map(ch);
         let advance = font_ref
             .glyph_metrics(&[])
-            .scale(self.size)
+            .scale(self.size.get())
             .advance_width(id)
             .floor() as i32;
 
@@ -112,7 +131,11 @@ impl Font {
             })
         } else {
             let mut context = self.context.borrow_mut();
-            let mut scaler = context.builder(font_ref).size(self.size).hint(true).build();
+            let mut scaler = context
+                .builder(font_ref)
+                .size(self.size.get())
+                .hint(true)
+                .build();
             let image = Render::new(&[Source::Outline]).render(&mut scaler, id);
             let (left, top, width, mask) = match image {
                 Some(img) => (
@@ -163,7 +186,7 @@ impl Font {
             if g.width > 0 && !g.mask.is_empty() {
                 let h = g.mask.len() as i64 / g.width as i64;
                 let x0 = pen + g.left as i64;
-                let y0 = (self.ascent - g.top) as i64;
+                let y0 = (self.ascent.get() - g.top) as i64;
                 let (x1, y1) = (x0 + g.width as i64, y0 + h);
                 b = Some(match b {
                     None => [x0, y0, x1, y1],
@@ -228,6 +251,26 @@ mod tests {
         font.set_tab_advance(42);
         assert_eq!(font.width_of("\t"), 42);
         assert_eq!(font.width_of("a\tb"), 42 + 2 * font.glyph('a').advance);
+    }
+
+    #[test]
+    fn set_size_rescales_in_place_and_drops_stale_glyphs() {
+        let font = Font::load(&font_path(), 14.0).unwrap();
+        let h14 = font.height();
+        let w14 = font.glyph('m').advance;
+        font.set_size(28.0);
+        assert_eq!(font.size(), 28.0);
+        assert!(font.height() > h14);
+        assert!(
+            font.glyph('m').advance > w14,
+            "the glyph cache served a stale size"
+        );
+        // hostile sizes clamp instead of producing a zero line height,
+        // which would be fatal on the draw path
+        font.set_size(0.0);
+        assert!(font.height() >= 1);
+        font.set_size(f32::NAN);
+        assert!(font.height() >= 1);
     }
 
     #[test]

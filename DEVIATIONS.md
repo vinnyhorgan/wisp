@@ -388,6 +388,14 @@ differences, all deliberate:
   mode bit the view's input, mouse and selection work needs is a
   getter on the handle: app cursor, bracketed paste, mouse protocol
   and encoding, alt screen, alternate scroll, per-row wrap.
+- `font:set_size(size)` re-scales a loaded font in place and
+  `font:get_size()` reads it back -- lite-xl's shape, adopted for the
+  same reason: runtime zoom must change every font everywhere, and
+  references to font objects are captured all over the lua side. an
+  in-place mutation means nothing has to be chased; the render cache
+  hashes the size, so every text cell repaints on the next frame.
+  sizes clamp to at least 1px -- a zero line height is fatal on the
+  draw path, not cosmetic.
 - `system.mkdir(path)` creates one directory level, returning `true` or
   `nil, error`. lua's `os` library is iso c only, which has no mkdir --
   the same hole lite-xl patched the same way. directory trees are a lua

@@ -104,10 +104,11 @@ impl Command {
                 h.write(&[2, color.r, color.g, color.b, color.a]);
                 // the pointer identifies the font, but an rc freed by lua
                 // can be reallocated at the same address between frames
-                // (inherited from lite's rencache.c); hashing the height
-                // too closes the window for every realistic swap
+                // (inherited from lite's rencache.c); hashing the size
+                // too closes the window for every realistic swap, and
+                // makes an in-place `set_size` dirty every text cell
                 h.write(&(Rc::as_ptr(font) as usize).to_le_bytes());
-                h.write_i32(font.height());
+                h.write(&font.size().to_bits().to_le_bytes());
                 h.write_i32(*x);
                 h.write_i32(*y);
                 h.write_i32(*tab_advance);
@@ -456,6 +457,33 @@ mod tests {
         let rects = frame(&mut cache, &mut fb, &draws);
         let total: i64 = rects.iter().map(|r| r.width as i64 * r.height as i64).sum();
         assert!(total >= 400 * 300);
+    }
+
+    #[test]
+    fn a_font_resized_in_place_dirties_its_text() {
+        // same rc, same text, same position: only the size changed, and
+        // the size lives inside the font -- the hash must still see it
+        let path =
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data/jetbrainsmono.ttf");
+        let font = Rc::new(Font::load(&path, 14.0).unwrap());
+        let mut cache = RenCache::new();
+        let mut fb = Framebuffer::new(400, 300);
+        let mut text_frame = |cache: &mut RenCache, fb: &mut Framebuffer| {
+            cache.begin_frame(fb.width, fb.height);
+            cache.set_clip_rect(Rect::new(0, 0, fb.width, fb.height));
+            cache.draw_text(&font, "zoom", 10, 10, WHITE);
+            cache.end_frame(fb)
+        };
+        text_frame(&mut cache, &mut fb);
+        assert!(
+            text_frame(&mut cache, &mut fb).is_empty(),
+            "unchanged text redrew"
+        );
+        font.set_size(28.0);
+        assert!(
+            !text_frame(&mut cache, &mut fb).is_empty(),
+            "an in-place resize went undetected"
+        );
     }
 
     #[test]
