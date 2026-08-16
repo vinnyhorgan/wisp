@@ -24,6 +24,7 @@ use crate::platform::{Event, Platform};
 use crate::process;
 use crate::rencache::RenCache;
 use crate::renderer::{Color, Framebuffer, Rect};
+use crate::terminal;
 
 /// everything the api closures share: the platform, the framebuffer and
 /// the draw-command cache
@@ -117,6 +118,133 @@ impl UserData for LuaProcess {
                 Err(e) => (None, Some(e)),
             })
         });
+    }
+}
+
+fn pack_rgb(c: Color) -> u32 {
+    ((c.r as u32) << 16) | ((c.g as u32) << 8) | c.b as u32
+}
+
+/// the terminal userdata behind `system.terminal`: alacritty's vt
+/// engine on a polled pty (src/terminal.rs). every method polls, none
+/// blocks, and rows and columns are 1-based on this side of the fence.
+/// colors cross as packed 0xrrggbb integers so a frame's worth of runs
+/// is cheap; the view caches the color tables it builds from them
+struct LuaTerminal(RefCell<terminal::Terminal>);
+
+impl UserData for LuaTerminal {
+    fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
+        methods.add_method("update", |_, this, ()| Ok(this.0.borrow_mut().update()));
+        methods.add_method("send", |_, this, data: LuaString| {
+            Ok(this.0.borrow_mut().write(&data.as_bytes()))
+        });
+        methods.add_method(
+            "resize",
+            |_, this, (cols, rows, cw, ch): (f64, f64, Option<f64>, Option<f64>)| {
+                this.0.borrow_mut().resize(
+                    cols.clamp(2.0, 65535.0) as u16,
+                    rows.clamp(2.0, 65535.0) as u16,
+                    (
+                        cw.unwrap_or(0.0).clamp(0.0, 65535.0) as u16,
+                        ch.unwrap_or(0.0).clamp(0.0, 65535.0) as u16,
+                    ),
+                );
+                Ok(())
+            },
+        );
+        methods.add_method("size", |_, this, ()| {
+            let t = this.0.borrow();
+            Ok((t.columns(), t.screen_lines()))
+        });
+        // a flat sequence of run quints: text, fg, bg, flags, width
+        methods.add_method("line", |lua, this, row: usize| {
+            let t = this.0.borrow();
+            let out = lua.create_table()?;
+            let mut i = 1;
+            for run in t.line(row.saturating_sub(1)) {
+                out.set(i, run.text)?;
+                out.set(i + 1, pack_rgb(run.fg))?;
+                out.set(i + 2, pack_rgb(run.bg))?;
+                out.set(i + 3, run.flags)?;
+                out.set(i + 4, run.width)?;
+                i += 5;
+            }
+            Ok(out)
+        });
+        // nil means everything changed; otherwise the changed rows
+        methods.add_method("damage", |lua, this, ()| {
+            match this.0.borrow_mut().take_damage() {
+                terminal::Damage::Full => Ok(Value::Nil),
+                terminal::Damage::Rows(rows) => {
+                    let out = lua.create_table()?;
+                    for (i, row) in rows.iter().enumerate() {
+                        out.set(i + 1, row + 1)?;
+                    }
+                    Ok(Value::Table(out))
+                }
+            }
+        });
+        methods.add_method("cursor", |_, this, ()| {
+            let (col, line, visible) = this.0.borrow().cursor();
+            Ok((col + 1, line + 1, visible))
+        });
+        methods.add_method("scroll", |_, this, delta: f64| {
+            this.0.borrow_mut().scroll_display(delta as i32);
+            Ok(())
+        });
+        methods.add_method("scroll_reset", |_, this, ()| {
+            this.0.borrow_mut().reset_scroll();
+            Ok(())
+        });
+        methods.add_method("scroll_offset", |_, this, ()| {
+            Ok(this.0.borrow().display_offset())
+        });
+        methods.add_method("history", |_, this, ()| Ok(this.0.borrow().history_lines()));
+        methods.add_method(
+            "set_palette",
+            |_, this, (base, fg, bg): (Table, Table, Table)| {
+                let mut colors = [Color::default(); 16];
+                for (i, slot) in colors.iter_mut().enumerate() {
+                    *slot = check_color(Some(base.get::<Table>(i + 1)?))?;
+                }
+                this.0.borrow_mut().set_palette(
+                    &colors,
+                    check_color(Some(fg))?,
+                    check_color(Some(bg))?,
+                );
+                Ok(())
+            },
+        );
+        // each event is a little {kind, data} pair, drained by asking
+        methods.add_method("events", |lua, this, ()| {
+            let events = this.0.borrow_mut().take_events();
+            let out = lua.create_table()?;
+            for (i, event) in events.into_iter().enumerate() {
+                let pair = lua.create_table()?;
+                match event {
+                    terminal::TermEvent::Title(title) => {
+                        pair.set(1, "title")?;
+                        pair.set(2, title)?;
+                    }
+                    terminal::TermEvent::ResetTitle => pair.set(1, "reset_title")?,
+                    terminal::TermEvent::Bell => pair.set(1, "bell")?,
+                    terminal::TermEvent::Clipboard(data) => {
+                        pair.set(1, "clipboard")?;
+                        pair.set(2, data)?;
+                    }
+                }
+                out.set(i + 1, pair)?;
+            }
+            Ok(out)
+        });
+        methods.add_method("app_cursor", |_, this, ()| Ok(this.0.borrow().app_cursor()));
+        methods.add_method("bracketed_paste", |_, this, ()| {
+            Ok(this.0.borrow().bracketed_paste())
+        });
+        methods.add_method("mouse_mode", |_, this, ()| Ok(this.0.borrow().mouse_mode()));
+        methods.add_method("running", |_, this, ()| Ok(this.0.borrow().running()));
+        methods.add_method("returncode", |_, this, ()| Ok(this.0.borrow().exit_code()));
+        methods.add_method("pid", |_, this, ()| Ok(this.0.borrow().pid()));
     }
 }
 
@@ -392,6 +520,43 @@ pub fn register(lua: &Lua, engine: &Shared) -> mlua::Result<()> {
             }
             match process::spawn(&argv, options) {
                 Ok(p) => Ok((Some(LuaProcess(p)), None)),
+                Err(e) => Ok((None, Some(e))),
+            }
+        })?,
+    )?;
+
+    system.set(
+        "terminal",
+        lua.create_function(|_, (cols, rows, opts): (f64, f64, Option<Table>)| {
+            let mut options = terminal::TerminalOptions {
+                argv: Vec::new(),
+                cwd: None,
+                env: Vec::new(),
+            };
+            let mut cell = (0u16, 0u16);
+            if let Some(t) = opts {
+                if let Some(argv) = t.get::<Option<Vec<String>>>("argv")? {
+                    options.argv = argv;
+                }
+                options.cwd = t.get::<Option<String>>("cwd")?;
+                if let Some(env) = t.get::<Option<Table>>("env")? {
+                    for pair in env.pairs::<String, String>() {
+                        let (k, v) = pair?;
+                        options.env.push((k, v));
+                    }
+                }
+                cell.0 = t
+                    .get::<Option<f64>>("cell_width")?
+                    .unwrap_or(0.0)
+                    .clamp(0.0, 65535.0) as u16;
+                cell.1 = t
+                    .get::<Option<f64>>("cell_height")?
+                    .unwrap_or(0.0)
+                    .clamp(0.0, 65535.0) as u16;
+            }
+            let (cols, rows) = (cols.clamp(2.0, 65535.0), rows.clamp(2.0, 65535.0));
+            match terminal::Terminal::open(cols as u16, rows as u16, cell, options) {
+                Ok(t) => Ok((Some(LuaTerminal(RefCell::new(t))), None)),
                 Err(e) => Ok((None, Some(e))),
             }
         })?,

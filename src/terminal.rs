@@ -44,13 +44,17 @@ pub const FLAG_ITALIC: u8 = 2;
 pub const FLAG_UNDERLINE: u8 = 4;
 pub const FLAG_STRIKEOUT: u8 = 8;
 
-/// a horizontal stretch of cells sharing one style
+/// a horizontal stretch of cells sharing one style. `width` counts
+/// terminal columns, not chars: a wide cjk glyph is one char, two
+/// columns, and the view realigns to the grid after every run so pixel
+/// drift can never accumulate
 #[derive(Debug, PartialEq, Eq)]
 pub struct Run {
     pub text: String,
     pub fg: Color,
     pub bg: Color,
     pub flags: u8,
+    pub width: usize,
 }
 
 /// terminal-initiated happenings the view may care about
@@ -115,26 +119,26 @@ fn window_size(cols: u16, rows: u16, cell: (u16, u16)) -> WindowSize {
 }
 
 impl Terminal {
-    /// spawns `opts.argv` (never a shell around it) on a fresh pty,
-    /// `cols` x `rows` cells of `cell_size` pixels. TERM defaults to
-    /// xterm-256color -- universally installed, unlike alacritty's own
-    /// terminfo -- but opts.env can override it
+    /// spawns `opts.argv` (never a shell *around* it; an empty argv
+    /// means the user's own login shell) on a fresh pty, `cols` x `rows`
+    /// cells of `cell_size` pixels. TERM defaults to xterm-256color --
+    /// universally installed, unlike alacritty's own terminfo -- but
+    /// opts.env can override it
     pub fn open(
         cols: u16,
         rows: u16,
         cell_size: (u16, u16),
         opts: TerminalOptions,
     ) -> Result<Terminal, String> {
-        if opts.argv.is_empty() {
-            return Err("expected a command to run".to_owned());
-        }
+        let (cols, rows) = (cols.max(2), rows.max(2));
         let mut env: std::collections::HashMap<String, String> =
             [("TERM".to_owned(), "xterm-256color".to_owned())].into();
         for (k, v) in opts.env {
             env.insert(k, v);
         }
         let config = Options {
-            shell: Some(Shell::new(opts.argv[0].clone(), opts.argv[1..].to_vec())),
+            shell: (!opts.argv.is_empty())
+                .then(|| Shell::new(opts.argv[0].clone(), opts.argv[1..].to_vec())),
             working_directory: opts.cwd.map(Into::into),
             drain_on_exit: false,
             env,
@@ -370,8 +374,12 @@ impl Terminal {
         self.term.history_size()
     }
 
-    /// one display row as style runs, scrollback pan included
+    /// one display row as style runs, scrollback pan included; a row
+    /// outside the screen is empty, never a panic (lua asks freely)
     pub fn line(&self, display_row: usize) -> Vec<Run> {
+        if display_row >= self.term.screen_lines() {
+            return Vec::new();
+        }
         let grid = self.term.grid();
         let line = Line(display_row as i32) - grid.display_offset() as i32;
         let row = &grid[line];
@@ -384,10 +392,16 @@ impl Terminal {
             {
                 continue;
             }
+            let width = if cell.flags.contains(Flags::WIDE_CHAR) {
+                2
+            } else {
+                1
+            };
             let (fg, bg, flags) = self.style_of(cell);
             match runs.last_mut() {
                 Some(run) if run.fg == fg && run.bg == bg && run.flags == flags => {
                     run.text.push(cell.c);
+                    run.width += width;
                     if let Some(extra) = cell.zerowidth() {
                         run.text.extend(extra);
                     }
@@ -403,6 +417,7 @@ impl Terminal {
                         fg,
                         bg,
                         flags,
+                        width,
                     });
                 }
             }
@@ -493,6 +508,25 @@ impl Terminal {
         };
         self.term.reset_damage();
         damage
+    }
+
+    /// mode bits the view's key translation must respect
+    pub fn app_cursor(&self) -> bool {
+        self.term
+            .mode()
+            .contains(alacritty_terminal::term::TermMode::APP_CURSOR)
+    }
+
+    pub fn bracketed_paste(&self) -> bool {
+        self.term
+            .mode()
+            .contains(alacritty_terminal::term::TermMode::BRACKETED_PASTE)
+    }
+
+    pub fn mouse_mode(&self) -> bool {
+        self.term
+            .mode()
+            .intersects(alacritty_terminal::term::TermMode::MOUSE_MODE)
     }
 
     pub fn running(&self) -> bool {
