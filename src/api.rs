@@ -156,12 +156,15 @@ impl UserData for LuaTerminal {
             let t = this.0.borrow();
             Ok((t.columns(), t.screen_lines()))
         });
-        // a flat sequence of run quints: text, fg, bg, flags, width
-        methods.add_method("line", |lua, this, row: usize| {
+        // a flat sequence of run quints: text, fg, bg, flags, width.
+        // any number is a valid row -- line() runs on the draw path,
+        // where an error is fatal, and the core promises an empty line
+        // for anything off-screen
+        methods.add_method("line", |lua, this, row: f64| {
             let t = this.0.borrow();
             let out = lua.create_table()?;
             let mut i = 1;
-            for run in t.line(row.saturating_sub(1)) {
+            for run in t.line(row.max(1.0) as usize - 1) {
                 out.set(i, run.text)?;
                 out.set(i + 1, pack_rgb(run.fg))?;
                 out.set(i + 2, pack_rgb(run.bg))?;

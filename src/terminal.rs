@@ -146,10 +146,16 @@ impl Terminal {
         let pty = tty::new(&config, window_size(cols, rows, cell_size), 0)
             .map_err(|err| format!("failed to open a terminal: {err}"))?;
         // the whole design rests on this: reads and writes on the master
-        // return WouldBlock instead of stalling the editor
+        // return WouldBlock instead of stalling the editor. read-modify-
+        // write, so whatever flags the pty opened with survive
+        let fd = std::os::fd::AsRawFd::as_raw_fd(pty.file());
+        let flags = nix::fcntl::fcntl(fd, nix::fcntl::FcntlArg::F_GETFL)
+            .map_err(|err| format!("failed to open a terminal: {err}"))?;
         nix::fcntl::fcntl(
-            std::os::fd::AsRawFd::as_raw_fd(pty.file()),
-            nix::fcntl::FcntlArg::F_SETFL(nix::fcntl::OFlag::O_NONBLOCK),
+            fd,
+            nix::fcntl::FcntlArg::F_SETFL(
+                nix::fcntl::OFlag::from_bits_retain(flags) | nix::fcntl::OFlag::O_NONBLOCK,
+            ),
         )
         .map_err(|err| format!("failed to open a terminal: {err}"))?;
         let mut terminal = Terminal::detached(cols, rows);
@@ -199,29 +205,7 @@ impl Terminal {
         // taken out for the duration: feed() needs all of self, and it
         // never touches the pty
         if let Some(mut pty) = self.pty.take() {
-            let mut total = 0;
-            let mut chunk = [0u8; 65536];
-            loop {
-                match pty.file().read(&mut chunk) {
-                    Ok(0) => {
-                        self.eof = true;
-                        break;
-                    }
-                    Ok(n) => {
-                        self.feed(&chunk[..n]);
-                        changed = true;
-                        total += n;
-                        if total >= READ_CAP {
-                            break;
-                        }
-                    }
-                    Err(e) if e.kind() == ErrorKind::WouldBlock => break,
-                    Err(_) => {
-                        self.eof = true;
-                        break;
-                    }
-                }
-            }
+            changed |= self.drain_reads(pty.file());
             if self.exit_code.is_none()
                 && let Some(ChildEvent::Exited(status)) = pty.next_child_event()
             {
@@ -240,6 +224,38 @@ impl Terminal {
         changed
     }
 
+    /// drains up to READ_CAP bytes of child output into the engine;
+    /// returns true if anything arrived. a signal can interrupt even a
+    /// non-blocking read: that is a retry, never an eof
+    fn drain_reads(&mut self, mut file: impl Read) -> bool {
+        let mut changed = false;
+        let mut total = 0;
+        let mut chunk = [0u8; 65536];
+        loop {
+            match file.read(&mut chunk) {
+                Ok(0) => {
+                    self.eof = true;
+                    break;
+                }
+                Ok(n) => {
+                    self.feed(&chunk[..n]);
+                    changed = true;
+                    total += n;
+                    if total >= READ_CAP {
+                        break;
+                    }
+                }
+                Err(e) if e.kind() == ErrorKind::WouldBlock => break,
+                Err(e) if e.kind() == ErrorKind::Interrupted => continue,
+                Err(_) => {
+                    self.eof = true;
+                    break;
+                }
+            }
+        }
+        changed
+    }
+
     /// queues bytes for the child (keyboard input, paste). returns false
     /// if the write buffer is full and the tail was refused
     pub fn write(&mut self, bytes: &[u8]) -> bool {
@@ -251,20 +267,26 @@ impl Terminal {
     }
 
     fn flush_pending(&mut self) {
-        let Some(pty) = &mut self.pty else {
-            return;
-        };
-        while !self.pending_write.is_empty() {
-            let (head, _) = self.pending_write.as_slices();
-            match pty.file().write(head) {
+        if let Some(pty) = &self.pty {
+            Terminal::flush_into(&mut self.pending_write, pty.file());
+        }
+    }
+
+    /// flushes as much of `pending` as the fd accepts right now. a
+    /// signal-interrupted write is a retry; only a dead pty forfeits
+    /// the queue -- that input can never be delivered
+    fn flush_into(pending: &mut VecDeque<u8>, mut file: impl Write) {
+        while !pending.is_empty() {
+            let (head, _) = pending.as_slices();
+            match file.write(head) {
                 Ok(0) => break,
                 Ok(n) => {
-                    self.pending_write.drain(..n);
+                    pending.drain(..n);
                 }
                 Err(e) if e.kind() == ErrorKind::WouldBlock => break,
+                Err(e) if e.kind() == ErrorKind::Interrupted => continue,
                 Err(_) => {
-                    // the pty is gone; input can never be delivered
-                    self.pending_write.clear();
+                    pending.clear();
                     break;
                 }
             }
@@ -542,6 +564,35 @@ impl Terminal {
     }
 }
 
+/// `Pty::drop` sends sighup and then waits without a timeout, so a
+/// child that traps sighup would hang the editor on tab close. hup
+/// first here too (the polite close every emulator sends), a short
+/// grace for shells to quit on their own, then sigkill -- which cannot
+/// be ignored -- so the wait below is always prompt
+impl Drop for Terminal {
+    fn drop(&mut self) {
+        use nix::sys::signal::{Signal, kill};
+        use nix::sys::wait::{WaitPidFlag, WaitStatus, waitpid};
+        let Some(pty) = &self.pty else { return };
+        if self.exit_code.is_some() {
+            return; // already reaped by the exit poll
+        }
+        let pid = nix::unistd::Pid::from_raw(pty.child().id() as i32);
+        let _ = kill(pid, Signal::SIGHUP);
+        for _ in 0..20 {
+            match waitpid(pid, Some(WaitPidFlag::WNOHANG)) {
+                Ok(WaitStatus::StillAlive) => {
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+                // exited (reaped here; the pty's own wait becomes a
+                // no-op) or already gone
+                _ => return,
+            }
+        }
+        let _ = kill(pid, Signal::SIGKILL);
+    }
+}
+
 fn dim(c: Rgb) -> Rgb {
     Rgb {
         r: (c.r as u32 * 2 / 3) as u8,
@@ -812,6 +863,53 @@ mod tests {
         assert_eq!((run.bg.r, run.bg.g, run.bg.b), (229, 229, 229));
     }
 
+    #[test]
+    fn a_signal_interrupted_read_is_a_retry_not_an_eof() {
+        // a reader that gets interrupted once, delivers, then dries up;
+        // the old code declared eof on the interrupt and the terminal
+        // died under a stray signal
+        struct Reader(u32);
+        impl std::io::Read for Reader {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                self.0 += 1;
+                match self.0 {
+                    1 => Err(ErrorKind::Interrupted.into()),
+                    2 => {
+                        buf[..2].copy_from_slice(b"hi");
+                        Ok(2)
+                    }
+                    _ => Err(ErrorKind::WouldBlock.into()),
+                }
+            }
+        }
+        let mut t = Terminal::detached(20, 4);
+        assert!(t.drain_reads(Reader(0)));
+        assert!(!t.eof, "an interrupted read must never read as eof");
+        assert_eq!(text_of(&t, 0), "hi");
+    }
+
+    #[test]
+    fn a_signal_interrupted_write_keeps_the_queue() {
+        // interrupted once, then the pty is merely full; the old code
+        // lumped the interrupt in with "pty gone" and dropped all input
+        struct Writer(u32);
+        impl std::io::Write for Writer {
+            fn write(&mut self, _buf: &[u8]) -> std::io::Result<usize> {
+                self.0 += 1;
+                match self.0 {
+                    1 => Err(ErrorKind::Interrupted.into()),
+                    _ => Err(ErrorKind::WouldBlock.into()),
+                }
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut pending: VecDeque<u8> = b"abc".iter().copied().collect();
+        Terminal::flush_into(&mut pending, Writer(0));
+        assert_eq!(pending.len(), 3, "queued input must survive a signal");
+    }
+
     // --- the pty, real processes --------------------------------------
 
     #[test]
@@ -869,6 +967,28 @@ mod tests {
         // drop sent sighup and waited: the direct child must be gone
         let gone = nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), None).is_err();
         assert!(gone, "child {pid} survived the drop");
+    }
+
+    #[test]
+    fn dropping_a_terminal_never_hangs_on_a_hup_proof_child() {
+        // a child that traps sighup used to hang `Pty::drop`'s wait --
+        // and the editor with it -- forever. run the drop in its own
+        // thread so a regression fails loudly instead of freezing
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut t =
+                Terminal::open(80, 24, (8, 16), sh("trap '' HUP; echo ready; sleep 30")).unwrap();
+            // the trap must be installed before the drop sends sighup
+            assert!(poll_until(&mut t, 5000, |t| {
+                screen_text(t).contains("ready")
+            }));
+            drop(t);
+            let _ = tx.send(());
+        });
+        assert!(
+            rx.recv_timeout(std::time::Duration::from_secs(5)).is_ok(),
+            "drop hung on a sighup-ignoring child"
+        );
     }
 
     #[test]

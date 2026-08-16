@@ -2035,6 +2035,33 @@ fn the_palette_still_opens_over_a_focused_terminal() {
 }
 
 #[test]
+fn terminal_line_answers_any_row_without_raising() {
+    let _serial = serial();
+    let root = copy_data_root("termline");
+    let marker = root.join("line-ok");
+    std::fs::write(
+        root.join("data/user/init.lua"),
+        format!(
+            r#"
+-- line() runs on the draw path, where an error is fatal: any number
+-- must come back as a table, never a raised error
+local t = assert(system.terminal(10, 5, {{ argv = {{ "/bin/sh", "-c", "exit 0" }} }}))
+for _, row in ipairs({{ -1, 0, 1, 2.5, 6, 1e9 }}) do
+  assert(type(t:line(row)) == "table")
+end
+io.open([[{}]], "w"):close()
+"#,
+            marker.display()
+        ),
+    )
+    .unwrap();
+    let mut editor =
+        Headless::boot_with_exedir(&root.display().to_string(), &project_dir(), 900, 600, 1.0);
+    editor.run_until_frames(1, 10_000);
+    assert!(marker.exists(), "line() raised on a hostile row");
+}
+
+#[test]
 fn a_finished_shell_closes_its_tab() {
     let _serial = serial();
     let mut editor = boot_terminal_editor("termexit", r#"{ "/bin/sh", "-c", "exit 0" }"#);
