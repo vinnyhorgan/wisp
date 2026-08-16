@@ -145,6 +145,21 @@ fn editor_boots_and_draws_a_frame() {
 }
 
 #[test]
+fn boot_survives_a_fractional_clock() {
+    let _serial = serial();
+    // a real desktop clock is never integral, and lua's %d and %x refuse
+    // non-integral floats since 5.3. the virtual clock's flat 0.0 hid
+    // exactly that once: core/init.lua fed get_time() * 1000 to %08x
+    // unfloored, the suite passed, and every desktop launch died at
+    // require time. seed the clock before the first resume so require
+    // runs at a fractional instant, the way the desktop always does
+    let mut editor = Headless::boot(&project_dir(), 900, 600, 1.0);
+    editor.set_clock(1723.456789);
+    editor.run_until_frames(1, 10_000);
+    assert!(editor.exited.is_none());
+}
+
+#[test]
 fn boot_is_deterministic() {
     let _serial = serial();
     // same events, same virtual clock, same pixels -- twice. every

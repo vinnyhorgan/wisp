@@ -144,7 +144,10 @@ function core.init()
     end
 end
 
-local temp_uid = (system.get_time() * 1000) % 0xffffffff
+-- floored: get_time() is fractional on desktop, and %x refuses
+-- non-integral floats since 5.3 (lite's unfloored original was fine
+-- on 5.2, and the headless clock's 0.0 hid the difference in tests)
+local temp_uid = math.floor(system.get_time() * 1000) % 0xffffffff
 local temp_file_prefix = string.format(".wisp_temp_%08x", temp_uid)
 local temp_file_counter = 0
 

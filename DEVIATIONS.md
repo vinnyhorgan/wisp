@@ -316,7 +316,7 @@ terminal and the last view; a finished shell closes its own tab.
 ## 13. lua 5.5
 
 **files:** `data/core/strict.lua`, `data/core/common.lua`,
-`data/core/doc/init.lua`, `data/core/commandview.lua`,
+`data/core/init.lua`, `data/core/doc/init.lua`, `data/core/commandview.lua`,
 `data/core/keymap.lua`, `data/core/statusview.lua`,
 `data/plugins/autocomplete.lua`, `data/plugins/projectsearch.lua`,
 `data/plugins/treeview.lua`, `data/plugins/language_lua.lua`
@@ -331,8 +331,13 @@ handling -- and the audit for the rest touched exactly these:
   `string.format("%d")` refuses any non-integral float (5.2 truncated
   silently; the old guard here was only about inf). the two percent
   readouts -- statusview's document position and projectsearch's
-  progress -- floor before formatting. everything else feeding `%d`,
-  `string.sub` and friends was audited and already integer-sourced.
+  progress -- floor before formatting, and so does the temp-file uid
+  in `core/init.lua`, which feeds `get_time() * 1000` to `%08x`. that
+  third site shipped unfloored: the headless clock reads an integral
+  0.0 at require time, so the suite passed while every desktop launch
+  died on it. the regression test seeds a fractional virtual clock
+  before boot (`Headless::set_clock`), closing the class. everything
+  else feeding `%d`, `string.sub` and friends is integer-sourced.
 - **for-loop variables are const in 5.5.** nine loops reassigned
   their control variable (crlf stripping in `Doc:load`/`save`, the
   advancing `x` in treeview and projectsearch draws, normalization in

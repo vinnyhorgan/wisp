@@ -194,6 +194,14 @@ impl Headless {
         self.with_platform(|p| p.title.clone())
     }
 
+    /// sets the virtual clock. it boots at 0.0, which is integral -- a
+    /// value with a fractional part exercises require-time code the way
+    /// a real desktop clock does (lua's %d and %x refuse non-integral
+    /// floats since 5.3, and get_time() is never integral on desktop)
+    pub fn set_clock(&self, t: f64) {
+        self.with_platform(|p| p.clock = t);
+    }
+
     /// focuses or unfocuses the virtual window, like alt-tabbing would;
     /// an unfocused editor draws no caret, which lets tests compare
     /// frames without accounting for the blink phase
