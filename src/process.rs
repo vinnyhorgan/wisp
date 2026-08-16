@@ -35,6 +35,9 @@ fn read_into(pipe: &Pipe, mut stream: impl Read) {
     let mut chunk = [0u8; 8192];
     loop {
         let n = match stream.read(&mut chunk) {
+            // std retries eintr for write_all but not for raw reads: a
+            // signal landing on this thread must not be mistaken for eof
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
             Ok(0) | Err(_) => break,
             Ok(n) => n,
         };
@@ -68,7 +71,6 @@ fn write_from(pipe: &Pipe, mut stream: impl Write) {
         if stream.write_all(&chunk).is_err() || stream.flush().is_err() {
             break;
         }
-        pipe.cond.notify_all();
     }
     // the pipe broke: further lua writes must fail, not queue forever
     let mut buf = pipe.buf.lock().unwrap();
@@ -103,7 +105,13 @@ pub struct Process {
     stdout: Arc<Pipe>,
     stderr: Arc<Pipe>,
     stdin: Arc<Pipe>,
-    threads: Mutex<Vec<std::thread::JoinHandle<()>>>,
+}
+
+/// signal the child's whole process group, so a pipeline or wrapper
+/// script cannot leave grandchildren behind holding our pipe ends open
+fn signal_group(pid: u32, signal: nix::sys::signal::Signal) -> nix::Result<()> {
+    use nix::unistd::Pid;
+    nix::sys::signal::kill(Pid::from_raw(-(pid as i32)), signal)
 }
 
 pub fn spawn(argv: &[String], opts: SpawnOptions) -> Result<Process, String> {
@@ -112,6 +120,13 @@ pub fn spawn(argv: &[String], opts: SpawnOptions) -> Result<Process, String> {
     }
     let mut cmd = Command::new(&argv[0]);
     cmd.args(&argv[1..]).stdin(Stdio::piped());
+    // the child leads its own process group: kill and terminate signal
+    // the group, so `sh -c "x | y"` dies whole, and a grandchild that
+    // inherited our pipe cannot hold the stdout reader open forever
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
     if let Some(cwd) = &opts.cwd {
         cmd.current_dir(cwd);
     }
@@ -138,28 +153,27 @@ pub fn spawn(argv: &[String], opts: SpawnOptions) -> Result<Process, String> {
     let stdout = Arc::new(Pipe::default());
     let stderr = Arc::new(Pipe::default());
     let stdin = Arc::new(Pipe::default());
-    let mut threads = Vec::new();
 
+    // pump threads are detached, never joined: each holds only its arc'd
+    // pipe and exits at eof. the group kill in drop delivers that eof in
+    // every realistic case; a setsid daemon that escapes the group *and*
+    // keeps our pipe open parks one thread instead of freezing drop
     let out_src: Box<dyn Read + Send> = match merged {
         Some(rx) => Box::new(rx),
         None => Box::new(child.stdout.take().expect("stdout was piped")),
     };
     let pipe = stdout.clone();
-    threads.push(
-        std::thread::Builder::new()
-            .name("wisp-proc-stdout".to_owned())
-            .spawn(move || read_into(&pipe, out_src))
-            .map_err(|e| e.to_string())?,
-    );
+    std::thread::Builder::new()
+        .name("wisp-proc-stdout".to_owned())
+        .spawn(move || read_into(&pipe, out_src))
+        .map_err(|e| e.to_string())?;
 
     if let Some(err_src) = child.stderr.take() {
         let pipe = stderr.clone();
-        threads.push(
-            std::thread::Builder::new()
-                .name("wisp-proc-stderr".to_owned())
-                .spawn(move || read_into(&pipe, err_src))
-                .map_err(|e| e.to_string())?,
-        );
+        std::thread::Builder::new()
+            .name("wisp-proc-stderr".to_owned())
+            .spawn(move || read_into(&pipe, err_src))
+            .map_err(|e| e.to_string())?;
     } else {
         // merged: nothing ever arrives on stderr, report eof right away
         stderr.buf.lock().unwrap().closed = true;
@@ -167,19 +181,16 @@ pub fn spawn(argv: &[String], opts: SpawnOptions) -> Result<Process, String> {
 
     let stdin_dst = child.stdin.take().expect("stdin was piped");
     let pipe = stdin.clone();
-    threads.push(
-        std::thread::Builder::new()
-            .name("wisp-proc-stdin".to_owned())
-            .spawn(move || write_from(&pipe, stdin_dst))
-            .map_err(|e| e.to_string())?,
-    );
+    std::thread::Builder::new()
+        .name("wisp-proc-stdin".to_owned())
+        .spawn(move || write_from(&pipe, stdin_dst))
+        .map_err(|e| e.to_string())?;
 
     Ok(Process {
         child: Mutex::new(ChildState { child, exit: None }),
         stdout,
         stderr,
         stdin,
-        threads: Mutex::new(threads),
     })
 }
 
@@ -225,10 +236,15 @@ impl Process {
     /// exit code, or none while running. a signal death reports -signal
     pub fn returncode(&self) -> Option<i32> {
         let mut st = self.child.lock().unwrap();
-        if st.exit.is_none()
-            && let Ok(Some(status)) = st.child.try_wait()
-        {
-            st.exit = Some(exit_code(status));
+        if st.exit.is_none() {
+            match st.child.try_wait() {
+                Ok(Some(status)) => st.exit = Some(exit_code(status)),
+                Ok(None) => {}
+                // nothing else reaps our children, so an error here means
+                // the child is gone in a way we cannot decode -- report a
+                // generic failure rather than "running" forever
+                Err(_) => st.exit = Some(-1),
+            }
         }
         st.exit
     }
@@ -241,49 +257,47 @@ impl Process {
         self.child.lock().unwrap().child.id()
     }
 
-    /// polite: sigterm, so the child may clean up (plain kill elsewhere).
-    /// checked against the un-reaped child, so the pid cannot have been
-    /// reused by an unrelated process
+    /// polite: sigterm, so the children may clean up (plain kill
+    /// elsewhere). checked against the un-reaped child, so its pid --
+    /// which is also the group id -- cannot have been reused
     pub fn terminate(&self) -> Result<(), String> {
         let st = self.child.lock().unwrap();
         if st.exit.is_some() {
             return Err("process has exited".to_owned());
         }
-        use nix::sys::signal::{Signal, kill};
-        use nix::unistd::Pid;
-        kill(Pid::from_raw(st.child.id() as i32), Signal::SIGTERM).map_err(|e| e.to_string())
+        signal_group(st.child.id(), nix::sys::signal::Signal::SIGTERM).map_err(|e| e.to_string())
     }
 
     pub fn kill(&self) -> Result<(), String> {
-        let mut st = self.child.lock().unwrap();
+        let st = self.child.lock().unwrap();
         if st.exit.is_some() {
             return Err("process has exited".to_owned());
         }
-        st.child.kill().map_err(|e| e.to_string())
+        signal_group(st.child.id(), nix::sys::signal::Signal::SIGKILL).map_err(|e| e.to_string())
     }
 }
 
 impl Drop for Process {
     fn drop(&mut self) {
         // no zombies and no orphans: a process the editor lets go of is
-        // killed and reaped, matching lua gc semantics for the userdata
+        // killed -- whole group, so pipelines die with it -- and reaped,
+        // matching lua gc semantics for the userdata
         {
             let mut st = self.child.lock().unwrap();
             if st.exit.is_none() {
-                let _ = st.child.kill();
+                let _ = signal_group(st.child.id(), nix::sys::signal::Signal::SIGKILL);
                 if let Ok(status) = st.child.wait() {
                     st.exit = Some(exit_code(status));
                 }
             }
         }
+        // the pump threads are detached, so closing the buffers is all
+        // that remains: waiters wake, and lua reads report eof
         for s in [&self.stdout, &self.stderr, &self.stdin] {
             let mut buf = s.buf.lock().unwrap();
             buf.closed = true;
             buf.data.clear();
             s.cond.notify_all();
-        }
-        for t in self.threads.lock().unwrap().drain(..) {
-            let _ = t.join();
         }
     }
 }
@@ -428,6 +442,51 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
         panic!("writes kept succeeding against a dead child");
+    }
+
+    #[test]
+    fn dropping_never_hangs_on_a_leaked_pipe() {
+        // the child hands its stdout write end to a long-lived
+        // grandchild: drop used to join a reader thread that only
+        // unblocks when the *grandchild* exits, freezing the editor
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let p = spawn(&sh("sleep 30 & exit 0"), SpawnOptions::default()).unwrap();
+            drop(p);
+            tx.send(()).unwrap();
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(5))
+            .expect("drop hung on a grandchild holding the pipe");
+    }
+
+    #[test]
+    fn kill_reaches_the_whole_process_group() {
+        // `wait` keeps the direct child alive while its background
+        // grandchild sleeps; a group kill must take down both
+        let p = spawn(&sh("sleep 30 & echo $!; wait"), SpawnOptions::default()).unwrap();
+        let mut line = Vec::new();
+        while !line.ends_with(b"\n") {
+            match p.read_stdout(None) {
+                None => panic!("stdout closed before the pid arrived"),
+                Some(chunk) if chunk.is_empty() => {
+                    std::thread::sleep(std::time::Duration::from_millis(2))
+                }
+                Some(chunk) => line.extend(chunk),
+            }
+        }
+        let grandchild: i32 = String::from_utf8(line).unwrap().trim().parse().unwrap();
+        p.kill().unwrap();
+        wait_exit(&p);
+        use nix::sys::signal::kill;
+        use nix::unistd::Pid;
+        for _ in 0..1000 {
+            // reparented to init and reaped: signalling it must fail
+            if kill(Pid::from_raw(grandchild), None).is_err() {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        panic!("the grandchild survived the group kill");
     }
 
     #[test]
