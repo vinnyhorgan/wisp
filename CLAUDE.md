@@ -124,9 +124,9 @@ way rxi intended.
 ## roadmap
 
 the roadmap lives in ROADMAP.md (git log is the truth when they
-disagree). short version: phase b is done -- the core api is complete
-(audit fixes, embedded data, images) and re-frozen. phase c tags
-v0.1.0, phase d is the plugin pass to v0.2.0, and beyond that:
-linters, a real terminal (its pty is a deliberate core reopening when
-built, not before), helix mode. ROADMAP.md also keeps the ledger of
+disagree). short version: phase b is done and the terminal landed
+right after it -- alacritty's vt engine on a polled pty in the core,
+the view as a plugin. phase c tags v0.1.0, phase d is the plugin pass
+to v0.2.0, and beyond that: terminal polish (mouse, selection, heavy
+testing), linters, helix mode. ROADMAP.md also keeps the ledger of
 dead claims and deliberate noes, so they are not re-chased.

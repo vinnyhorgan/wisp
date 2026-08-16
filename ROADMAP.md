@@ -1,7 +1,7 @@
 # roadmap
 
-updated 2026-08-16, at the close of phase b. phases may rot -- git log
-is the truth.
+updated 2026-08-16, after the terminal landed. phases may rot -- git
+log is the truth.
 
 ## done
 
@@ -31,6 +31,16 @@ is the truth.
   deliberately not landed: its consumer lives beyond v0.2.0, and an
   api that sits unconsumed through the whole plugin pass is exactly
   the speculation the constitution forbids. the core is re-frozen.
+- **the terminal, brought forward.** the beyond-v0.2.0 entry landed
+  early, by decision, as the promised deliberate reopening: alacritty's
+  vt engine (the emulation, not the app -- its event loop threads
+  unused) on a non-blocking pty polled from the main thread,
+  `system.terminal` under the spawn conventions (poll-based, packed
+  colors, kill-and-reap on gc), and the view as a plugin: the grid
+  drawn as style runs, key translation to escape sequences, catppuccin
+  palette, scrollback, ctrl+` toggle, auto-close on exit. proven
+  end-to-end by boot tests that run a real shell and assert exact
+  palette pixels in the framebuffer.
 
 ## phase c -- v0.1.0, the plugin baseline
 
@@ -73,19 +83,15 @@ ideas agreed in spirit, not yet scheduled or designed:
   itself on plain linters. note the tree-sitter constraint: grammars
   compile c, which wisp refuses; lua-pattern syntax + external tools
   is the lane unless pure-rust grammars mature.
-- **a real terminal.** not a toy, not rxi's console plugin -- a real
-  terminal living in a wisp view. un-parks the old "terminal: parked
-  forever" entry. needs core: a pty (spawn is pipes, a terminal needs
-  openpty + resize + raw io) and a vt escape-sequence engine. the
-  candidate is `alacritty_terminal` -- pure rust, battle-tested, used
-  by other editors; wisp draws its grid through the renderer it
-  already has (the mono nerd font and rencache's cell hashing are
-  practically purpose-built for a terminal grid). decided at phase b's
-  close: the pty enters the core the day the terminal is built,
-  together with the view that consumes it -- a deliberate reopening,
-  same bar as spawn cleared, never a parked api. also quietly solves
-  the ai dilemma: a real terminal runs any terminal-based agent, no ai
-  integration required in the editor itself.
+- **terminal perfection.** the terminal itself is built (see done);
+  what remains is the polish pass, deliberately postponed until after
+  the core freeze: mouse reporting to apps, in-terminal selection and
+  copy, bell, osc-52 refinement, and heavy hands-on testing -- the
+  experience has to be perfect, and that bar is earned interactively,
+  not in ci. all of it lives on the lua side or rides apis the core
+  already has. the terminal also quietly solves the ai dilemma: it
+  runs any terminal-based agent, no ai integration required in the
+  editor itself.
 - **fs events (a dirmonitor).** stronger than it first looks: the
   editor already pays for freshness the expensive way -- the project
   scan thread rescans the whole tree every `project_scan_rate` seconds

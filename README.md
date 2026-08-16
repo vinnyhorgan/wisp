@@ -8,7 +8,7 @@ a lightweight text editor in rust, after rxi's [lite](https://github.com/rxi/lit
 
 [lite](https://github.com/rxi/lite) is a lovely idea: a tiny core that draws
 text and reads input, and a whole editor written on top of it in lua. wisp
-keeps the idea and rewrites the core -- c, sdl and stb replaced by ~4k
+keeps the idea and rewrites the core -- c, sdl and stb replaced by ~5k
 lines of safe rust. the lua layer is still lite's, byte for byte where possible,
 bug-fixed where not. every deliberate difference is written down in
 [DEVIATIONS.md](DEVIATIONS.md).
@@ -18,9 +18,11 @@ bug-fixed where not. every deliberate difference is written down in
   editable while the editor runs
 - one font (jetbrains mono nerd font), one theme (catppuccin mocha, green
   caret), one binary
+- a real terminal in a view: alacritty's vt engine on a polled pty, drawn
+  through the same renderer as everything else
 - `unsafe_code = "deny"`, with a single documented exception, and it's lua's
   fault
-- the whole editor boots headless in the test suite: 49 of its 114 tests
+- the whole editor boots headless in the test suite: 52 of its 137 tests
   feed it fake input and read the pixels coming back. the screenshots on
   this page were rendered that way too
 
