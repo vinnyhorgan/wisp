@@ -145,9 +145,10 @@ impl Terminal {
         };
         let pty = tty::new(&config, window_size(cols, rows, cell_size), 0)
             .map_err(|err| format!("failed to open a terminal: {err}"))?;
-        // the whole design rests on this: reads and writes on the master
-        // return WouldBlock instead of stalling the editor. read-modify-
-        // write, so whatever flags the pty opened with survive
+        // the whole design rests on the master being non-blocking.
+        // alacritty already sets o_nonblock on spawn, but its comment
+        // reserves the right to stop; re-asserted here so the guarantee
+        // is ours. read-modify-write, so the pty's other flags survive
         let fd = std::os::fd::AsRawFd::as_raw_fd(pty.file());
         let flags = nix::fcntl::fcntl(fd, nix::fcntl::FcntlArg::F_GETFL)
             .map_err(|err| format!("failed to open a terminal: {err}"))?;
@@ -219,14 +220,23 @@ impl Terminal {
             }
             self.pty = Some(pty);
         }
+        // once the child is both reaped and drained, let the pty go:
+        // alacritty's `Pty::drop` sighups its recorded pid no matter
+        // what, and a dead tab held open for hours would aim that signal
+        // at a possibly-recycled pid. dropping now closes the window to
+        // a single frame (and `pid()` honestly reports no process)
+        if self.eof && self.exit_code.is_some() {
+            self.pty = None;
+        }
         // responses generated while feeding (da, dsr, ...) go out now
         self.flush_pending();
         changed
     }
 
     /// drains up to READ_CAP bytes of child output into the engine;
-    /// returns true if anything arrived. a signal can interrupt even a
-    /// non-blocking read: that is a retry, never an eof
+    /// returns true if anything arrived. eintr is belt and braces here
+    /// (a non-blocking read on linux reports eagain, not eintr), but if
+    /// it ever surfaces it is a retry, never an eof
     fn drain_reads(&mut self, mut file: impl Read) -> bool {
         let mut changed = false;
         let mut total = 0;
@@ -256,14 +266,16 @@ impl Terminal {
         changed
     }
 
-    /// queues bytes for the child (keyboard input, paste). returns false
-    /// if the write buffer is full and the tail was refused
+    /// queues bytes for the child (keyboard input, paste). all or
+    /// nothing, like process.rs's stdin: false means the queue was full
+    /// and nothing was taken, so a retry cannot duplicate the head
     pub fn write(&mut self, bytes: &[u8]) -> bool {
-        let room = WRITE_CAP.saturating_sub(self.pending_write.len());
-        let take = bytes.len().min(room);
-        self.pending_write.extend(&bytes[..take]);
+        if self.pending_write.len() + bytes.len() > WRITE_CAP {
+            return false;
+        }
+        self.pending_write.extend(bytes);
         self.flush_pending();
-        take == bytes.len()
+        true
     }
 
     fn flush_pending(&mut self) {
@@ -293,16 +305,29 @@ impl Terminal {
         }
     }
 
+    /// queues one of the engine's own responses toward the child, under
+    /// the same cap as lua input: a child that spams queries but never
+    /// reads its pty must not grow the queue without bound. a response
+    /// that does not fit is dropped whole -- a truncated escape sequence
+    /// would be worse than silence
+    fn queue_response(&mut self, bytes: &[u8]) {
+        if self.pending_write.len() + bytes.len() <= WRITE_CAP {
+            self.pending_write.extend(bytes);
+        }
+    }
+
     /// answers the engine's requests and files the rest for lua
     fn drain_events(&mut self) {
+        // the braces detach the queue borrow before the body runs; the
+        // arms never touch the listener, but the precaution is free
         while let Some(event) = { self.listener.0.borrow_mut().pop_front() } {
             match event {
                 Event::PtyWrite(text) => {
-                    self.pending_write.extend(text.as_bytes());
+                    self.queue_response(text.as_bytes());
                 }
                 Event::ColorRequest(index, format) => {
-                    let rgb = self.term.colors()[index].unwrap_or(self.palette[index]);
-                    self.pending_write.extend(format(rgb).as_bytes());
+                    let rgb = self.lookup(index);
+                    self.queue_response(format(rgb).as_bytes());
                 }
                 Event::TextAreaSizeRequest(format) => {
                     let size = window_size(
@@ -310,12 +335,12 @@ impl Terminal {
                         self.term.screen_lines() as u16,
                         self.cell_size,
                     );
-                    self.pending_write.extend(format(size).as_bytes());
+                    self.queue_response(format(size).as_bytes());
                 }
                 // the editor's clipboard is not readable by terminal
                 // apps, only writable: answer loads with nothing
                 Event::ClipboardLoad(_, format) => {
-                    self.pending_write.extend(format("").as_bytes());
+                    self.queue_response(format("").as_bytes());
                 }
                 Event::ClipboardStore(_, data) => {
                     self.events.push(TermEvent::Clipboard(data));
@@ -576,7 +601,8 @@ impl Terminal {
     }
 
     /// private mode 1007: a wheel over the alt screen should arrive as
-    /// arrow keys (how `less` and `vim` scroll without mouse support)
+    /// arrow keys (how `less` and `vim` scroll without mouse support).
+    /// on by default, matching xterm and alacritty -- apps opt out
     pub fn alternate_scroll(&self) -> bool {
         self.term.mode().contains(TermMode::ALTERNATE_SCROLL)
     }
@@ -828,6 +854,34 @@ mod tests {
     }
 
     #[test]
+    fn query_floods_cannot_grow_the_write_queue_unbounded() {
+        // a hostile child that spams device queries but never reads its
+        // pty must hit the cap, not grow pending_write forever
+        let mut t = Terminal::detached(20, 4);
+        // each 3-byte da query yields a >=5-byte response; nothing ever
+        // drains (no pty), so this crosses WRITE_CAP with room to spare
+        let flood = b"\x1b[c".repeat(WRITE_CAP / 4);
+        t.feed(&flood);
+        assert!(
+            t.pending_write.len() <= WRITE_CAP,
+            "write queue grew past the cap: {}",
+            t.pending_write.len()
+        );
+    }
+
+    #[test]
+    fn a_full_write_queue_refuses_atomically() {
+        // all or nothing, like process.rs: a refused write takes no
+        // bytes, so the caller can retry without duplicating the head
+        let mut t = Terminal::detached(20, 4);
+        assert!(t.write(&vec![b'a'; WRITE_CAP - 1]));
+        assert!(!t.write(b"xy"));
+        assert_eq!(t.pending_write.len(), WRITE_CAP - 1);
+        assert!(t.write(b"x")); // exactly fits
+        assert!(!t.write(b"x"));
+    }
+
+    #[test]
     fn damage_reports_touched_rows_then_resets() {
         let mut t = Terminal::detached(20, 4);
         t.take_damage(); // a fresh terminal starts fully damaged
@@ -1030,6 +1084,20 @@ mod tests {
     fn exit_codes_come_back() {
         let mut t = Terminal::open(80, 24, (8, 16), sh("exit 7")).unwrap();
         assert!(poll_until(&mut t, 5000, |t| !t.running()));
+        assert_eq!(t.exit_code(), Some(7));
+    }
+
+    #[test]
+    fn an_exited_terminal_releases_its_pty() {
+        // holding a dead pty keeps a stale pid around for `Pty::drop`
+        // to sighup at tab close -- by then it may belong to someone
+        // else. the pty must go as soon as the child is reaped and its
+        // output drained
+        let mut t = Terminal::open(80, 24, (8, 16), sh("exit 7")).unwrap();
+        assert!(
+            poll_until(&mut t, 5000, |t| t.pid().is_none()),
+            "the pty outlived its child"
+        );
         assert_eq!(t.exit_code(), Some(7));
     }
 
