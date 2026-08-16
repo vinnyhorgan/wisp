@@ -109,6 +109,13 @@ ideas agreed in spirit, not yet scheduled or designed:
   plugin file: installing one = saving it into
   `~/.config/wisp/plugins/`), the unpacked editor in
   `$XDG_DATA_HOME/wisp`, nothing anywhere else.
+- **a hex editor.** the universal claimant for binary files: where
+  imageview claims images, a hexview claims everything else, and §7's
+  refusal becomes the last resort instead of the answer. reading is
+  pure lua on the existing api (bytes in, a draw_text grid out, the
+  mono font is a gift here); editing and saving raw bytes is the real
+  design work -- the doc model is line-based, so a hexview likely
+  wants its own byte-backed model, not a doc.
 - **helix mode.** selection-first modal editing, kakoune-lineage.
   objectively cleaner than vim's operator-pending model: what you see
   selected is what the action operates on. sequencing is natural:
