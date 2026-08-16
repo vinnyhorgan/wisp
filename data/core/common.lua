@@ -6,7 +6,10 @@ function common.is_utf8_cont(char)
 end
 
 function common.utf8_chars(text)
-    return text:gmatch("[\0-\x7f\xc2-\xf4][\x80-\xbf]*")
+    -- the stdlib's own iteration pattern (lite hand-wrote a near copy;
+    -- this one also keeps invalid lead bytes f5-fd as their own chars
+    -- instead of silently dropping them -- bytes should never vanish)
+    return text:gmatch(utf8.charpattern)
 end
 
 function common.clamp(n, lo, hi)
@@ -87,8 +90,8 @@ function common.path_suggest(text)
     local path, name = text:match("^(.-)([^/\\]*)$")
     local files = system.list_dir(path == "" and "." or path) or {}
     local res = {}
-    for _, file in ipairs(files) do
-        file = path .. file
+    for _, name in ipairs(files) do
+        local file = path .. name
         local info = system.get_file_info(file)
         if info then
             if info.type == "dir" then

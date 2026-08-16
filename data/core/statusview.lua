@@ -117,7 +117,8 @@ function StatusView:get_items()
             col,
             style.text,
             self.separator,
-            string.format("%d%%", line / #dv.doc.lines * 100),
+            -- floored: since 5.3, %d refuses any non-integral float
+            string.format("%d%%", math.floor(line / #dv.doc.lines * 100)),
         }, {
             style.icon_font,
             style.icons.gear,

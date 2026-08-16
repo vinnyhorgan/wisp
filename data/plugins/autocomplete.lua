@@ -21,8 +21,8 @@ local mt = {
 
 function autocomplete.add(t)
     local items = {}
-    for text, info in pairs(t.items) do
-        info = (type(info) == "string") and info
+    for text, item_info in pairs(t.items) do
+        local info = (type(item_info) == "string") and item_info
         table.insert(items, setmetatable({ text = text, info = info }, mt))
     end
     autocomplete.map[t.name] = { files = t.files or ".*", items = items }

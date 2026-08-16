@@ -1,8 +1,9 @@
 local strict = {}
 strict.defined = {}
 
--- used to define a global variable
-function global(t)
+-- used to define a global variable. lite named this `global`, which
+-- lua 5.5 made a reserved word -- old callers could not even parse
+function declare(t)
     for k, v in pairs(t) do
         strict.defined[k] = true
         rawset(_G, k, v)

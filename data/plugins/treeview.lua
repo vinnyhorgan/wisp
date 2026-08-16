@@ -204,6 +204,7 @@ function TreeView:draw()
     local active_filename = doc and system.absolute_path(doc.filename or "")
 
     for item, x, y, w, h in self:each_item() do
+        local x = x -- loop vars are const since lua 5.5
         local color = style.text
 
         -- highlight active_view doc

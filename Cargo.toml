@@ -11,8 +11,9 @@ rust-version = "1.88"
 publish = false
 
 [dependencies]
-# lua 5.2 vendored: same interpreter lite shipped, the only c we compile
-mlua = { version = "0.12", features = ["lua52", "vendored"] }
+# lua 5.5 vendored, the only c we compile (lite shipped 5.2; the
+# migration and its data/ fallout are DEVIATIONS §13)
+mlua = { version = "0.12", features = ["lua55", "vendored"] }
 # pure-rust windowing and cpu-buffer presentation
 winit = "0.30"
 softbuffer = "0.4"

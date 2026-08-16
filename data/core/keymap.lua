@@ -28,6 +28,7 @@ end
 
 function keymap.add(map, overwrite)
     for stroke, commands in pairs(map) do
+        local commands = commands -- loop vars are const since lua 5.5
         if type(commands) == "string" then
             commands = { commands }
         end

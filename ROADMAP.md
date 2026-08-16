@@ -53,6 +53,17 @@ log is the truth.
   (the one fs syscall lua's os library lacks), and `system.watch`
   (native fs events on notify, polled like everything else).
 
+- **lua 5.5.** the "someday, deliberately last" item, brought forward
+  by decision before the plugin pass so every plugin inherits the
+  final interpreter instead of a migration. mlua's `lua55` (vendored,
+  still the only c in the build), a full data/ audit for the 5.3
+  integer split and 5.5's const loop variables, strict.lua's
+  declarator renamed (`global` is a reserved word now), utf8
+  iteration from the stdlib's charpattern. the load-bearing 5.2
+  semantics -- yieldable exit path, ephemerons, short-string
+  interning -- all survive unchanged; the whole record is
+  DEVIATIONS §13, and the suite passed untouched after the port.
+
 ## the freeze
 
 declared 2026-08-16, after the audit and the last additions: the core
@@ -161,10 +172,9 @@ deciding lite #64 alongside word wrap - copy/cut whole line on empty
 selection (lite pr #209) - draw whitespace, auto-save, hide tabs /
 gutter (plugin-shaped lite prs)
 
-someday, deliberately last: a newer lua (5.4). mlua makes the swap
-cheap, but 5.2 semantics are load-bearing (interned strings, ephemeron
-weak tables, the yieldable exit path) and every plugin will inherit
-the choice -- revisit only once the plugin ecosystem has settled.
+the "someday, deliberately last" lua upgrade landed early instead
+(see done): better that every plugin inherits the final interpreter
+than that the swap waits under a settled ecosystem.
 
 ## said no, on the record
 

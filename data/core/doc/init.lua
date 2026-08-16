@@ -74,6 +74,7 @@ function Doc:load(filename)
     self.filename = filename
     self.lines = {}
     for line in fp:lines() do
+        local line = line -- loop vars are const since lua 5.5
         if line:byte(-1) == 13 then
             line = line:sub(1, -2)
             self.crlf = true
@@ -91,6 +92,7 @@ function Doc:save(filename)
     filename = filename or assert(self.filename, "no filename set to default to")
     local fp = assert(io.open(filename, "wb"))
     for _, line in ipairs(self.lines) do
+        local line = line -- loop vars are const since lua 5.5
         if self.crlf then
             line = line:gsub("\n", "\r\n")
         end

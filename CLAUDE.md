@@ -66,11 +66,17 @@ way rxi intended.
 - theme: catppuccin mocha from the official palette (catppuccin/palette),
   green accent for caret and highlights. colors are verified by name
   against the official palette.json -- never eyeball them.
-- lua is 5.2 (mlua, vendored, the only c in the build). 5.2 semantics
-  matter: all strings are interned, weak tables are ephemerons, and
-  `string.format("%d")` errors on inf -- guard any division that can see
-  a zero denominator, especially on the draw path (draw runs outside
-  core.try, so an error there kills the editor).
+- lua is 5.5 (mlua `lua55`, vendored, the only c in the build;
+  migration record in DEVIATIONS §13). the semantics that matter:
+  integers exist (since 5.3), `/` is always float, and
+  `string.format("%d")` errors on *any* non-integral float -- floor
+  every computed value before formatting or indexing, especially on
+  the draw path (draw runs outside core.try, so an error there kills
+  the editor). for-loop variables are const (shadow with a local to
+  mutate), `global` is a reserved word (strict.lua's declarator is
+  `declare`), weak tables are ephemerons, pcall/xpcall stay yieldable
+  (the exit path depends on it), and short strings (<= 40 bytes) are
+  interned.
 - locked views opt into divider dragging by implementing
   `set_target_size(axis, value)`; views opt into sideways scrolling via
   `get_h_scrollable_size()` (default 0). the horizontal clamp runs in
@@ -119,7 +125,7 @@ way rxi intended.
 - `Headless::boot_with_exedir` boots against a copied `data/` tree: the
   way to inject a user module or a modified plugin (e.g. registering a
   test autocomplete provider) without touching the repo's data.
-- lua 5.2 randomizes the string hash seed per state: `pairs()` order
+- lua randomizes the string hash seed per state: `pairs()` order
   varies per boot. anything asserted through it must be made
   order-independent (e.g. break fuzzy-score ties).
 

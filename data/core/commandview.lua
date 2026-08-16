@@ -137,6 +137,7 @@ function CommandView:update_suggestions()
     local t = self.state.suggest(self:get_text()) or {}
     local res = {}
     for i, item in ipairs(t) do
+        local item = item -- loop vars are const since lua 5.5
         if i == max_suggestions then
             break
         end

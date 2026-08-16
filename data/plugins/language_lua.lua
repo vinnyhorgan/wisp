@@ -41,6 +41,8 @@ syntax.add({
         ["and"] = "keyword",
         ["or"] = "keyword",
         ["goto"] = "keyword",
+        -- reserved since lua 5.5
+        ["global"] = "keyword",
         ["self"] = "keyword2",
         ["true"] = "literal",
         ["false"] = "literal",

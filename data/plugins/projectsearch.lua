@@ -183,13 +183,14 @@ function ResultsView:draw()
     -- status
     local ox, oy = self:get_content_offset()
     local x, y = ox + style.padding.x, oy + style.padding.y
-    -- an empty project must not divide by zero: %d errors on inf
+    -- an empty project must not divide by zero: %d errors on inf --
+    -- and since 5.3 on any non-integral float, hence the floor
     local per = self.last_file_idx / math.max(1, #core.project_files)
     local text
     if self.searching then
         text = string.format(
             "searching %d%% (%d of %d files, %d matches) for %q...",
-            per * 100,
+            math.floor(per * 100),
             self.last_file_idx,
             #core.project_files,
             #self.results,
@@ -215,6 +216,7 @@ function ResultsView:draw()
     -- results
     local y1, y2 = self.position.y, self.position.y + self.size.y
     for i, item, x, y, w, h in self:each_visible_result() do
+        local x = x -- loop vars are const since lua 5.5
         local color = style.text
         if i == self.selected_idx then
             color = style.accent

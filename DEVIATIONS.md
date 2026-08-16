@@ -313,6 +313,44 @@ editor keys that stay editor keys live in
 navigation). `terminal:toggle` on `ctrl+\`` jumps between the
 terminal and the last view; a finished shell closes its own tab.
 
+## 13. lua 5.5
+
+**files:** `data/core/strict.lua`, `data/core/common.lua`,
+`data/core/doc/init.lua`, `data/core/commandview.lua`,
+`data/core/keymap.lua`, `data/core/statusview.lua`,
+`data/plugins/autocomplete.lua`, `data/plugins/projectsearch.lua`,
+`data/plugins/treeview.lua`, `data/plugins/language_lua.lua`
+
+lite embedded lua 5.2; wisp embeds lua 5.5 (mlua's vendored build,
+still the only c compiled). the semantics the editor's design leans on
+survive the jump unchanged -- yieldable pcall/xpcall (the exit path),
+ephemeron weak tables, short-string interning, `os.exit` argument
+handling -- and the audit for the rest touched exactly these:
+
+- **the 5.3 integer split.** division is always float now, and
+  `string.format("%d")` refuses any non-integral float (5.2 truncated
+  silently; the old guard here was only about inf). the two percent
+  readouts -- statusview's document position and projectsearch's
+  progress -- floor before formatting. everything else feeding `%d`,
+  `string.sub` and friends was audited and already integer-sourced.
+- **for-loop variables are const in 5.5.** nine loops reassigned
+  their control variable (crlf stripping in `Doc:load`/`save`, the
+  advancing `x` in treeview and projectsearch draws, normalization in
+  keymap/commandview/autocomplete/`common.path_suggest`); each now
+  shadows with a local, semantics identical.
+- **`global` is a reserved word in 5.5**, so lite's
+  `function global(t)` in strict.lua no longer parses -- and neither
+  would any caller, so the old name was unkeepable by definition. the
+  declarator is now `declare { name = value }`; the strict-globals
+  metatable machinery is unchanged. ported plugins calling `global {}`
+  need the same one-word fix.
+- **`common.utf8_chars` iterates with the stdlib's
+  `utf8.charpattern`** instead of lite's hand-written near-copy. one
+  visible difference on garbage input: invalid lead bytes f5-fd form
+  their own one-byte chars instead of silently vanishing -- bytes
+  should never disappear on their way to the screen.
+- `language_lua` highlights `global` as the keyword it now is.
+
 ## kept on purpose
 
 lite behaviors evaluated deliberately and kept, recorded so they are

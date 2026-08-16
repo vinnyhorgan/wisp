@@ -29,7 +29,7 @@ end
 
 -- exit by yielding, never by exit(2): the host must get control back
 -- so rust destructors run (spawned processes are killed and reaped).
--- lua 5.2 semantics for the argument: true and nil succeed, false fails
+-- os.exit semantics for the argument: true and nil succeed, false fails
 os.exit = function(code)
   if code == false then code = 1 elseif code == true or code == nil then code = 0 end
   while true do coroutine.yield("exit", code) end
@@ -178,6 +178,15 @@ mod tests {
         let f: Function = lua.load(chunk).eval().unwrap();
         let thread = lua.create_thread(f).unwrap();
         resume(&thread, Resume::Start)
+    }
+
+    #[test]
+    fn the_vendored_lua_is_5_5() {
+        // the data/ tree is ported to 5.5 semantics (DEVIATIONS §13);
+        // a feature-flag slip back to an older lua must fail loudly
+        let lua = Lua::new();
+        let version: String = lua.globals().get("_VERSION").unwrap();
+        assert_eq!(version, "Lua 5.5");
     }
 
     #[test]
