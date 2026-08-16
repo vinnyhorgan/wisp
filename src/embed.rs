@@ -22,7 +22,9 @@ pub fn unpack() -> std::io::Result<PathBuf> {
 
 fn data_home() -> std::io::Result<PathBuf> {
     if let Some(dir) = std::env::var_os("XDG_DATA_HOME")
+        // the xdg spec: a relative value is invalid and must be ignored
         && !dir.is_empty()
+        && Path::new(&dir).is_absolute()
     {
         return Ok(dir.into());
     }
@@ -34,11 +36,47 @@ fn data_home() -> std::io::Result<PathBuf> {
 
 fn unpack_into(root: &Path) -> std::io::Result<()> {
     let stamp = root.join("version");
+    // a current stamp means hands off, even if the tree was edited or
+    // damaged by hand: repairing would clobber live edits, and deleting
+    // the version file is the explicit way to ask for a fresh tree
     if std::fs::read_to_string(&stamp).is_ok_and(|v| v == env!("CARGO_PKG_VERSION")) {
         return Ok(());
     }
+    // prune before writing: plugins autoload by directory listing, so a
+    // file removed from data/ upstream must not keep loading forever
+    // from the unpacked tree. user/ belongs to the user and stays
+    prune(&root.join("data"))?;
     write_dir(&DATA, &root.join("data"))?;
-    std::fs::write(&stamp, env!("CARGO_PKG_VERSION"))
+    write_file(&stamp, env!("CARGO_PKG_VERSION").as_bytes())
+}
+
+fn prune(data: &Path) -> std::io::Result<()> {
+    let entries = match std::fs::read_dir(data) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e),
+    };
+    for entry in entries {
+        let entry = entry?;
+        if entry.file_name() == "user" {
+            continue;
+        }
+        if entry.file_type()?.is_dir() {
+            std::fs::remove_dir_all(entry.path())?;
+        } else {
+            std::fs::remove_file(entry.path())?;
+        }
+    }
+    Ok(())
+}
+
+/// write-then-rename: anyone racing the unpack (a second first-run
+/// instance) sees the old file or the new one, never a torn half
+fn write_file(target: &Path, contents: &[u8]) -> std::io::Result<()> {
+    let name = target.file_name().unwrap_or_default().to_string_lossy();
+    let tmp = target.with_file_name(format!("{name}.wisp-tmp"));
+    std::fs::write(&tmp, contents)?;
+    std::fs::rename(&tmp, target)
 }
 
 fn write_dir(dir: &Dir, root: &Path) -> std::io::Result<()> {
@@ -54,7 +92,7 @@ fn write_dir(dir: &Dir, root: &Path) -> std::io::Result<()> {
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(&target, f.contents())?;
+        write_file(&target, f.contents())?;
     }
     Ok(())
 }
@@ -92,6 +130,28 @@ mod tests {
         let user = std::fs::read_to_string(root.join("data/user/init.lua")).unwrap();
         assert_ne!(core, "hacked\n", "a stale core file survived the upgrade");
         assert_eq!(user, "mine\n", "the upgrade clobbered user/");
+    }
+
+    #[test]
+    fn an_upgrade_prunes_files_the_new_version_dropped() {
+        // plugins autoload by directory listing: a plugin removed from
+        // data/ upstream used to keep loading from the unpacked tree
+        // forever. user/ must survive the prune untouched
+        let root = scratch("prune");
+        unpack_into(&root).unwrap();
+        std::fs::write(root.join("data/plugins/stale.lua"), "gone upstream\n").unwrap();
+        std::fs::write(root.join("data/user/mine.lua"), "mine\n").unwrap();
+        std::fs::write(root.join("version"), "0.0.0-old").unwrap();
+        unpack_into(&root).unwrap();
+        assert!(
+            !root.join("data/plugins/stale.lua").exists(),
+            "a file dropped upstream survived the upgrade"
+        );
+        assert_eq!(
+            std::fs::read_to_string(root.join("data/user/mine.lua")).unwrap(),
+            "mine\n",
+            "the prune reached into user/"
+        );
     }
 
     #[test]
