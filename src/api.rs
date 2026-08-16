@@ -245,6 +245,23 @@ impl UserData for LuaTerminal {
             Ok(this.0.borrow().bracketed_paste())
         });
         methods.add_method("mouse_mode", |_, this, ()| Ok(this.0.borrow().mouse_mode()));
+        // nil, "click", "drag" or "motion"
+        methods.add_method("mouse_protocol", |_, this, ()| {
+            Ok(this.0.borrow().mouse_protocol())
+        });
+        // "sgr", "utf8" or "normal"
+        methods.add_method("mouse_encoding", |_, this, ()| {
+            Ok(this.0.borrow().mouse_encoding())
+        });
+        methods.add_method("alt_screen", |_, this, ()| Ok(this.0.borrow().alt_screen()));
+        methods.add_method("alternate_scroll", |_, this, ()| {
+            Ok(this.0.borrow().alternate_scroll())
+        });
+        // whether the 1-based row flows into the next without a newline;
+        // lenient about the row for the same reason line() is
+        methods.add_method("wrapped", |_, this, row: f64| {
+            Ok(this.0.borrow().line_wrapped(row.max(1.0) as usize - 1))
+        });
         methods.add_method("running", |_, this, ()| Ok(this.0.borrow().running()));
         methods.add_method("returncode", |_, this, ()| Ok(this.0.borrow().exit_code()));
         methods.add_method("pid", |_, this, ()| Ok(this.0.borrow().pid()));

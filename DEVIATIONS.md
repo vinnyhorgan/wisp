@@ -384,7 +384,10 @@ differences, all deliberate:
   method returns immediately, `update()` drains the pty from a lua
   coroutine, and a terminal the editor lets go of is killed and
   reaped. TERM is xterm-256color; colors resolve through the app's
-  own osc overrides first, then the palette the lua theme sets.
+  own osc overrides first, then the palette the lua theme sets. every
+  mode bit the view's input, mouse and selection work needs is a
+  getter on the handle: app cursor, bracketed paste, mouse protocol
+  and encoding, alt screen, alternate scroll, per-row wrap.
 - `system.mkdir(path)` creates one directory level, returning `true` or
   `nil, error`. lua's `os` library is iso c only, which has no mkdir --
   the same hole lite-xl patched the same way. directory trees are a lua

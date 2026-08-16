@@ -21,7 +21,7 @@ use alacritty_terminal::event::{Event, EventListener, WindowSize};
 use alacritty_terminal::grid::Dimensions;
 use alacritty_terminal::index::{Column, Line};
 use alacritty_terminal::term::cell::Flags;
-use alacritty_terminal::term::{self, Term, TermDamage};
+use alacritty_terminal::term::{self, Term, TermDamage, TermMode};
 use alacritty_terminal::tty::{self, ChildEvent, EventedPty, Options, Shell};
 use alacritty_terminal::vte::ansi::{self, CursorShape, NamedColor, Rgb};
 
@@ -513,10 +513,7 @@ impl Terminal {
         let offset = self.term.grid().display_offset();
         let visible = offset == 0
             && self.term.cursor_style().shape != CursorShape::Hidden
-            && self
-                .term
-                .mode()
-                .contains(alacritty_terminal::term::TermMode::SHOW_CURSOR);
+            && self.term.mode().contains(TermMode::SHOW_CURSOR);
         (point.column.0, point.line.0, visible)
     }
 
@@ -534,21 +531,67 @@ impl Terminal {
 
     /// mode bits the view's key translation must respect
     pub fn app_cursor(&self) -> bool {
-        self.term
-            .mode()
-            .contains(alacritty_terminal::term::TermMode::APP_CURSOR)
+        self.term.mode().contains(TermMode::APP_CURSOR)
     }
 
     pub fn bracketed_paste(&self) -> bool {
-        self.term
-            .mode()
-            .contains(alacritty_terminal::term::TermMode::BRACKETED_PASTE)
+        self.term.mode().contains(TermMode::BRACKETED_PASTE)
     }
 
     pub fn mouse_mode(&self) -> bool {
-        self.term
-            .mode()
-            .intersects(alacritty_terminal::term::TermMode::MOUSE_MODE)
+        self.term.mode().intersects(TermMode::MOUSE_MODE)
+    }
+
+    /// which mouse reporting the app asked for: none, "click" (press
+    /// and release), "drag" (plus motion while a button is held), or
+    /// "motion" (every movement)
+    pub fn mouse_protocol(&self) -> Option<&'static str> {
+        let mode = self.term.mode();
+        if mode.contains(TermMode::MOUSE_MOTION) {
+            Some("motion")
+        } else if mode.contains(TermMode::MOUSE_DRAG) {
+            Some("drag")
+        } else if mode.contains(TermMode::MOUSE_REPORT_CLICK) {
+            Some("click")
+        } else {
+            None
+        }
+    }
+
+    /// how mouse reports go on the wire: "sgr" (modern, unlimited
+    /// coordinates), "utf8", or "normal" (legacy bytes, 223 columns)
+    pub fn mouse_encoding(&self) -> &'static str {
+        let mode = self.term.mode();
+        if mode.contains(TermMode::SGR_MOUSE) {
+            "sgr"
+        } else if mode.contains(TermMode::UTF8_MOUSE) {
+            "utf8"
+        } else {
+            "normal"
+        }
+    }
+
+    pub fn alt_screen(&self) -> bool {
+        self.term.mode().contains(TermMode::ALT_SCREEN)
+    }
+
+    /// private mode 1007: a wheel over the alt screen should arrive as
+    /// arrow keys (how `less` and `vim` scroll without mouse support)
+    pub fn alternate_scroll(&self) -> bool {
+        self.term.mode().contains(TermMode::ALTERNATE_SCROLL)
+    }
+
+    /// whether this display row flows into the next with no newline;
+    /// selection copy must not invent line breaks the text never had
+    pub fn line_wrapped(&self, display_row: usize) -> bool {
+        if display_row >= self.term.screen_lines() {
+            return false;
+        }
+        let grid = self.term.grid();
+        let line = Line(display_row as i32) - grid.display_offset() as i32;
+        grid[line][Column(grid.columns() - 1)]
+            .flags
+            .contains(Flags::WRAPLINE)
     }
 
     pub fn running(&self) -> bool {
@@ -861,6 +904,48 @@ mod tests {
         // inverse: the glyph paints in the background color
         assert_eq!((run.fg.r, run.fg.g, run.fg.b), (0, 0, 0));
         assert_eq!((run.bg.r, run.bg.g, run.bg.b), (229, 229, 229));
+    }
+
+    #[test]
+    fn mouse_modes_surface_protocol_and_encoding() {
+        let mut t = Terminal::detached(20, 4);
+        assert_eq!(t.mouse_protocol(), None);
+        t.feed(b"\x1b[?1000h");
+        assert_eq!(t.mouse_protocol(), Some("click"));
+        assert_eq!(t.mouse_encoding(), "normal");
+        t.feed(b"\x1b[?1002h");
+        assert_eq!(t.mouse_protocol(), Some("drag"));
+        t.feed(b"\x1b[?1003h\x1b[?1006h");
+        assert_eq!(t.mouse_protocol(), Some("motion"));
+        assert_eq!(t.mouse_encoding(), "sgr");
+        t.feed(b"\x1b[?1006l\x1b[?1005h");
+        assert_eq!(t.mouse_encoding(), "utf8");
+        t.feed(b"\x1b[?1003l\x1b[?1002l\x1b[?1000l");
+        assert_eq!(t.mouse_protocol(), None);
+        assert!(!t.mouse_mode());
+    }
+
+    #[test]
+    fn wrapped_rows_and_the_alt_screen_are_visible() {
+        let mut t = Terminal::detached(10, 4);
+        t.feed(b"aaaaaaaaaabbb");
+        assert!(t.line_wrapped(0), "row 0 flowed into row 1");
+        assert!(!t.line_wrapped(1));
+        assert!(!t.line_wrapped(99), "off-screen is false, never a panic");
+        assert!(!t.alt_screen());
+        t.feed(b"\x1b[?1049h");
+        assert!(t.alt_screen());
+        t.feed(b"\x1b[?1049l");
+        assert!(!t.alt_screen());
+    }
+
+    #[test]
+    fn alternate_scroll_follows_the_private_mode() {
+        let mut t = Terminal::detached(10, 4);
+        t.feed(b"\x1b[?1007h");
+        assert!(t.alternate_scroll());
+        t.feed(b"\x1b[?1007l");
+        assert!(!t.alternate_scroll());
     }
 
     #[test]
