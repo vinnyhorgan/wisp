@@ -90,6 +90,23 @@ fn copy_data_root(name: &str) -> std::path::PathBuf {
     root
 }
 
+/// clicks down the treeview rows until hello.txt opens; its exact y
+/// depends on style metrics, which this deliberately does not hardcode
+fn open_hello_via_treeview(editor: &mut Headless) {
+    for row in 0..8 {
+        let y = 8 + row * 12;
+        editor.push_event(Event::MouseMoved(40, y, 0, 0));
+        editor.run_steps(50);
+        editor.push_event(Event::MousePressed("left", 40, y, 1));
+        editor.push_event(Event::MouseReleased("left", 40, y));
+        editor.run_steps(100);
+        if editor.window_title().starts_with("hello.txt") {
+            break;
+        }
+    }
+    assert_eq!(editor.window_title(), "hello.txt - wisp");
+}
+
 /// ctrl+n, then type some text into the fresh doc
 fn open_dirty_doc(editor: &mut Headless) {
     editor.push_event(Event::KeyPressed("left ctrl".into()));
@@ -204,40 +221,15 @@ fn exposed_event_repaints_identical_pixels() {
 #[test]
 fn clicking_the_treeview_opens_the_file() {
     let _serial = serial();
-    // hello.txt is the only row in the treeview; probe downward until the
-    // click lands on it (its exact y depends on style metrics, which this
-    // test deliberately does not hardcode)
     let mut editor = boot();
-    for row in 0..8 {
-        let y = 8 + row * 12;
-        editor.push_event(Event::MouseMoved(40, y, 0, 0));
-        editor.run_steps(50);
-        editor.push_event(Event::MousePressed("left", 40, y, 1));
-        editor.push_event(Event::MouseReleased("left", 40, y));
-        editor.run_steps(100);
-        if editor.window_title().starts_with("hello.txt") {
-            break;
-        }
-    }
-    assert_eq!(editor.window_title(), "hello.txt - wisp");
+    open_hello_via_treeview(&mut editor);
 }
 
 #[test]
 fn a_triple_click_on_the_last_line_keeps_the_doc_clean() {
     let _serial = serial();
     let mut editor = boot();
-    for row in 0..8 {
-        let y = 8 + row * 12;
-        editor.push_event(Event::MouseMoved(40, y, 0, 0));
-        editor.run_steps(50);
-        editor.push_event(Event::MousePressed("left", 40, y, 1));
-        editor.push_event(Event::MouseReleased("left", 40, y));
-        editor.run_steps(100);
-        if editor.window_title().starts_with("hello.txt") {
-            break;
-        }
-    }
-    assert_eq!(editor.window_title(), "hello.txt - wisp");
+    open_hello_via_treeview(&mut editor);
     // hello.txt is one line, so its first line is also its last: the
     // triple click must select it without editing the doc to do so
     editor.push_event(Event::MouseMoved(400, 60, 0, 0));
@@ -255,6 +247,8 @@ fn a_bare_launch_opens_the_current_directory() {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("marker.txt"), "here\n").unwrap();
+    // chdirs the shared test process and never restores: safe only
+    // because every other boot chdirs again and `serial` is held
     std::env::set_current_dir(&dir).unwrap();
     let mut editor = Headless::boot_bare(900, 600, 1.0);
     editor.run_until_frames(1, 10_000);
@@ -292,6 +286,9 @@ fn idle_editor_stops_redrawing() {
 fn typing_in_a_new_doc_appears_on_screen() {
     let _serial = serial();
     let mut editor = boot();
+    // no focus, no caret: otherwise a blink alone could satisfy the
+    // pixel diff below and the assert would prove nothing about glyphs
+    editor.set_focus(false);
     ctrl(&editor, "n");
     let before = editor.frame_count();
     editor.run_until_frames(before + 1, 10_000);
@@ -307,6 +304,46 @@ fn typing_in_a_new_doc_appears_on_screen() {
         "typing must change the screen"
     );
     assert_eq!(editor.window_title(), "unsaved* - wisp");
+}
+
+#[test]
+fn a_dropped_file_opens_in_the_editor() {
+    let _serial = serial();
+    // the exact event the desktop platform pushes on a dnd drop; the
+    // path crosses to lua as raw bytes and must open like any other doc
+    let mut editor = boot();
+    let file = std::path::Path::new(&project_dir()).join("hello.txt");
+    editor.push_event(Event::FileDropped(file, 400, 300));
+    editor.run_steps(300);
+    assert_eq!(editor.window_title(), "hello.txt - wisp");
+}
+
+#[test]
+fn exec_fires_and_forgets_a_shell_line() {
+    let _serial = serial();
+    // system.exec has no consumer in the stock lua, so drive it from an
+    // injected user module and watch for its side effect on disk
+    let root = copy_data_root("execroot");
+    let marker = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("exec-marker");
+    let _ = std::fs::remove_file(&marker);
+    std::fs::write(
+        root.join("data/user/init.lua"),
+        format!("system.exec(\"touch '{}'\")\n", marker.display()),
+    )
+    .unwrap();
+    let mut editor =
+        Headless::boot_with_exedir(&root.display().to_string(), &project_dir(), 900, 600, 1.0);
+    editor.run_until_frames(1, 10_000);
+    // the command runs as a real background process on real time, while
+    // the editor clock is virtual: poll the disk, not the frame count
+    for _ in 0..1000 {
+        if marker.exists() {
+            return;
+        }
+        editor.run_steps(10);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    panic!("system.exec never ran the command");
 }
 
 #[test]
@@ -877,7 +914,10 @@ fn caret_follow_keeps_the_users_scroll() {
     editor.run_steps(500);
 
     // the doc area: everything above the status bar (whose column
-    // readout changes with the caret and must not fail the compare)
+    // readout changes with the caret and must not fail the compare).
+    // 500 hardcodes the 900x600 boot geometry with generous margin: the
+    // status bar sits well below it at these style metrics, and a
+    // too-small cut only makes the compare weaker, never wrong
     fn doc_area(frame: &[u32], w: i32) -> Vec<u32> {
         frame[..(500 * w) as usize].to_vec()
     }
@@ -1405,7 +1445,10 @@ fn statusbar_column_counts_characters_not_bytes() {
         press(&editor, "right");
         editor.run_steps(300);
         let (frame, w, h) = editor.last_frame();
-        // the status bar strip only: the doc text differs by design
+        // the status bar strip only: the doc text differs by design.
+        // 25 rows hardcodes the bar's height at these style metrics; if
+        // the bar ever grows past it the slice still lies inside the
+        // bar, so the column readout stays in the compare
         frame[((h - 25) * w) as usize..].to_vec()
     };
     let plain = run("colplain", "hello\n");
