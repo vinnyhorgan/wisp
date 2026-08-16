@@ -118,10 +118,16 @@ impl Platform for DesktopPlatform {
         if self.clipboard.is_none() {
             self.clipboard = arboard::Clipboard::new().ok();
         }
-        if let Some(clipboard) = &mut self.clipboard
-            && let Ok(text) = clipboard.get_text()
-        {
-            return Some(text);
+        if let Some(clipboard) = &mut self.clipboard {
+            match clipboard.get_text() {
+                Ok(text) => return Some(text),
+                // a working clipboard holding no text (an image, or
+                // nothing at all) is an empty paste -- like sdl's "" in
+                // lite -- not a cue to resurrect an old copy
+                Err(arboard::Error::ContentNotAvailable) => return Some(String::new()),
+                // a broken or absent clipboard: fall through to the echo
+                Err(_) => {}
+            }
         }
         Some(self.clipboard_fallback.clone())
     }
@@ -190,9 +196,9 @@ enum Parked {
 }
 
 /// turns raw button presses into lite's click counts. repeat presses of
-/// the same button within half a second and 8 pixels count up, and the
-/// count cycles after a triple click so mashing goes caret, word, line,
-/// caret, ... instead of counting up forever like sdl did
+/// the same button within half a second and `radius` pixels count up,
+/// and the count cycles after a triple click so mashing goes caret,
+/// word, line, caret, ... instead of counting up forever like sdl did
 struct ClickCounter {
     time: f64,
     button: &'static str,
@@ -210,8 +216,8 @@ impl ClickCounter {
         }
     }
 
-    fn press(&mut self, button: &'static str, now: f64, pos: (f64, f64)) -> i32 {
-        let near = (pos.0 - self.pos.0).abs() < 8.0 && (pos.1 - self.pos.1).abs() < 8.0;
+    fn press(&mut self, button: &'static str, now: f64, pos: (f64, f64), radius: f64) -> i32 {
+        let near = (pos.0 - self.pos.0).abs() < radius && (pos.1 - self.pos.1).abs() < radius;
         if button == self.button && now - self.time < 0.5 && near {
             self.clicks = self.clicks % 3 + 1;
         } else {
@@ -231,7 +237,9 @@ struct App {
     lua: Option<(mlua::Lua, mlua::Thread)>,
     parked: Parked,
     mods: ModifiersState,
-    cursor: (f64, f64),
+    /// last known cursor position; none until the first real motion, so
+    /// the first move cannot report a phantom delta from the origin
+    cursor: Option<(f64, f64)>,
     clicks: ClickCounter,
 }
 
@@ -255,8 +263,17 @@ impl App {
     }
 
     fn deadline_instant(&self, t: f64) -> Instant {
-        self.start + Duration::from_secs_f64(t.max(0.0))
+        self.start + Duration::from_secs_f64(clamp_deadline(self.now(), t))
     }
+}
+
+/// a plugin can ask to wait forever (`wait_event(math.huge)`), and
+/// `Duration::from_secs_f64` panics on non-finite or oversized values:
+/// clamp the deadline to a day out. waking idle once a day costs
+/// nothing, and the wait loop re-parks on the still-infinite deadline
+fn clamp_deadline(now: f64, t: f64) -> f64 {
+    let far = now + 86_400.0;
+    if t.is_finite() { t.clamp(0.0, far) } else { far }
 }
 
 impl ApplicationHandler for App {
@@ -341,8 +358,11 @@ impl ApplicationHandler for App {
                         if let Some(name) = name {
                             self.push(Event::KeyPressed(name));
                         }
+                        // super rides along with ctrl for the day this
+                        // runs on a mac, where cmd chords carry text
                         if let Some(text) = &event.text
                             && !self.mods.control_key()
+                            && !self.mods.super_key()
                             && !text.is_empty()
                             && !text.chars().any(|c| c.is_control())
                         {
@@ -359,10 +379,12 @@ impl ApplicationHandler for App {
             WindowEvent::CursorMoved { position, .. } => {
                 // deltas are differences of truncated positions, so a
                 // stream of sub-pixel moves still sums to the true travel
-                // (truncating each fractional delta would drift to zero)
+                // (truncating each fractional delta would drift to zero);
+                // the very first move has no history and delta zero
+                let prev = self.cursor.unwrap_or((position.x, position.y));
                 let (x, y) = (position.x as i32, position.y as i32);
-                let (dx, dy) = (x - self.cursor.0 as i32, y - self.cursor.1 as i32);
-                self.cursor = (position.x, position.y);
+                let (dx, dy) = (x - prev.0 as i32, y - prev.1 as i32);
+                self.cursor = Some((position.x, position.y));
                 self.push(Event::MouseMoved(x, y, dx, dy));
             }
             WindowEvent::MouseInput { state, button, .. } => {
@@ -372,10 +394,21 @@ impl ApplicationHandler for App {
                     MouseButton::Right => "right",
                     _ => "?",
                 };
-                let (x, y) = (self.cursor.0 as i32, self.cursor.1 as i32);
+                // winit's button events carry no coordinates (sdl's did);
+                // a press before any motion falls back to the origin
+                let pos = self.cursor.unwrap_or((0.0, 0.0));
+                let (x, y) = (pos.0 as i32, pos.1 as i32);
                 match state {
                     ElementState::Pressed => {
-                        let clicks = self.clicks.press(name, self.now(), self.cursor);
+                        // the double-click slop scales with the display,
+                        // so 2x screens keep the same physical feel
+                        let radius =
+                            8.0 * self
+                                .with_platform(|p| {
+                                    p.window.as_ref().map(|w| w.scale_factor())
+                                })
+                                .unwrap_or(1.0);
+                        let clicks = self.clicks.press(name, self.now(), pos, radius);
                         self.push(Event::MousePressed(name, x, y, clicks));
                     }
                     ElementState::Released => {
@@ -409,11 +442,8 @@ impl ApplicationHandler for App {
                 // coordinates are the last known position, not the drop
                 // point; the file still opens, it may just land in another
                 // split. sdl could do better, winit has no drop position
-                self.push(Event::FileDropped(
-                    path,
-                    self.cursor.0 as i32,
-                    self.cursor.1 as i32,
-                ));
+                let (x, y) = self.cursor.unwrap_or((0.0, 0.0));
+                self.push(Event::FileDropped(path, x as i32, y as i32));
             }
             _ => {}
         }
@@ -508,7 +538,7 @@ pub fn run() {
         lua: None,
         parked: Parked::Start,
         mods: ModifiersState::empty(),
-        cursor: (0.0, 0.0),
+        cursor: None,
         clicks: ClickCounter::new(),
     };
     event_loop.run_app(&mut app).expect("event loop error");
@@ -516,13 +546,13 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::ClickCounter;
+    use super::{ClickCounter, clamp_deadline};
 
     #[test]
     fn rapid_clicks_cycle_through_caret_word_line() {
         let mut c = ClickCounter::new();
         let counts: Vec<i32> = (0..7)
-            .map(|i| c.press("left", i as f64 * 0.1, (5.0, 5.0)))
+            .map(|i| c.press("left", i as f64 * 0.1, (5.0, 5.0), 8.0))
             .collect();
         assert_eq!(counts, [1, 2, 3, 1, 2, 3, 1]);
     }
@@ -530,23 +560,45 @@ mod tests {
     #[test]
     fn slow_clicks_do_not_count_up() {
         let mut c = ClickCounter::new();
-        assert_eq!(c.press("left", 0.0, (5.0, 5.0)), 1);
-        assert_eq!(c.press("left", 0.6, (5.0, 5.0)), 1);
+        assert_eq!(c.press("left", 0.0, (5.0, 5.0), 8.0), 1);
+        assert_eq!(c.press("left", 0.6, (5.0, 5.0), 8.0), 1);
     }
 
     #[test]
     fn moving_the_mouse_resets_the_count() {
         let mut c = ClickCounter::new();
-        assert_eq!(c.press("left", 0.0, (5.0, 5.0)), 1);
-        assert_eq!(c.press("left", 0.1, (20.0, 5.0)), 1);
-        assert_eq!(c.press("left", 0.2, (20.0, 7.0)), 2);
+        assert_eq!(c.press("left", 0.0, (5.0, 5.0), 8.0), 1);
+        assert_eq!(c.press("left", 0.1, (20.0, 5.0), 8.0), 1);
+        assert_eq!(c.press("left", 0.2, (20.0, 7.0), 8.0), 2);
     }
 
     #[test]
     fn changing_button_resets_the_count() {
         let mut c = ClickCounter::new();
-        assert_eq!(c.press("left", 0.0, (5.0, 5.0)), 1);
-        assert_eq!(c.press("left", 0.1, (5.0, 5.0)), 2);
-        assert_eq!(c.press("right", 0.2, (5.0, 5.0)), 1);
+        assert_eq!(c.press("left", 0.0, (5.0, 5.0), 8.0), 1);
+        assert_eq!(c.press("left", 0.1, (5.0, 5.0), 8.0), 2);
+        assert_eq!(c.press("right", 0.2, (5.0, 5.0), 8.0), 1);
+    }
+
+    #[test]
+    fn a_scaled_radius_widens_the_double_click_slop() {
+        let mut c = ClickCounter::new();
+        assert_eq!(c.press("left", 0.0, (5.0, 5.0), 16.0), 1);
+        // 10px apart: outside an 8px radius, inside a 2x-scaled 16px one
+        assert_eq!(c.press("left", 0.1, (15.0, 5.0), 16.0), 2);
+    }
+
+    #[test]
+    fn hostile_wait_deadlines_never_panic_the_timer() {
+        // `wait_event(math.huge)` from a plugin reaches this math; the
+        // old code fed it straight to Duration::from_secs_f64 and died
+        for t in [f64::INFINITY, f64::NEG_INFINITY, f64::NAN, 1e300, -5.0] {
+            let clamped = clamp_deadline(100.0, t);
+            assert!(clamped.is_finite() && clamped >= 0.0, "t = {t}");
+            // the panic the clamp exists to prevent
+            let _ = std::time::Duration::from_secs_f64(clamped);
+        }
+        // ordinary deadlines pass through untouched
+        assert_eq!(clamp_deadline(100.0, 100.016), 100.016);
     }
 }
