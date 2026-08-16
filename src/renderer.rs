@@ -91,6 +91,10 @@ fn blend(dst: u32, r: u8, g: u8, b: u8, a: u8) -> u32 {
     let dr = mul255((dst >> 16) as u8, ia);
     let dg = mul255((dst >> 8) as u8, ia);
     let db = mul255(dst as u8, ia);
+    // the u8 sums cannot overflow: the exact values obey
+    // (a*s + (255-a)*d) / 255 <= 255, and rounding each half adds under
+    // one, so the pair can carry past 255 only if the exact sum already
+    // reached it -- in which case neither half rounded up
     pack(mul255(r, a) + dr, mul255(g, a) + dg, mul255(b, a) + db)
 }
 
@@ -137,7 +141,9 @@ impl Framebuffer {
             return;
         }
         for j in r.y..r.y + r.height {
-            let row = (j * self.width + r.x) as usize;
+            // index math in usize: the clip guarantees the values are
+            // non-negative, and usize can never wrap on a real buffer
+            let row = j as usize * self.width as usize + r.x as usize;
             let span = &mut self.pixels[row..row + r.width as usize];
             if color.a == 255 {
                 span.fill(pack(color.r, color.g, color.b));
@@ -160,8 +166,8 @@ impl Framebuffer {
             return;
         }
         for j in 0..sub.height {
-            let src_row = ((sub.y - y + j) * mw + (sub.x - x)) as usize;
-            let dst_row = ((sub.y + j) * self.width + sub.x) as usize;
+            let src_row = (sub.y - y + j) as usize * mw as usize + (sub.x - x) as usize;
+            let dst_row = (sub.y + j) as usize * self.width as usize + sub.x as usize;
             for i in 0..sub.width as usize {
                 let a = mul255(mask[src_row + i], color.a);
                 if a != 0 {
@@ -190,7 +196,7 @@ impl Framebuffer {
         for j in 0..sub.height {
             let oy = sub.y as i64 - dest.y as i64 + j as i64;
             let sy = (oy * image.height() as i64 / dest.height as i64) as i32;
-            let dst_row = ((sub.y + j) * self.width + sub.x) as usize;
+            let dst_row = (sub.y + j) as usize * self.width as usize + sub.x as usize;
             for i in 0..sub.width {
                 let ox = sub.x as i64 - dest.x as i64 + i as i64;
                 let sx = (ox * image.width() as i64 / dest.width as i64) as i32;

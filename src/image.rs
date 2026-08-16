@@ -86,7 +86,9 @@ impl Image {
 
     #[inline]
     pub fn pixel(&self, x: i32, y: i32) -> Color {
-        self.pixels[(y * self.width + x) as usize]
+        // usize math: callers derive x and y from the image's own
+        // dimensions, and usize cannot wrap where i32 theoretically could
+        self.pixels[y as usize * self.width as usize + x as usize]
     }
 }
 
