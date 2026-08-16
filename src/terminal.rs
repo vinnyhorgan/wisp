@@ -88,8 +88,10 @@ impl EventListener for Listener {
 }
 
 pub struct TerminalOptions {
+    /// argv and env are utf8 because alacritty's spawn api takes
+    /// `String`; the cwd is raw bytes like every other path
     pub argv: Vec<String>,
-    pub cwd: Option<String>,
+    pub cwd: Option<std::path::PathBuf>,
     pub env: Vec<(String, String)>,
 }
 
@@ -139,7 +141,7 @@ impl Terminal {
         let config = Options {
             shell: (!opts.argv.is_empty())
                 .then(|| Shell::new(opts.argv[0].clone(), opts.argv[1..].to_vec())),
-            working_directory: opts.cwd.map(Into::into),
+            working_directory: opts.cwd,
             drain_on_exit: false,
             env,
         };

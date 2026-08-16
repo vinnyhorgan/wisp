@@ -352,11 +352,15 @@ fn event_to_multi(lua: &Lua, event: Event) -> mlua::Result<MultiValue> {
     }
 }
 
-/// the exact scoring function from lite's system.fuzzy_match, ported from
-/// c (with the out-of-bounds walk on trailing spaces fixed)
-fn fuzzy_match(mut s: &[u8], mut p: &[u8]) -> Option<i32> {
-    let mut score: i32 = 0;
-    let mut run: i32 = 0;
+/// the scoring function from lite's system.fuzzy_match, ported from c.
+/// near-exact: lite walked out of bounds when the pattern ended in
+/// spaces, and fixing that also shifts the *scores* (never the matches)
+/// for patterns whose spaces empty the remainder mid-loop -- lite kept
+/// comparing against the terminating nul there. i64 keeps the arithmetic
+/// defined even for absurd inputs (lite's int could overflow, ub in c)
+fn fuzzy_match(mut s: &[u8], mut p: &[u8]) -> Option<i64> {
+    let mut score: i64 = 0;
+    let mut run: i64 = 0;
     while !s.is_empty() && !p.is_empty() {
         while s.first() == Some(&b' ') {
             s = &s[1..];
@@ -368,7 +372,7 @@ fn fuzzy_match(mut s: &[u8], mut p: &[u8]) -> Option<i32> {
             break;
         };
         if sc.eq_ignore_ascii_case(&pc) {
-            score += run * 10 - (sc != pc) as i32;
+            score += run * 10 - (sc != pc) as i64;
             run += 1;
             p = &p[1..];
         } else {
@@ -380,7 +384,7 @@ fn fuzzy_match(mut s: &[u8], mut p: &[u8]) -> Option<i32> {
     if !p.is_empty() {
         return None;
     }
-    Some(score - s.len() as i32)
+    Some(score - s.len() as i64)
 }
 
 pub fn register(lua: &Lua, engine: &Shared) -> mlua::Result<()> {
@@ -422,9 +426,13 @@ pub fn register(lua: &Lua, engine: &Shared) -> mlua::Result<()> {
     system.set(
         "set_cursor",
         lua.create_function(move |_, cursor: Option<String>| {
-            eng.borrow_mut()
-                .platform
-                .set_cursor(cursor.as_deref().unwrap_or("arrow"));
+            let cursor = cursor.unwrap_or_else(|| "arrow".to_owned());
+            // lite validated with luaL_checkoption: a typo'd name is a
+            // loud error, not a silent arrow
+            if !["arrow", "ibeam", "sizeh", "sizev", "hand"].contains(&cursor.as_str()) {
+                return Err(mlua::Error::runtime(format!("invalid cursor {cursor:?}")));
+            }
+            eng.borrow_mut().platform.set_cursor(&cursor);
             Ok(())
         })?,
     )?;
@@ -445,9 +453,12 @@ pub fn register(lua: &Lua, engine: &Shared) -> mlua::Result<()> {
     system.set(
         "set_window_mode",
         lua.create_function(move |_, mode: Option<String>| {
-            eng.borrow_mut()
-                .platform
-                .set_window_mode(mode.as_deref().unwrap_or("normal"));
+            let mode = mode.unwrap_or_else(|| "normal".to_owned());
+            // same contract as set_cursor: lite raised on unknown modes
+            if !["normal", "maximized", "fullscreen"].contains(&mode.as_str()) {
+                return Err(mlua::Error::runtime(format!("invalid window mode {mode:?}")));
+            }
+            eng.borrow_mut().platform.set_window_mode(&mode);
             Ok(())
         })?,
     )?;
@@ -510,11 +521,14 @@ pub fn register(lua: &Lua, engine: &Shared) -> mlua::Result<()> {
                 Ok(meta) => meta,
                 Err(err) => return (Value::Nil, err.to_string()).into_lua_multi(lua),
             };
-            let modified = meta
-                .modified()
-                .ok()
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map_or(0, |d| d.as_secs());
+            let modified = meta.modified().ok().map_or(0, |t| {
+                // whole seconds, like lite's st_mtime -- including the
+                // sign for the museum piece dated before 1970
+                match t.duration_since(std::time::UNIX_EPOCH) {
+                    Ok(d) => d.as_secs() as i64,
+                    Err(e) => -(e.duration().as_secs() as i64),
+                }
+            });
             let info = lua.create_table()?;
             info.set("modified", modified)?;
             info.set("size", meta.len())?;
@@ -546,12 +560,15 @@ pub fn register(lua: &Lua, engine: &Shared) -> mlua::Result<()> {
 
     system.set(
         "exec",
-        lua.create_function(|_, cmd: String| {
+        lua.create_function(|_, cmd: LuaString| {
             // mirror lite: hand the command line to the shell, backgrounded;
-            // the outer sh exits immediately so nothing is left to reap
+            // the outer sh exits immediately so nothing is left to reap.
+            // raw bytes end to end, like lite's system() call
+            let mut line = cmd.as_bytes().to_vec();
+            line.extend_from_slice(b" &");
             if let Ok(mut child) = std::process::Command::new("sh")
                 .arg("-c")
-                .arg(format!("{cmd} &"))
+                .arg(OsStr::from_bytes(&line))
                 .spawn()
             {
                 let _ = child.wait();
@@ -562,14 +579,23 @@ pub fn register(lua: &Lua, engine: &Shared) -> mlua::Result<()> {
 
     system.set(
         "spawn",
-        lua.create_function(|_, (argv, opts): (Vec<String>, Option<Table>)| {
+        lua.create_function(|_, (argv, opts): (Vec<LuaString>, Option<Table>)| {
+            // argv, cwd and env are byte strings end to end, like every
+            // path in this file: a non-utf8 project dir must spawn fine
+            let argv: Vec<std::ffi::OsString> = argv
+                .iter()
+                .map(|s| OsStr::from_bytes(&s.as_bytes()).to_owned())
+                .collect();
             let mut options = process::SpawnOptions::default();
             if let Some(t) = opts {
-                options.cwd = t.get::<Option<String>>("cwd")?;
+                options.cwd = t.get::<Option<LuaString>>("cwd")?.map(|s| lua_path(&s));
                 if let Some(env) = t.get::<Option<Table>>("env")? {
-                    for pair in env.pairs::<String, String>() {
+                    for pair in env.pairs::<LuaString, LuaString>() {
                         let (k, v) = pair?;
-                        options.env.push((k, v));
+                        options.env.push((
+                            OsStr::from_bytes(&k.as_bytes()).to_owned(),
+                            OsStr::from_bytes(&v.as_bytes()).to_owned(),
+                        ));
                     }
                 }
                 if let Some(stderr) = t.get::<Option<String>>("stderr")? {
@@ -596,10 +622,12 @@ pub fn register(lua: &Lua, engine: &Shared) -> mlua::Result<()> {
             };
             let mut cell = (0u16, 0u16);
             if let Some(t) = opts {
+                // argv and env stay utf8 (alacritty's spawn api takes
+                // String); the cwd is raw bytes like every other path
                 if let Some(argv) = t.get::<Option<Vec<String>>>("argv")? {
                     options.argv = argv;
                 }
-                options.cwd = t.get::<Option<String>>("cwd")?;
+                options.cwd = t.get::<Option<LuaString>>("cwd")?.map(|s| lua_path(&s));
                 if let Some(env) = t.get::<Option<Table>>("env")? {
                     for pair in env.pairs::<String, String>() {
                         let (k, v) = pair?;
@@ -875,7 +903,7 @@ mod tests {
         #[test]
         fn fuzzy_match_total_and_sane(s in any::<Vec<u8>>(), p in any::<Vec<u8>>()) {
             let _ = fuzzy_match(&s, &p);
-            prop_assert_eq!(fuzzy_match(&s, b""), Some(-(s.len() as i32)));
+            prop_assert_eq!(fuzzy_match(&s, b""), Some(-(s.len() as i64)));
         }
     }
 }

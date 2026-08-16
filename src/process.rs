@@ -94,8 +94,10 @@ struct ChildState {
 
 #[derive(Default)]
 pub struct SpawnOptions {
-    pub cwd: Option<String>,
-    pub env: Vec<(String, String)>,
+    /// raw bytes, like every path crossing the lua boundary: a project
+    /// in a non-utf8 directory must be able to spawn its tools
+    pub cwd: Option<std::path::PathBuf>,
+    pub env: Vec<(std::ffi::OsString, std::ffi::OsString)>,
     /// interleave stderr into the stdout stream, like `2>&1`
     pub merge_stderr: bool,
 }
@@ -114,7 +116,7 @@ fn signal_group(pid: u32, signal: nix::sys::signal::Signal) -> nix::Result<()> {
     nix::sys::signal::kill(Pid::from_raw(-(pid as i32)), signal)
 }
 
-pub fn spawn(argv: &[String], opts: SpawnOptions) -> Result<Process, String> {
+pub fn spawn(argv: &[std::ffi::OsString], opts: SpawnOptions) -> Result<Process, String> {
     if argv.is_empty() {
         return Err("expected a command to spawn".to_owned());
     }
@@ -306,7 +308,7 @@ impl Drop for Process {
 mod tests {
     use super::*;
 
-    fn sh(script: &str) -> Vec<String> {
+    fn sh(script: &str) -> Vec<std::ffi::OsString> {
         vec!["sh".into(), "-c".into(), script.into()]
     }
 

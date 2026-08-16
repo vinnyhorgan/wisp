@@ -28,9 +28,11 @@ function system.sleep(secs)
 end
 
 -- exit by yielding, never by exit(2): the host must get control back
--- so rust destructors run (spawned processes are killed and reaped)
+-- so rust destructors run (spawned processes are killed and reaped).
+-- lua 5.2 semantics for the argument: true and nil succeed, false fails
 os.exit = function(code)
-  while true do coroutine.yield("exit", code or 0) end
+  if code == false then code = 1 elseif code == true or code == nil then code = 0 end
+  while true do coroutine.yield("exit", code) end
 end
 
 return function()
@@ -99,18 +101,18 @@ pub fn init_lua(
     let globals = lua.globals();
     // args are raw bytes: lua strings hold them as-is, so files with
     // non-utf8 names open fine (lite pushed raw argv the same way)
+    use std::os::unix::ffi::OsStrExt;
     let args_table = lua.create_table()?;
     for arg in args {
-        use std::os::unix::ffi::OsStrExt;
         args_table.push(lua.create_string(arg.as_bytes())?)?;
     }
     globals.set("ARGS", args_table)?;
     globals.set("VERSION", "1.11")?;
+    // the crate is unix-only (byte paths, signals, the pty), so the two
+    // platforms a build can see are mac and everything-else-unix
     globals.set(
         "PLATFORM",
-        if cfg!(windows) {
-            "Windows"
-        } else if cfg!(target_os = "macos") {
+        if cfg!(target_os = "macos") {
             "Mac OS X"
         } else {
             "Linux"
