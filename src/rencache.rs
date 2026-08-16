@@ -468,7 +468,7 @@ mod tests {
         let font = Rc::new(Font::load(&path, 14.0).unwrap());
         let mut cache = RenCache::new();
         let mut fb = Framebuffer::new(400, 300);
-        let mut text_frame = |cache: &mut RenCache, fb: &mut Framebuffer| {
+        let text_frame = |cache: &mut RenCache, fb: &mut Framebuffer| {
             cache.begin_frame(fb.width, fb.height);
             cache.set_clip_rect(Rect::new(0, 0, fb.width, fb.height));
             cache.draw_text(&font, "zoom", 10, 10, WHITE);
@@ -504,7 +504,7 @@ mod tests {
         let mut cache = RenCache::new();
         let mut fb = Framebuffer::new(400, 300);
 
-        let mut frame = |img: &Rc<Image>, cache: &mut RenCache, fb: &mut Framebuffer| {
+        let frame = |img: &Rc<Image>, cache: &mut RenCache, fb: &mut Framebuffer| {
             cache.begin_frame(fb.width, fb.height);
             cache.set_clip_rect(Rect::new(0, 0, fb.width, fb.height));
             cache.draw_image(img, dest, WHITE);

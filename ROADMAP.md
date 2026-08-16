@@ -41,6 +41,27 @@ log is the truth.
   palette, scrollback, ctrl+` toggle, auto-close on exit. proven
   end-to-end by boot tests that run a real shell and assert exact
   palette pixels in the framebuffer.
+- **the audit and the last additions.** the terminal's rust side was
+  audited line by line against alacritty's source; the findings (a
+  drop that could hang the editor on a sighup-proof child, eintr
+  misread as eof or as a dead pty, a fatal lua error available on the
+  draw path) were fixed with regression tests. then the core was
+  finished in one pass, every gap the plugin wave would have hit:
+  the terminal mode getters the perfection pass needs (mouse protocol
+  and encoding, alt screen, alternate scroll, per-row wrap),
+  `font:set_size` (runtime zoom, lite-xl's shape), `system.mkdir`
+  (the one fs syscall lua's os library lacks), and `system.watch`
+  (native fs events on notify, polled like everything else).
+
+## the freeze
+
+declared 2026-08-16, after the audit and the last additions: the core
+is feature-complete, and nothing in the planned plugin wave needs a
+core change. two named exceptions, decided now so they are never
+argued later: the terminal's own surface may still be refined during
+its perfection pass (api and consumer land together, same commit),
+and a real bug in the core is always a bug. everything else is lua
+from here -- the way rxi intended.
 
 ## phase c -- v0.1.0, the plugin baseline
 
@@ -58,9 +79,10 @@ stands: really nice out of the box, still the easily extensible core
 that made lite incredible. porting doctrine from the research pass:
 **start from rxi's plugin, cherry-pick lite-xl's fixes** (their newer
 versions depend on lite-xl-only apis), and pre-empt the two ugliest
-ecosystem hacks with tiny core-lua affordances: `font:set_size` (kills
-runtime zoom's font-cache monkey-patch) and per-doc `indent_info`
-(kills detectindent's global config swap).
+ecosystem hacks: `font:set_size` (kills runtime zoom's font-cache
+monkey-patch) is already in the core, landed at the freeze; per-doc
+`indent_info` (kills detectindent's global config swap) is a lua-side
+affordance for the pass itself.
 
 the wave, roughly easiest-first: runtime zoom, detectindent,
 auto-close brackets + bracketmatch, trim whitespace on save, indent
@@ -86,22 +108,19 @@ ideas agreed in spirit, not yet scheduled or designed:
 - **terminal perfection.** the terminal itself is built (see done);
   what remains is the polish pass, deliberately postponed until after
   the core freeze: mouse reporting to apps, in-terminal selection and
-  copy, bell, osc-52 refinement, and heavy hands-on testing -- the
-  experience has to be perfect, and that bar is earned interactively,
-  not in ci. all of it lives on the lua side or rides apis the core
-  already has. the terminal also quietly solves the ai dilemma: it
-  runs any terminal-based agent, no ai integration required in the
-  editor itself.
-- **fs events (a dirmonitor).** stronger than it first looks: the
-  editor already pays for freshness the expensive way -- the project
-  scan thread rescans the whole tree every `project_scan_rate` seconds
-  (lite's design), which is the very cost the 2000-file cap exists to
-  bound. native fs events would make external changes (a git branch
-  switch, a build dropping files) appear instantly and delete the
-  standing rescan instead of adding a capability. decide during the
-  plugin pass's treeview work, staleness in hand; the pure-rust
-  `notify` crate is the candidate. taking it is a deliberate core
-  reopening, same bar as spawn cleared.
+  copy, a close command that works from the keyboard, bell, osc-52
+  refinement, and heavy hands-on testing -- the experience has to be
+  perfect, and that bar is earned interactively, not in ci. the mode
+  getters it needs landed at the freeze; the rest is lua. the terminal
+  also quietly solves the ai dilemma: it runs any terminal-based
+  agent, no ai integration required in the editor itself.
+- **adopting fs events.** the api landed at the freeze
+  (`system.watch`, notify's inotify backend, polled from a coroutine);
+  what remains is the lua work of consuming it: make external changes
+  (a git branch switch, a build dropping files) appear instantly and
+  delete the standing project rescan -- the very cost the 2000-file
+  cap exists to bound. do it during the plugin pass's treeview work,
+  staleness in hand.
 - **cross-platform.** the stack (winit, softbuffer, swash, vendored
   lua) is already portable; the unix-only parts are small and
   deliberate (byte paths, signals, the future pty). macos is likely

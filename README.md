@@ -22,7 +22,7 @@ bug-fixed where not. every deliberate difference is written down in
   through the same renderer as everything else
 - `unsafe_code = "deny"`, with a single documented exception, and it's lua's
   fault
-- the whole editor boots headless in the test suite: 53 of its 141 tests
+- the whole editor boots headless in the test suite: 56 of its 154 tests
   feed it fake input and read the pixels coming back. the screenshots on
   this page were rendered that way too
 

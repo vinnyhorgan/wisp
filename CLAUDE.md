@@ -55,7 +55,9 @@ way rxi intended.
 - rencache invariant: painted pixels must be a subset of hashed cells.
   glyph ink can escape the metric box (nerd font icons overhang 1-2px),
   so DrawText hashes union(metric box, ink box) via `Font::ink_box_of`
-  and carries the pen origin separately.
+  and carries the pen origin separately. fonts resize in place
+  (`font:set_size`, for runtime zoom) and the hash includes the size,
+  so a zoom dirties every text cell on the next frame.
 - one font: `data/jetbrainsmono.ttf`, the *mono* flavor of jetbrains mono
   nerd font v3.5.0. mono flavor means icon ink == advance, so lua-side
   `get_width` is truthful and layouts need no fudge factors. icons are
@@ -124,9 +126,12 @@ way rxi intended.
 ## roadmap
 
 the roadmap lives in ROADMAP.md (git log is the truth when they
-disagree). short version: phase b is done and the terminal landed
-right after it -- alacritty's vt engine on a polled pty in the core,
-the view as a plugin. phase c tags v0.1.0, phase d is the plugin pass
-to v0.2.0, and beyond that: terminal polish (mouse, selection, heavy
-testing), linters, helix mode. ROADMAP.md also keeps the ledger of
+disagree). short version: phase b is done, the terminal landed right
+after it, and the core is feature-frozen (ROADMAP "the freeze"): the
+audit plus the last additions -- terminal mode getters, font:set_size,
+system.mkdir, system.watch -- closed it out, and everything from here
+is lua, with two named exceptions (the terminal's own surface during
+its perfection pass, and real bugs). phase c tags v0.1.0, phase d is
+the plugin pass to v0.2.0, and beyond that: terminal polish (mouse,
+selection, heavy testing), linters, helix mode. ROADMAP.md also keeps the ledger of
 dead claims and deliberate noes, so they are not re-chased.
