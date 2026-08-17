@@ -1,7 +1,7 @@
 # roadmap
 
-updated 2026-08-16, after the terminal landed. phases may rot -- git
-log is the truth.
+updated 2026-08-17, after helix mode, the hex editor and the image
+viewer. phases may rot -- git log is the truth.
 
 ## done
 
@@ -64,15 +64,62 @@ log is the truth.
   interning -- all survive unchanged; the whole record is
   DEVIATIONS §13, and the suite passed untouched after the port.
 
+- **helix mode.** the beyond-v0.2.0 entry, brought forward by decision
+  and landed as pure lua: keymap modes in the core keymap, a block
+  cursor drawn over lite's own (lite's caret suppressed, not covered),
+  helix's three word classes, and the `:` line plus the space, goto,
+  view and match prefixes routed onto wisp's own commands the way zed
+  routes them onto its host's. built to what `hx --tutor` teaches;
+  multiple selections and everything resting on them carved out rather
+  than waited for. **this file's own sequencing was wrong**: it said
+  helix required multi-cursor as core doc surgery first, and it did not.
+- **the hex editor, and the claim registry under it.** binary files stop
+  being refused and start being opened. `core.open_file` consults an
+  ordered list of claims and the docview is the fallback (DEVIATIONS
+  §20), which is the door §7's refusal left open. the hex view is the
+  universal claimant: its own byte-addressed model, chunked so an
+  overwrite rewrites one chunk and only a change of size rebuilds, two
+  panes over one cursor, undo borrowed from the doc's shape. §7's
+  refusal is now the last resort rather than the answer.
+- **the image viewer.** the first of the audit's three predicted core
+  reopenings -- and it needed nothing: `renderer.image.load` and
+  `draw_image` were right as shipped. a specific claim in front of the
+  hex view's universal one, a scale and a point, 100% meaning one source
+  pixel per *ui* pixel, and the file followed on autoreload's own loop.
+  `keymap.modes` came with it: the mode a stroke runs in is now decided
+  by a list of deciders rather than assigned to a variable, because the
+  second modal layer would have fought the first over one field.
+
 ## the freeze
 
-declared 2026-08-16, after the audit and the last additions: the core
-is feature-complete, and nothing in the planned plugin wave needs a
-core change. two named exceptions, decided now so they are never
-argued later: the terminal's own surface may still be refined during
-its perfection pass (api and consumer land together, same commit),
-and a real bug in the core is always a bug. everything else is lua
-from here -- the way rxi intended.
+declared 2026-08-16, after the audit and the last additions: the core is
+feature-complete and everything from here is lua -- the way rxi intended.
+two named exceptions, decided then so they are never argued later: the
+terminal's own surface may still be refined during its perfection pass
+(api and consumer land together, same commit), and a real bug in the core
+is always a bug.
+
+the record since, kept honest rather than tidy. the freeze held for the
+*plugin* wave and did not hold for unix citizenship: signals, the xdg
+split and argument parsing all landed after it, each individually right
+and none of them predicted. the audit that followed found every addition
+clustered in the first eight commits after the freeze and nothing since,
+and named three plugin-wave items as the first consumers of apis nothing
+had used yet -- which is where a gap hides, because an api with no
+consumer is an api nobody has tested. one of the three has since landed:
+the image viewer, and it needed nothing at all.
+
+the standing agreement, from that audit: when `data/` work turns out to
+need rust, **stop and ask first**. surface it, name which exception it
+falls under, and let the choice be made at the moment it matters.
+
+one core question is open and deliberately unanswered: an image is
+decoded whole at four bytes a pixel and nothing knows how many pixels it
+has until it has been decoded, so a png claiming 30000 square is 3.6 gb
+before anything can refuse it. the honest place for that limit is a pixel
+budget inside `renderer.image.load`; the alternative is a second png
+header parser in lua that duplicates the decoder badly and misses jpeg
+entirely. written down, not half-solved.
 
 ## phase c -- v0.1.0, the plugin baseline (done)
 
@@ -92,19 +139,43 @@ a packaging decision, not a code one -- cut it whenever it is wanted.
 the famous plugin pass: core plugins drawn from lite core, rxi's
 lite-plugins, lite-xl core and lite-xl-plugins, plus our own. the goal
 stands: really nice out of the box, still the easily extensible core
-that made lite incredible. porting doctrine from the research pass:
+that made lite incredible. the pass is two halves: an audit of the twenty-one plugins wisp ships
+today, and then selection and adaptation from rxi's lite-plugins,
+lite-xl's stock `data/plugins`, and lite-xl-plugins. lite-xl's own set is
+the richest seam and several items below are sitting in it under another
+name -- drawwhitespace, lineguide, linewrapping, workspace, findfile,
+language_cpp, language_html.
+
+porting doctrine from the research pass:
 **start from rxi's plugin, cherry-pick lite-xl's fixes** (their newer
-versions depend on lite-xl-only apis), and pre-empt the two ugliest
-ecosystem hacks: `font:set_size` (kills runtime zoom's font-cache
-monkey-patch) is already in the core, landed at the freeze; per-doc
-`indent_info` (kills detectindent's global config swap) is a lua-side
-affordance for the pass itself.
+versions depend on lite-xl-only apis), and pre-empt the two ugliest hacks
+in *rxi's* plugin set -- both of which lite-xl already fixed properly in
+its own core, so the work is adopting their shape, not inventing one.
+`font:set_size` (kills runtime zoom's font-cache monkey-patch) landed at
+the freeze. per-doc indent info (kills detectindent's global config swap,
+which is wrong the moment two files with different indentation are open)
+is the lua-side affordance the pass wants next: lite-xl's
+`Doc:get_indent_info()`, falling back to the global config for a doc that
+has none, is the shape to copy.
 
 the wave, roughly easiest-first: ~~runtime zoom~~ (done, DEVIATIONS
-§15), detectindent, auto-close brackets + bracketmatch, indent guides,
-selection highlight, more languages, treeview file ops, project-wide
-replace, session restore + project memory (treeview width, last
-query), imageview, word wrap (lite #26), multi-cursor last. "trim
+§15), ~~imageview~~ (done, §20), per-doc indent info, detectindent,
+auto-close brackets + bracketmatch, indent guides, selection highlight,
+more languages, treeview file ops, project-wide replace, session restore
++ project memory (treeview width, last query), word wrap (lite #26),
+multi-cursor last.
+
+**treeview file ops is the one to sequence deliberately.** wisp's
+treeview has exactly one command, `toggle`; lite-xl's has delete, rename,
+new-file and new-folder. that last one is the first thing in the editor
+that would ever call `system.mkdir`, which the core grew at the freeze
+and nothing has used since -- and an untested api is the audit's own
+definition of where a gap hides. it is not that it *will* need a core
+change; the image viewer was the same prediction and needed nothing. it
+is that if anything does, this is the likeliest place, so it belongs at
+the end of the wave where a reopening can be one deliberate session
+rather than a trickle. the terminal's perfection pass is the other
+predicted consumer, and that one is already a named freeze exception. "trim
 whitespace on save" was on this list by mistake: lite's own
 trimwhitespace plugin already hooks `Doc.save`, and it ships loaded. hard-won lessons per item are in the maxi-review research
 (lite-xl issue numbers recorded there): word wrap and multi-cursor
@@ -159,21 +230,11 @@ ideas agreed in spirit, not yet scheduled or designed:
   packaging: a `.desktop` file and an icon, which go with the release
   binary whenever that is cut -- until then the app id the window
   reports has nothing to point at.
-- **a hex editor.** the universal claimant for binary files: where
-  imageview claims images, a hexview claims everything else, and §7's
-  refusal becomes the last resort instead of the answer. reading is
-  pure lua on the existing api (bytes in, a draw_text grid out, the
-  mono font is a gift here); editing and saving raw bytes is the real
-  design work -- the doc model is line-based, so a hexview likely
-  wants its own byte-backed model, not a doc.
-- **helix mode.** selection-first modal editing, kakoune-lineage.
-  objectively cleaner than vim's operator-pending model: what you see
-  selected is what the action operates on. sequencing is natural:
-  helix's model *requires* multiple selections as a first-class doc
-  concept, which is exactly phase d's final boss -- multi-cursor lands
-  as core doc surgery, then helix mode is mostly a lua layer: keymap
-  modes, a mode indicator in the statusview, block caret in normal
-  mode, hint popups reusing the autocomplete/commandview machinery.
+- **the rest of helix and the hex editor.** both landed (see done), and
+  both left the same kind of tail. helix: multiple selections and
+  everything on them, treesitter text objects, `gw`'s jump labels. the
+  hex editor: a data inspector (the bytes at the cursor as i16, u32,
+  f32, ...), save-as, raw-byte copy. features, none of them urgent.
 
 ## ideas queue
 
@@ -192,7 +253,9 @@ than that the swap waits under a settled ecosystem.
 ## said no, on the record
 
 ime - lsp (in doubt, not dead) - ai integration in the editor (the
-terminal is the answer for now) - gamma-correct blending - dynamic
+terminal is the answer for now) - x11/wayland PRIMARY selection
+(middle-click paste; asked and declined) - screen-reader accessibility
+(asked and declined, not forever) - gamma-correct blending - dynamic
 hidpi rescale (still no, but the reason has changed: `font:set_size`
 and the scale plugin make the lua side of it trivial now, so all that
 is missing is a way for lua to hear that the window's scale factor
