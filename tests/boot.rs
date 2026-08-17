@@ -2634,3 +2634,39 @@ fn a_terminating_signal_rescues_unsaved_work() {
         "hello wisp\n"
     );
 }
+
+#[test]
+fn a_plugin_in_the_user_directory_loads_and_shadows_the_bundled_one() {
+    let _serial = serial();
+    let root = copy_data_root("userplugin");
+    let marker = root.join("loaded.txt");
+    std::fs::create_dir_all(root.join("data/user/plugins")).unwrap();
+
+    // same module name as a bundled plugin, and it claims the same
+    // command. if both copies loaded, command.add would assert on the
+    // duplicate, core.load_plugins would report the error and the editor
+    // would open its log; the marker proves it is this copy that ran
+    std::fs::write(
+        root.join("data/user/plugins/trimwhitespace.lua"),
+        format!(
+            r#"
+local command = require("core.command")
+io.open([[{}]], "w"):close()
+command.add(nil, {{ ["trim-whitespace:trim-trailing-whitespace"] = function() end }})
+"#,
+            marker.display()
+        ),
+    )
+    .unwrap();
+
+    let mut editor =
+        Headless::boot_with_exedir(&root.display().to_string(), &project_dir(), 900, 600, 1.0);
+    editor.run_until_frames(1, 10_000);
+    editor.run_steps(200);
+    assert!(marker.exists(), "the user's plugin never loaded");
+    assert_ne!(
+        editor.window_title(),
+        "log - wisp",
+        "the bundled plugin loaded too and the command collided"
+    );
+}

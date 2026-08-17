@@ -18,6 +18,10 @@ local headless = ...
 PATHSEP = package.config:sub(1, 1)
 package.path = EXEDIR .. '/data/?.lua;' .. package.path
 package.path = EXEDIR .. '/data/?/init.lua;' .. package.path
+-- the user's directory is searched first, so a file dropped in
+-- ~/.config/wisp/plugins replaces the bundled plugin of the same name
+package.path = USERDIR .. '/?.lua;' .. package.path
+package.path = USERDIR .. '/?/init.lua;' .. package.path
 
 function system.wait_event(timeout)
   return coroutine.yield("wait", timeout)
@@ -90,6 +94,8 @@ pub enum Resume {
 pub fn init_lua(
     engine: &Shared,
     exedir: &str,
+    userdir: &str,
+    statedir: &str,
     exefile: &str,
     args: &[std::ffi::OsString],
     scale: f64,
@@ -121,6 +127,8 @@ pub fn init_lua(
     globals.set("SCALE", scale)?;
     globals.set("EXEFILE", exefile)?;
     globals.set("EXEDIR", exedir)?;
+    globals.set("USERDIR", userdir)?;
+    globals.set("STATEDIR", statedir)?;
 
     let main: Function = lua.load(BOOTSTRAP).set_name("=bootstrap").call(headless)?;
     let thread = lua.create_thread(main)?;

@@ -11,6 +11,7 @@
 use std::any::Any;
 use std::collections::VecDeque;
 use std::num::NonZeroU32;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -233,6 +234,10 @@ impl ClickCounter {
 struct App {
     engine: Shared,
     exedir: String,
+    /// $XDG_CONFIG_HOME/wisp and $XDG_STATE_HOME/wisp: the user's files
+    /// and the editor's own, kept out of the unpacked tree
+    userdir: String,
+    statedir: String,
     start: Instant,
     lua: Option<(mlua::Lua, mlua::Thread)>,
     parked: Parked,
@@ -328,9 +333,17 @@ impl ApplicationHandler for App {
         let exefile = std::env::current_exe()
             .map(|p| p.display().to_string())
             .unwrap_or_else(|_| format!("{}/wisp", self.exedir));
-        let (lua, thread) =
-            boot::init_lua(&self.engine, &self.exedir, &exefile, &args, scale, false)
-                .expect("failed to initialize lua");
+        let (lua, thread) = boot::init_lua(
+            &self.engine,
+            &self.exedir,
+            &self.userdir,
+            &self.statedir,
+            &exefile,
+            &args,
+            scale,
+            false,
+        )
+        .expect("failed to initialize lua");
         self.lua = Some((lua, thread));
     }
 
@@ -548,6 +561,21 @@ fn find_exedir() -> String {
     root.display().to_string()
 }
 
+/// the config and state directories, created and seeded before lua can
+/// look for them. a failure is survivable -- the editor still runs, it
+/// just has nowhere to keep settings -- so it must not stop the boot
+fn user_dirs(exedir: &str) -> (String, String) {
+    let userdir = crate::embed::config_dir().unwrap_or_else(|_| PathBuf::from(exedir).join("user"));
+    let legacy = PathBuf::from(exedir).join("data/user/init.lua");
+    let _ = crate::embed::prepare_config_dir(&userdir, &legacy);
+    let statedir = crate::embed::state_dir().unwrap_or_else(|_| PathBuf::from(exedir));
+    let _ = std::fs::create_dir_all(&statedir);
+    (
+        userdir.display().to_string(),
+        statedir.display().to_string(),
+    )
+}
+
 const USAGE: &str = "\
 usage: wisp [file or directory ...]
 
@@ -596,9 +624,13 @@ pub fn run() {
     let event_loop = EventLoop::new().expect("failed to create event loop");
     let start = Instant::now();
     let engine = Engine::shared(Box::new(DesktopPlatform::new(start)));
+    let exedir = find_exedir();
+    let (userdir, statedir) = user_dirs(&exedir);
     let mut app = App {
         engine,
-        exedir: find_exedir(),
+        exedir,
+        userdir,
+        statedir,
         start,
         lua: None,
         parked: Parked::Start,

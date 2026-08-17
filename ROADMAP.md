@@ -144,19 +144,18 @@ ideas agreed in spirit, not yet scheduled or designed:
   close already -- it is unix. windows is a real port (conpty, paths,
   process semantics) and waits until someone wants it. low priority,
   not soon.
-- **a proper linux citizen.** three of these landed after an audit of
-  what a linux user expects and wisp did not do: the window names
-  itself (wayland app id, x11 WM_CLASS), sigterm/sigint/sighup are
-  caught and rescue unsaved work instead of killing the process where
-  it stands, and `--help`/`--version` answer on stdout. what is left:
-  the single binary still unpacks everything -- config included -- into
-  `$XDG_DATA_HOME/wisp`, and the split should follow the platform:
-  config and user plugins in `$XDG_CONFIG_HOME/wisp` (an obvious,
-  stable place to drop a lua plugin file: installing one = saving it
-  into `~/.config/wisp/plugins/`), the unpacked editor in
-  `$XDG_DATA_HOME/wisp`, `error.txt` in `$XDG_STATE_HOME`, nothing
-  anywhere else. a `.desktop` file and an icon are packaging, and go
-  with the release binary whenever that is cut.
+- **a proper linux citizen.** landed after an audit of what a linux
+  user expects and wisp did not do: the window names itself (wayland
+  app id, x11 WM_CLASS), sigterm/sigint/sighup are caught and rescue
+  unsaved work instead of killing the process where it stands,
+  `--help`/`--version` answer on stdout, and the xdg split is real
+  (DEVIATIONS §17) -- config and user plugins in
+  `$XDG_CONFIG_HOME/wisp`, the unpacked editor in
+  `$XDG_DATA_HOME/wisp`, `error.txt` and the temp files in
+  `$XDG_STATE_HOME/wisp`, nothing anywhere else. what is left is
+  packaging: a `.desktop` file and an icon, which go with the release
+  binary whenever that is cut -- until then the app id the window
+  reports has nothing to point at.
 - **a hex editor.** the universal claimant for binary files: where
   imageview claims images, a hexview claims everything else, and §7's
   refusal becomes the last resort instead of the answer. reading is

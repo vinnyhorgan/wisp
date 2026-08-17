@@ -167,7 +167,7 @@ function core.init()
     core.add_thread(project_scan_thread)
     command.add_defaults()
     local got_plugin_error = not core.load_plugins()
-    local got_user_error = not core.try(require, "user")
+    local got_user_error = not core.try(core.load_user_module)
     local got_project_error = not core.load_project_module()
 
     local got_file_error = false
@@ -193,16 +193,16 @@ local temp_file_prefix = string.format(".wisp_temp_%08x", temp_uid)
 local temp_file_counter = 0
 
 local function delete_temp_files()
-    for _, filename in ipairs(system.list_dir(EXEDIR)) do
+    for _, filename in ipairs(system.list_dir(STATEDIR) or {}) do
         if filename:find(temp_file_prefix, 1, true) == 1 then
-            os.remove(EXEDIR .. PATHSEP .. filename)
+            os.remove(STATEDIR .. PATHSEP .. filename)
         end
     end
 end
 
 function core.temp_filename(ext)
     temp_file_counter = temp_file_counter + 1
-    return EXEDIR
+    return STATEDIR
         .. PATHSEP
         .. temp_file_prefix
         .. string.format("%06x", temp_file_counter)
@@ -256,17 +256,42 @@ end
 
 function core.load_plugins()
     local no_errors = true
-    local files = system.list_dir(EXEDIR .. "/data/plugins")
-    for _, filename in ipairs(files) do
-        local modname = "plugins." .. filename:gsub(".lua$", "")
-        local ok = core.try(require, modname)
-        if ok then
-            core.log_quiet("loaded plugin %q", modname)
-        else
-            no_errors = false
+    -- the user's directory is searched first and a plugin found there
+    -- shadows the bundled one of the same name: dropping a file into
+    -- ~/.config/wisp/plugins is how you add or replace one
+    local seen = {}
+    for _, dir in ipairs({ USERDIR .. PATHSEP .. "plugins", EXEDIR .. "/data/plugins" }) do
+        for _, filename in ipairs(system.list_dir(dir) or {}) do
+            -- the dot is escaped: unescaped it matched any character, so
+            -- a plugin named `stylua.lua` loaded as `sty`
+            local modname = "plugins." .. filename:gsub("%.lua$", "")
+            if not seen[modname] then
+                seen[modname] = true
+                local ok = core.try(require, modname)
+                if ok then
+                    core.log_quiet("loaded plugin %q", modname)
+                else
+                    no_errors = false
+                end
+            end
         end
     end
     return no_errors
+end
+
+-- the user module is a known file rather than a module name: it lives at
+-- the root of the config directory, where a person expects to find their
+-- settings, and no package.path pattern can spell that
+function core.load_user_module()
+    local filename = USERDIR .. PATHSEP .. "init.lua"
+    if not system.get_file_info(filename) then
+        return
+    end
+    local fn, err = loadfile(filename)
+    if not fn then
+        error("error when loading user module:\n\t" .. err)
+    end
+    fn()
 end
 
 function core.load_project_module()
@@ -596,7 +621,7 @@ end
 
 function core.on_error(err)
     -- write error to file
-    local fp = io.open(EXEDIR .. "/error.txt", "wb")
+    local fp = io.open(STATEDIR .. PATHSEP .. "error.txt", "wb")
     fp:write("error: " .. tostring(err) .. "\n")
     fp:write(debug.traceback(nil, 4))
     fp:close()

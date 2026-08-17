@@ -136,8 +136,14 @@ impl Headless {
         let engine = Engine::shared(Box::new(HeadlessPlatform::new(width, height)));
         let mut args: Vec<std::ffi::OsString> = args.iter().map(|a| a.into()).collect();
         args.insert(0, "wisp".into());
+        // headless boots never touch the real xdg directories: the user
+        // module lives inside the tree the test handed us, and anything
+        // the editor writes for itself lands there too
+        let userdir = format!("{exedir}/data/user");
         let (lua, thread) = boot::init_lua(
             &engine,
+            &exedir,
+            &userdir,
             &exedir,
             &format!("{exedir}/wisp"),
             &args,

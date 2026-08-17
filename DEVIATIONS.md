@@ -478,7 +478,7 @@ three decisions differ from lite-xl's version:
 the zoom a session ends on is not remembered: that belongs with the
 wave's session-restore work. until then the way to boot at something
 other than 100% is the user module -- `require("plugins.scale").set(1.3)`
-in `data/user/init.lua`, which runs after the plugins load -- and a test
+in `~/.config/wisp/init.lua`, which runs after the plugins load -- and a test
 pins that path against the same zoom typed in. `WISP_SCALE` is a
 different knob and stays: it sets what 100% *means* on a display whose
 reported scale is wrong, and a reset returns to it.
@@ -522,6 +522,49 @@ the shape is deliberate:
 - **a watcher that fails to open is a fine answer.** the scan thread
   falls back to `config.project_scan_rate` exactly as before, and the
   reason is logged quietly.
+
+## 17. the user's files live in the xdg config directory
+
+**files:** `data/core/init.lua`, `data/core/commands/core.lua`
+(and `src/embed.rs`, `src/boot.rs` for the directories themselves)
+
+lite kept everything beside the binary: `data/user/init.lua` for settings,
+`data/plugins` for plugins, `error.txt` in the install directory. that is
+correct for a folder you unzip and delete, and wrong for a program that
+installs itself. wisp now uses all three xdg base directories for what
+each is for:
+
+- **`$XDG_CONFIG_HOME/wisp`** (`USERDIR`, `~/.config/wisp`) -- `init.lua`
+  and `plugins/`, created and seeded on first run. this is where a person
+  looks for their settings, and installing a plugin is saving a file into
+  `~/.config/wisp/plugins/`. it is searched *before* the bundled plugins,
+  so a file there of the same name replaces the shipped one.
+- **`$XDG_DATA_HOME/wisp`** (`EXEDIR`, `~/.local/share/wisp`) -- the
+  unpacked editor, replaced wholesale whenever the version changes.
+  nothing of the user's is in it any more, which is what makes replacing
+  it wholesale safe.
+- **`$XDG_STATE_HOME/wisp`** (`STATEDIR`, `~/.local/state/wisp`) --
+  what the editor writes for itself and nobody edits: `error.txt`, the
+  temp files, and a restored session when that lands. lite-xl gets the
+  config directory right but puts both of these in it.
+
+the details that matter:
+
+- **an install from before the split keeps its settings.** if
+  `data/user/init.lua` exists in the old location, first run seeds the
+  config directory from it rather than from the stub.
+- **`data/user/` is no longer shipped.** it is the seed for a fresh
+  config directory, and the user module location for headless boots,
+  which never touch the real xdg directories -- a test's user module and
+  user plugins live inside the tree the test handed the editor.
+- **the user module is a file, not a module name.** `USERDIR/init.lua`
+  is loaded by path; no `package.path` pattern can spell a fixed
+  filename, and `~/.config/wisp/user.lua` would be a strange thing to
+  ask someone to create.
+- while adding the second plugin directory, `core.load_plugins` had its
+  `gsub(".lua$", "")` escaped to `gsub("%.lua$", "")`. unescaped, the
+  dot matched any character, so a plugin named `stylua.lua` would have
+  loaded as `sty`.
 
 ## kept on purpose
 
