@@ -3725,3 +3725,137 @@ fn the_hex_view_finds_deletes_and_inserts_bytes() {
         "inserting and appending did not change the file's size"
     );
 }
+
+/// the byte buffer across its chunk boundaries, which is where an
+/// off-by-one lives if one lives anywhere: an 8k chunk means a file has
+/// to be bigger than that before the seams are exercised at all
+#[test]
+fn the_hex_buffer_reads_and_splices_across_chunks() {
+    let _serial = serial();
+    let root = copy_data_root("hexbufroot");
+    let marker = root.join("buffer-ok");
+    std::fs::write(
+        root.join("data/user/init.lua"),
+        format!(
+            r#"
+local Buffer = require("plugins.hexview.buffer")
+-- 20800 bytes in unique 16-byte blocks, so a needle spanning the seam at
+-- 8192 has exactly one match
+local parts = {{}}
+for i = 1, 1300 do
+    parts[i] = string.format("%016d", i)
+end
+local data = table.concat(parts)
+local b = Buffer(data)
+assert(b.size == #data)
+assert(b:tostring() == data)
+
+-- reads that cross a chunk
+assert(b:sub(8188, 8) == data:sub(8189, 8196), "sub across the seam")
+assert(b:byte(8191) == data:byte(8192))
+assert(b:byte(8192) == data:byte(8193))
+assert(b:byte(#data - 1) == data:byte(#data))
+assert(b:byte(#data) == nil, "a byte past the end is nil")
+assert(b:sub(#data - 2, 10) == data:sub(#data - 1), "a read is clipped, not extended")
+
+-- an overwrite that crosses one, and its undo
+b:splice(8189, 4, "WXYZ")
+local want = data:sub(1, 8189) .. "WXYZ" .. data:sub(8194)
+assert(b.size == #data, "a same-length splice changed the size")
+assert(b:tostring() == want, "overwrite across the seam")
+assert(b:undo() ~= nil)
+assert(b:tostring() == data, "undo of an overwrite across the seam")
+
+-- growing and shrinking, which rebuild
+b:splice(10, 0, "!!!")
+assert(b.size == #data + 3)
+assert(b:tostring() == data:sub(1, 10) .. "!!!" .. data:sub(11))
+assert(b:byte(8191) == data:byte(8189), "the bytes after an insert did not move")
+b:splice(10, 3, "")
+assert(b:tostring() == data, "delete did not undo the insert")
+
+-- searching across the seam, forwards and back
+local needle = data:sub(8190, 8200)
+assert(b:find(needle, 0) == 8189, "find across the seam")
+assert(b:find(needle, 8190) == 8189, "find did not wrap to the only match")
+assert(b:rfind(needle, #data) == 8189, "rfind across the seam")
+assert(b:rfind(needle, 0) == 8189, "rfind did not wrap")
+assert(b:find("no such bytes anywhere", 0) == nil)
+
+-- dirtiness walks back down, so undoing to the saved state is clean
+local c = Buffer("abcd")
+assert(not c:is_dirty())
+c:splice(0, 1, "Z")
+assert(c:is_dirty())
+c:undo()
+assert(not c:is_dirty(), "undoing to the saved bytes left the buffer dirty")
+
+io.open([[{marker}]], "w"):close()
+"#,
+            marker = marker.display()
+        ),
+    )
+    .unwrap();
+    let mut editor =
+        Headless::boot_with_exedir(&root.display().to_string(), &project_dir(), 900, 600, 1.0);
+    editor.run_until_frames(1, 10_000);
+    assert!(
+        marker.exists(),
+        "the byte buffer is wrong; see the user module"
+    );
+}
+
+/// the hex view's grid: a pixel resolves to the byte and the pane that is
+/// drawn there, mid-row gap and all. this is what a mouse click is
+#[test]
+fn the_hex_view_resolves_a_pixel_to_a_byte() {
+    let _serial = serial();
+    let root = copy_data_root("hexgridroot");
+    let marker = root.join("grid-ok");
+    std::fs::write(
+        root.join("data/user/init.lua"),
+        format!(
+            r#"
+local style = require("core.style")
+local HexView = require("plugins.hexview")
+local Buffer = require("plugins.hexview.buffer")
+
+local v = HexView(nil)
+v.buffer = Buffer(("x"):rep(200))
+v.position.x, v.position.y = 0, 0
+v.size.x, v.size.y = 2000, 800
+local cw, lh = v:get_char_width(), v:get_line_height()
+local x0 = style.padding.x
+
+-- the layout this pins: 8 offset columns, a 2-column gap, three columns
+-- a byte with one more after the eighth, then the text pane
+local function at(col, row)
+    return v:resolve_position(x0 + col * cw + 1, row * lh + 1)
+end
+
+local off, pane = at(10 + 3 * 3, 2)
+assert(off == 2 * 16 + 3 and pane == "hex", "hex pane, row two, byte three")
+-- past the wider gap halfway along
+off, pane = at(10 + 11 * 3 + 1, 0)
+assert(off == 11 and pane == "hex", "hex pane after the mid-row gap")
+-- either digit of a byte is that byte
+assert((at(10 + 5 * 3 + 1, 0)) == 5, "the low digit resolved to another byte")
+off, pane = at(60 + 5, 1)
+assert(off == 16 + 5 and pane == "text", "text pane, row one, byte five")
+-- clicks off the end of the file land on its last byte
+assert((at(60 + 15, 99)) == 199, "a click past the end is not clamped")
+
+io.open([[{marker}]], "w"):close()
+"#,
+            marker = marker.display()
+        ),
+    )
+    .unwrap();
+    let mut editor =
+        Headless::boot_with_exedir(&root.display().to_string(), &project_dir(), 900, 600, 1.0);
+    editor.run_until_frames(1, 10_000);
+    assert!(
+        marker.exists(),
+        "the hex grid is wrong; see the user module"
+    );
+}

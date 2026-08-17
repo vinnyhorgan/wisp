@@ -25,7 +25,7 @@ bug-fixed where not. every deliberate difference is written down in
 - a hex editor: binary files open in it instead of being turned away
 - `unsafe_code = "deny"`, with a single documented exception, and it's lua's
   fault
-- the whole editor boots headless in the test suite: 90 of its 210 tests
+- the whole editor boots headless in the test suite: 92 of its 212 tests
   feed it fake input and read the pixels coming back. the screenshots on
   this page were rendered that way too
 
