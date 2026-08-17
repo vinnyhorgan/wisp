@@ -100,12 +100,13 @@ monkey-patch) is already in the core, landed at the freeze; per-doc
 `indent_info` (kills detectindent's global config swap) is a lua-side
 affordance for the pass itself.
 
-the wave, roughly easiest-first: runtime zoom, detectindent,
-auto-close brackets + bracketmatch, trim whitespace on save, indent
-guides, selection highlight, more languages, treeview file ops,
-project-wide replace, session restore + project memory (treeview
-width, last query), imageview, word wrap (lite #26), multi-cursor
-last. hard-won lessons per item are in the maxi-review research
+the wave, roughly easiest-first: ~~runtime zoom~~ (done, DEVIATIONS
+§15), detectindent, auto-close brackets + bracketmatch, indent guides,
+selection highlight, more languages, treeview file ops, project-wide
+replace, session restore + project memory (treeview width, last
+query), imageview, word wrap (lite #26), multi-cursor last. "trim
+whitespace on save" was on this list by mistake: lite's own
+trimwhitespace plugin already hooks `Doc.save`, and it ships loaded. hard-won lessons per item are in the maxi-review research
 (lite-xl issue numbers recorded there): word wrap and multi-cursor
 have never survived as plugins anywhere -- both are designed-in-core
 features wearing plugin clothes, hence last.
@@ -130,13 +131,13 @@ ideas agreed in spirit, not yet scheduled or designed:
   getters it needs landed at the freeze; the rest is lua. the terminal
   also quietly solves the ai dilemma: it runs any terminal-based
   agent, no ai integration required in the editor itself.
-- **adopting fs events.** the api landed at the freeze
-  (`system.watch`, notify's inotify backend, polled from a coroutine);
-  what remains is the lua work of consuming it: make external changes
-  (a git branch switch, a build dropping files) appear instantly and
-  delete the standing project rescan -- the very cost the 2000-file
-  cap exists to bound. do it during the plugin pass's treeview work,
-  staleness in hand.
+- **adopting fs events.** the project scan is done (DEVIATIONS §16):
+  the standing rescan is gone, the tree is walked when the watcher says
+  something changed, and the timer survives only as a once-a-minute
+  safety net. what remains is the rest of the consumers -- autoreload
+  still stats each open doc on its own timer (cheap, a handful of
+  files, but it could ride the same watch), and the treeview's file
+  ops will want the watch in hand when they land.
 - **cross-platform.** the stack (winit, softbuffer, swash, vendored
   lua) is already portable; the unix-only parts are small and
   deliberate (byte paths, signals, the future pty). macos is likely
