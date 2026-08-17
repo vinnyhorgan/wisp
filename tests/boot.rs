@@ -3930,3 +3930,124 @@ fn saving_a_hex_view_refuses_to_clobber_a_changed_file() {
         "confirming the overwrite did not save the buffer"
     );
 }
+
+/// counts pixels of one exact colour in the last frame
+fn count_color(editor: &Headless, rgb: u32) -> usize {
+    editor
+        .last_frame()
+        .0
+        .iter()
+        .filter(|px| **px & 0xff_ff_ff == rgb)
+        .count()
+}
+
+/// a png opens in the image view, not the hex view: it is a binary file
+/// too, so the specific claim has to be asked before the universal one.
+/// the pixels are counted out of the framebuffer, so this pins the whole
+/// path -- claim, decode, fit, draw -- and then the bare `=` zooms it
+#[test]
+fn a_png_opens_in_the_image_view_and_zooms() {
+    let _serial = serial();
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("imgview");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("card.png");
+    // 80x80 in four flat quadrants; none of the colours occurs in the theme
+    image::RgbaImage::from_fn(80, 80, |x, y| match (x < 40, y < 40) {
+        (true, true) => image::Rgba([255, 0, 0, 255]),
+        (false, true) => image::Rgba([0, 255, 0, 255]),
+        (true, false) => image::Rgba([0, 0, 255, 255]),
+        _ => image::Rgba([255, 0, 255, 255]),
+    })
+    .save(&file)
+    .unwrap();
+
+    let mut editor = Headless::boot_args(
+        env!("CARGO_MANIFEST_DIR"),
+        &[&dir.display().to_string(), &file.display().to_string()],
+        900,
+        600,
+        1.0,
+    );
+    editor.run_until_frames(1, 10_000);
+    editor.run_steps(300);
+
+    assert_eq!(editor.window_title(), "card.png - wisp");
+    // it fits without enlarging, so the quadrant is its own 40x40
+    assert_eq!(
+        count_color(&editor, 0xff_00_00),
+        40 * 40,
+        "the png did not draw at one source pixel per ui pixel"
+    );
+
+    // `=` is a bare key and only means anything in the image view's mode
+    press(&editor, "=");
+    editor.run_steps(300);
+    assert_eq!(
+        count_color(&editor, 0xff_00_00),
+        80 * 80,
+        "= did not zoom the image one step"
+    );
+
+    // and `0` puts it back to fitting the window
+    press(&editor, "0");
+    editor.run_steps(300);
+    assert_eq!(
+        count_color(&editor, 0xff_00_00),
+        40 * 40,
+        "0 did not fit the image back into the window"
+    );
+}
+
+/// a picture that will not decode is best looked at as the bytes it
+/// actually is, so the image view declines it and the hex view behind it
+/// takes it -- proven by typing, which only a hex view accepts
+#[test]
+fn a_broken_png_falls_through_to_the_hex_view() {
+    let _serial = serial();
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("imgbroken");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("bad.png");
+    // the png signature, and then nothing that follows a png's rules
+    std::fs::write(&file, b"\x89PNG\r\n\x1a\n\0\0\0\0not a chunk at all").unwrap();
+
+    let mut editor = Headless::boot_args(
+        env!("CARGO_MANIFEST_DIR"),
+        &[&dir.display().to_string(), &file.display().to_string()],
+        900,
+        600,
+        1.0,
+    );
+    editor.run_until_frames(1, 10_000);
+    editor.run_steps(200);
+
+    typed(&editor, "f");
+    editor.run_steps(20);
+    typed(&editor, "f");
+    editor.run_steps(50);
+    assert_eq!(
+        editor.window_title(),
+        "bad.png* - wisp",
+        "a png that would not decode did not fall through to the hex view"
+    );
+}
+
+/// the image view's bare keys live in a keymap mode of their own, and
+/// this is why: an unbound stroke that gains a global binding starts
+/// claiming the text event behind it, so a document would stop being able
+/// to type the character at all
+#[test]
+fn a_documents_bare_keys_survive_the_image_views_bindings() {
+    let _serial = serial();
+    let mut editor = boot();
+    ctrl(&editor, "n");
+    editor.run_steps(100);
+    typed(&editor, "=");
+    editor.run_steps(100);
+    assert_eq!(
+        editor.window_title(),
+        "unsaved* - wisp",
+        "typing = into a document did nothing; a mode leaked into the plain keymap"
+    );
+}

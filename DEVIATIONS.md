@@ -623,6 +623,20 @@ it cares about and inherits `ctrl+s`, `ctrl+f` and everything else
 untouched. unset -- which is how the editor starts -- the lookup is
 exactly lite's.
 
+the mode is **decided**, never assigned. `keymap.modes` is a list of
+functions asked in order on every stroke, and the first to name one wins;
+`keymap.mode` is the answer, kept readable rather than set. this section
+shipped with one consumer and a plain variable, which the second one --
+the image view -- would have fought over: two modal layers each wrapping
+`on_key_pressed` to assign the same field come down to plugin load order,
+and that is not a thing to build on.
+
+a mode is also what makes **bare keys** safe. an unbound stroke lets the
+text event behind it through; one that gains a binding starts claiming
+it, whether or not the command it names actually ran. so binding `=` for
+the image view globally would stop every document being able to type an
+`=` at all, and only a mode-qualified binding is free of that.
+
 binding a command inside a mode does **not** claim its displayed
 binding: `keymap.get_binding` answers what to show someone who is not in
 that mode, and the empty view would otherwise advertise `helix-space:f`
@@ -824,6 +838,23 @@ out in, and an offset ending in zero is a landmark you can count from.
 the quit prompt and the signal rescue both walk `core.docs`, which a hex
 view is not in, so the plugin wraps both: unsaved bytes are exactly as
 hard to lose as unsaved text.
+
+`data/plugins/imageview.lua` is the second claim, and the ordering rule
+falls out of the first: a png is a binary file too, so a *specific* claim
+is inserted at the front of `core.file_openers` and the universal one
+stays at the back. a picture that will not decode declines on purpose and
+the hex view behind it takes it -- a truncated png is best looked at as
+the bytes it actually is.
+
+the viewer is a scale and a point, and every key moves one of the two.
+100% means one source pixel per **ui** pixel, not per hardware pixel: on
+a hidpi display the second draws a picture at half the size of everything
+around it, which is not what anyone means by actual size. fitting never
+enlarges, because a 16x16 icon blown up to fill a window is not what
+opening it was for. behind the image is a flat panel and a border rather
+than a checkerboard -- transparency reads against it, the image's extent
+is always visible, and it is one rectangle instead of the thousands a
+checkerboard would put on the draw path every frame.
 
 two guards follow from the model rather than from taste. the buffer is
 memory-resident, so a file past 64 mb is **refused** with its size in the

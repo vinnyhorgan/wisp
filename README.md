@@ -22,10 +22,11 @@ bug-fixed where not. every deliberate difference is written down in
   through the same renderer as everything else
 - helix mode, opt in: selection-first modal editing built to what
   `hx --tutor` teaches
-- a hex editor: binary files open in it instead of being turned away
+- images and binaries open in views of their own: an image viewer, and a
+  hex editor for everything else
 - `unsafe_code = "deny"`, with a single documented exception, and it's lua's
   fault
-- the whole editor boots headless in the test suite: 94 of its 214 tests
+- the whole editor boots headless in the test suite: 97 of its 217 tests
   feed it fake input and read the pixels coming back. the screenshots on
   this page were rendered that way too
 

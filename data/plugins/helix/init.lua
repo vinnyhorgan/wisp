@@ -110,6 +110,10 @@ end
 -- prompt taking the keyboard (find, the `:` line, the command palette)
 -- gets its own keys back without anything having to remember to put
 -- them back afterwards
+table.insert(keymap.modes, function()
+    return helix.active() and ("helix-" .. (helix.pending or helix.mode)) or nil
+end)
+
 local on_key_pressed = keymap.on_key_pressed
 
 function keymap.on_key_pressed(k)
@@ -126,7 +130,6 @@ function keymap.on_key_pressed(k)
         end
         return false
     end
-    keymap.mode = helix.active() and ("helix-" .. (helix.pending or helix.mode)) or nil
     -- read before the stroke runs: `space` sets the prefix from inside
     -- this very call, and clearing it afterwards would end it before the
     -- key it exists to qualify was ever pressed
@@ -153,7 +156,6 @@ function helix.disable()
     helix.enabled = false
     helix.pending = nil
     helix.awaiting = nil
-    keymap.mode = nil
     core.redraw = true
 end
 

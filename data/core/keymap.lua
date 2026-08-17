@@ -64,8 +64,26 @@ end
 -- a mode name, or nil for the plain keymap everyone starts with. while
 -- one is set, a stroke is looked for under `"<mode>:<stroke>"` first and
 -- falls back to the unprefixed binding, so a mode overrides the letters
--- it cares about and inherits ctrl+s, ctrl+f and the rest untouched
+-- it cares about and inherits ctrl+s, ctrl+f and the rest untouched.
+--
+-- the mode is *decided* on every stroke, never assigned: each entry in
+-- `keymap.modes` is asked in turn and the first to name one wins. two
+-- modal layers -- helix over a doc, the image view over an image -- then
+-- coexist without either knowing the other exists, which is what a single
+-- shared variable could never manage. the field below is the answer, kept
+-- readable for anyone who wants to know what mode a keystroke ran in
 keymap.mode = nil
+keymap.modes = {}
+
+local function decide_mode()
+    for _, decide in ipairs(keymap.modes) do
+        local mode = decide()
+        if mode then
+            return mode
+        end
+    end
+    return nil
+end
 
 function keymap.on_key_pressed(k)
     local mk = modkey_map[k]
@@ -76,6 +94,7 @@ function keymap.on_key_pressed(k)
             keymap.modkeys["ctrl"] = false
         end
     else
+        keymap.mode = decide_mode()
         local stroke = key_to_stroke(k)
         local commands = keymap.mode and keymap.map[keymap.mode .. ":" .. stroke]
             or keymap.map[stroke]
