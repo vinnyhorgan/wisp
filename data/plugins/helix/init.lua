@@ -287,8 +287,18 @@ end
 local draw_line_body = DocView.draw_line_body
 
 function DocView:draw_line_body(idx, x, y)
-    draw_line_body(self, idx, x, y)
-    if not helix.active() or helix.mode == "insert" or core.active_view ~= self then
+    local block = helix.active() and helix.mode ~= "insert" and core.active_view == self
+    if block then
+        -- lite draws its own thin caret at the head, and in helix the
+        -- head sits one character *past* the block -- so a block on a
+        -- line's newline put a second cursor at the start of the line
+        -- below. park the blink for the call so only the block is drawn
+        local blink = self.blink_timer
+        self.blink_timer = math.huge
+        draw_line_body(self, idx, x, y)
+        self.blink_timer = blink
+    else
+        draw_line_body(self, idx, x, y)
         return
     end
     local line, col = helix.head_char(self.doc)

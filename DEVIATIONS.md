@@ -643,8 +643,11 @@ two details follow from it:
   position, never the exclusive head, because that is what the person
   typing is pointing at.
 - **the block is drawn after the line and the character redrawn over
-  it** in the background colour -- inverse video, and it covers lite's
-  thin caret without having to suppress it.
+  it** in the background colour -- inverse video. lite's own thin caret
+  has to be suppressed while it is up, not merely covered: the caret is
+  drawn at the *head*, and the head sits one character past the block,
+  so a block on a line's newline put a second caret at the start of the
+  line below. the blink is parked for the call instead.
 
 word motions are the plugin's own (`plugins/helix/motions.lua`) rather
 than lite's. lite's `translate` splits the world in two -- word

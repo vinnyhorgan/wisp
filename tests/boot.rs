@@ -2962,3 +2962,81 @@ fn helix_undo_yank_paste_and_the_ex_line() {
         "a linewise yank did not paste onto its own line"
     );
 }
+
+/// helix mode drew two cursors: lite's own thin caret sits at the head,
+/// which in helix is one character *past* the block, so a block on a
+/// line's newline put a second caret at the start of the line below
+#[test]
+fn helix_normal_mode_draws_exactly_one_cursor() {
+    let _serial = serial();
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("helixcaret");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("c.txt");
+    std::fs::write(&file, "ab\ncd\n").unwrap();
+
+    let mut editor = Headless::boot_args(
+        env!("CARGO_MANIFEST_DIR"),
+        &[&dir.display().to_string(), &file.display().to_string()],
+        900,
+        600,
+        1.0,
+    );
+    editor.run_until_frames(1, 10_000);
+    palette(&mut editor, "helix: toggle");
+    editor.run_steps(100);
+
+    // walk the block onto the newline at the end of the first line, the
+    // position whose head lands on the line below
+    press(&editor, "l");
+    press(&editor, "l");
+    editor.run_steps(20);
+
+    // catppuccin mocha green, the caret colour. scanned in the document
+    // area only: the status bar renders the mode name in the same accent
+    let caret = 0x00a6e3a1u32;
+    let (pixels, w, _) = editor.last_frame();
+    let mut rows: Vec<usize> = Vec::new();
+    for y in 0..300usize {
+        for x in 200..800usize {
+            if pixels[y * w as usize + x] & 0x00ffffff == caret {
+                rows.push(y);
+                break;
+            }
+        }
+    }
+    assert!(!rows.is_empty(), "no cursor drawn at all");
+    let span = rows[rows.len() - 1] - rows[0] + 1;
+    assert!(
+        span <= 21,
+        "the cursor covers {span} rows ({:?}..{:?}) -- more than one line, so more than one cursor",
+        rows[0],
+        rows[rows.len() - 1]
+    );
+}
+
+/// helix mode ships loaded but inert: wisp is not a modal editor unless
+/// someone asks it to be, so the plugin must change nothing at all until
+/// `config.helix_mode` or the toggle command turns it on
+#[test]
+fn helix_mode_is_off_until_it_is_asked_for() {
+    let _serial = serial();
+    let mut editor = boot();
+    editor.push_event(Event::TextInput("hjkl".into()));
+    editor.run_steps(100);
+    // a modal editor would have swallowed those as commands
+    assert_eq!(
+        editor.window_title(),
+        "wisp",
+        "an untouched editor had a document open"
+    );
+    ctrl(&editor, "n");
+    editor.run_steps(100);
+    editor.push_event(Event::TextInput("hjkl".into()));
+    editor.run_steps(100);
+    assert_eq!(
+        editor.window_title(),
+        "unsaved* - wisp",
+        "typed text did not reach the document, so helix mode was on"
+    );
+}
