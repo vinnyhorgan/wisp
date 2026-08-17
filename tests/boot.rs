@@ -3155,3 +3155,344 @@ fn helix_w_walks_over_punctuation_instead_of_sticking() {
         "w did not keep walking through the punctuation"
     );
 }
+
+/// holds left shift around a key press
+fn shift(editor: &Headless, key: &str) {
+    editor.push_event(Event::KeyPressed("left shift".into()));
+    press(editor, key);
+    editor.push_event(Event::KeyReleased("left shift".into()));
+}
+
+/// holds left alt around a key press
+fn alt(editor: &Headless, key: &str) {
+    editor.push_event(Event::KeyPressed("left alt".into()));
+    press(editor, key);
+    editor.push_event(Event::KeyReleased("left alt".into()));
+}
+
+/// a printable keystroke exactly as the platform delivers one: the key,
+/// and then the text it produced. helix's `f`, `r` and match mode read
+/// their character argument off that text event, and core drops the text
+/// of a keystroke the keymap claimed -- so both halves have to be sent
+fn typed(editor: &Headless, text: &str) {
+    editor.push_event(Event::KeyPressed(text.into()));
+    editor.push_event(Event::TextInput(text.into()));
+    editor.push_event(Event::KeyReleased(text.into()));
+}
+
+/// the same, with shift held: `shift+f` is the key `f` typing an `F`
+fn shift_typed(editor: &Headless, key: &str, text: &str) {
+    editor.push_event(Event::KeyPressed("left shift".into()));
+    editor.push_event(Event::KeyPressed(key.into()));
+    editor.push_event(Event::TextInput(text.into()));
+    editor.push_event(Event::KeyReleased(key.into()));
+    editor.push_event(Event::KeyReleased("left shift".into()));
+}
+
+/// boots an editor over a one-file project with helix mode turned on
+fn helix_editor(name: &str, file: &str, text: &str) -> (Headless, std::path::PathBuf) {
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(file);
+    std::fs::write(&path, text).unwrap();
+    let mut editor = Headless::boot_args(
+        env!("CARGO_MANIFEST_DIR"),
+        &[&dir.display().to_string(), &path.display().to_string()],
+        900,
+        600,
+        1.0,
+    );
+    editor.run_until_frames(1, 10_000);
+    palette(&mut editor, "helix: toggle");
+    editor.run_steps(100);
+    (editor, path)
+}
+
+/// helix mode, chapter 4 of the tutor: the `g` prefix goes places --
+/// `gg` to the top (or to a counted line), `gh` and `gl` to the ends of
+/// the line, `gs` to its first non-blank character
+#[test]
+fn helix_goto_mode_walks_the_document() {
+    let _serial = serial();
+    let (mut editor, file) =
+        helix_editor("helixgoto", "g.txt", "alpha beta\n  indented line\nlast\n");
+    let save = |editor: &mut Headless| {
+        ctrl(editor, "s");
+        editor.run_steps(200);
+        std::fs::read_to_string(&file).unwrap()
+    };
+
+    // gs: the first character that is not whitespace, not the first column
+    press(&editor, "j");
+    press(&editor, "g");
+    press(&editor, "s");
+    press(&editor, "d");
+    editor.run_steps(50);
+    assert_eq!(
+        save(&mut editor).lines().nth(1).unwrap(),
+        "  ndented line",
+        "gs did not land on the first non-blank character"
+    );
+
+    // gl: the last character of the line, gh: the first
+    press(&editor, "g");
+    press(&editor, "l");
+    press(&editor, "d");
+    press(&editor, "g");
+    press(&editor, "h");
+    press(&editor, "d");
+    editor.run_steps(50);
+    assert_eq!(
+        save(&mut editor).lines().nth(1).unwrap(),
+        " ndented lin",
+        "gl and gh did not land on the ends of the line"
+    );
+
+    // gg: the top of the document, and with a count, that line
+    press(&editor, "g");
+    press(&editor, "g");
+    press(&editor, "d");
+    press(&editor, "3");
+    press(&editor, "g");
+    press(&editor, "g");
+    press(&editor, "d");
+    editor.run_steps(50);
+    assert_eq!(
+        save(&mut editor),
+        "lpha beta\n ndented lin\nast\n",
+        "gg did not go to the top of the document, or 3gg to line three"
+    );
+}
+
+/// helix mode, chapter 6 of the tutor: f and t find a character on the
+/// line, F and T do it backwards, r replaces what is selected, `.`
+/// repeats the last insertion and alt-. the last find
+#[test]
+fn helix_finds_characters_and_repeats_itself() {
+    let _serial = serial();
+    let (mut editor, file) = helix_editor("helixfind", "f.txt", "hello world wide\n");
+    let save = |editor: &mut Headless| {
+        ctrl(editor, "s");
+        editor.run_steps(200);
+        std::fs::read_to_string(&file).unwrap()
+    };
+
+    // f selects up to and including the character it found
+    typed(&editor, "f");
+    typed(&editor, "w");
+    press(&editor, "d");
+    editor.run_steps(50);
+    assert_eq!(
+        save(&mut editor),
+        "orld wide\n",
+        "f did not select up to the w"
+    );
+
+    // an insertion is remembered, and `.` plays it back
+    typed(&editor, "i");
+    editor.push_event(Event::TextInput("ab".into()));
+    editor.run_steps(50);
+    press(&editor, "escape");
+    editor.run_steps(50);
+    press(&editor, ".");
+    editor.run_steps(50);
+    assert_eq!(
+        save(&mut editor),
+        "ababorld wide\n",
+        "`.` did not repeat the insertion"
+    );
+
+    // r overwrites every character of the selection, newlines aside
+    typed(&editor, "r");
+    typed(&editor, "Z");
+    editor.run_steps(50);
+    assert_eq!(
+        save(&mut editor),
+        "abZZorld wide\n",
+        "r did not replace the selection"
+    );
+
+    // alt-. runs the last f again, from where the cursor is now
+    alt(&editor, ".");
+    press(&editor, "d");
+    editor.run_steps(50);
+    assert_eq!(
+        save(&mut editor),
+        "abZide\n",
+        "alt-. did not repeat the last find"
+    );
+
+    // F looks backwards, and takes everything between
+    shift_typed(&editor, "f", "F");
+    typed(&editor, "a");
+    press(&editor, "d");
+    editor.run_steps(50);
+    assert_eq!(save(&mut editor), "de\n", "F did not select back to the a");
+}
+
+/// helix mode, chapter 12 of the tutor: match mode. mm walks to the other
+/// end of a pair, mi and ma select what it holds, and ms / mr / md add,
+/// swap and remove the pair itself
+#[test]
+fn helix_match_mode_selects_and_surrounds() {
+    let _serial = serial();
+    let (mut editor, file) = helix_editor("helixmatch", "m.txt", "foo(bar, baz) end\n");
+    let save = |editor: &mut Headless| {
+        ctrl(editor, "s");
+        editor.run_steps(200);
+        std::fs::read_to_string(&file).unwrap()
+    };
+
+    // mi( takes what the parentheses hold, and not the parentheses
+    for _ in 0..4 {
+        press(&editor, "l");
+    }
+    press(&editor, "m");
+    typed(&editor, "i");
+    typed(&editor, "(");
+    press(&editor, "d");
+    editor.run_steps(50);
+    assert_eq!(
+        save(&mut editor),
+        "foo() end\n",
+        "mi( did not select inside the pair"
+    );
+
+    // mm walks from one half of the pair to the other, ma( takes both
+    press(&editor, "m");
+    press(&editor, "m");
+    press(&editor, "m");
+    typed(&editor, "a");
+    typed(&editor, "(");
+    press(&editor, "d");
+    editor.run_steps(50);
+    assert_eq!(
+        save(&mut editor),
+        "foo end\n",
+        "mm then ma( did not take the whole pair"
+    );
+
+    // miw takes the word, ms[ wraps it
+    press(&editor, "h");
+    press(&editor, "m");
+    typed(&editor, "i");
+    typed(&editor, "w");
+    press(&editor, "m");
+    typed(&editor, "s");
+    typed(&editor, "[");
+    editor.run_steps(50);
+    assert_eq!(
+        save(&mut editor),
+        "[foo] end\n",
+        "ms did not surround the selection"
+    );
+
+    // mr swaps one pair for another, md takes it away again
+    press(&editor, "m");
+    typed(&editor, "r");
+    typed(&editor, "[");
+    typed(&editor, "(");
+    editor.run_steps(50);
+    assert_eq!(
+        save(&mut editor),
+        "(foo) end\n",
+        "mr did not replace the surrounding pair"
+    );
+
+    press(&editor, "g");
+    press(&editor, "h");
+    press(&editor, "m");
+    typed(&editor, "d");
+    typed(&editor, "(");
+    editor.run_steps(50);
+    assert_eq!(
+        save(&mut editor),
+        "foo end\n",
+        "md did not remove the surrounding pair"
+    );
+}
+
+/// helix mode, chapters 7, 10 and 11 of the tutor: the keys that are the
+/// host's own edits wearing helix's letters -- J joins, > and < indent,
+/// ~ and ` change case, ctrl-a and ctrl-x move a number, ctrl-c comments
+#[test]
+fn helix_wires_the_hosts_edits_onto_its_own_keys() {
+    let _serial = serial();
+    let (mut editor, file) = helix_editor("helixedits", "e.lua", "abc def\nghi\nvalue 41\n");
+    let save = |editor: &mut Headless| {
+        ctrl(editor, "s");
+        editor.run_steps(200);
+        std::fs::read_to_string(&file).unwrap()
+    };
+
+    // ~ swaps the case of everything selected
+    press(&editor, "w");
+    shift(&editor, "`");
+    editor.run_steps(50);
+    assert_eq!(
+        save(&mut editor).lines().next().unwrap(),
+        "ABC def",
+        "~ did not switch the case of the selection"
+    );
+
+    // J pulls the next line up onto this one
+    shift(&editor, "j");
+    editor.run_steps(50);
+    assert_eq!(
+        save(&mut editor),
+        "ABC def ghi\nvalue 41\n",
+        "J did not join the lines"
+    );
+
+    // > indents and < puts it back exactly
+    shift(&editor, ".");
+    editor.run_steps(50);
+    let indented = save(&mut editor);
+    assert!(
+        indented.starts_with(' ') || indented.starts_with('\t'),
+        "> did not indent the line: {indented:?}"
+    );
+    shift(&editor, ",");
+    editor.run_steps(50);
+    assert_eq!(
+        save(&mut editor),
+        "ABC def ghi\nvalue 41\n",
+        "< did not undo what > did"
+    );
+
+    // ctrl-a and ctrl-x move the number on the line, and take a count
+    press(&editor, "2");
+    press(&editor, "g");
+    press(&editor, "g");
+    ctrl(&editor, "a");
+    press(&editor, "5");
+    ctrl(&editor, "x");
+    editor.run_steps(50);
+    assert_eq!(
+        save(&mut editor).lines().nth(1).unwrap(),
+        "value 37",
+        "ctrl-a and ctrl-x did not move the number by the count"
+    );
+
+    // ctrl-c comments the line in the document's own language
+    ctrl(&editor, "c");
+    editor.run_steps(50);
+    assert_eq!(
+        save(&mut editor).lines().nth(1).unwrap(),
+        "-- value 37",
+        "ctrl-c did not comment the line"
+    );
+
+    // % takes the whole file. the document's last newline has no
+    // position past it, so it survives -- exactly as it does under
+    // lite's own select-all and delete
+    shift(&editor, "5");
+    press(&editor, "d");
+    editor.run_steps(50);
+    assert_eq!(
+        save(&mut editor),
+        "\n",
+        "% did not select the whole document"
+    );
+}

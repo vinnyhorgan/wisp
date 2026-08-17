@@ -705,6 +705,63 @@ swallows them. the command prompt is a `DocView` subclass and is
 deliberately excluded from all of this: a modal layer over a one-line
 prompt helps nobody.
 
+`g`, `z` and `m` extend the same one-stroke prefix machinery `space`
+introduced: each names a keymap mode of its own that lasts exactly one
+key. `g` goes places (`gg`, `ge`, `gh`, `gl`, `gs`, and `gn`/`gp` onto
+the host's tabs), `z` moves the view under the cursor, `m` is match
+mode. a count survives the `g` prefix untouched, because `10gg` is how
+helix says go-to-line.
+
+**a key can take a character as its argument.** `f`, `t`, `r` and all of
+match mode's `mi` / `ma` / `ms` / `md` / `mr` wait for one, and they read
+it off the *text* event rather than the key name: the key name is the
+unshifted character, so `f(` would otherwise have to be decoded from
+`shift+9` against a keyboard layout nothing here knows. while one is
+waiting, `keymap.on_key_pressed` runs no command for the stroke -- and
+returns **false**, not true, precisely because core drops the text event
+that follows a keystroke the keymap claimed, and that text event is the
+whole point. escape cancels; the status bar shows what is being waited
+for beside the mode.
+
+match mode's pair finding (`plugins/helix/surround.lua`) is a
+character-by-character scan that counts nesting and nothing else --
+helix's own fallback where it has no parser, and right far more often
+than it is wrong. quotes have no direction and so cannot be nested:
+they are paired off along the line in the order they appear.
+
+the keys that are the host's own edits wearing helix's letters are wired
+straight onto wisp's commands rather than reimplemented -- `J` onto
+`doc:join-lines`, `>` and `<` onto `doc:indent` and `doc:unindent`,
+`ctrl-c` onto `doc:toggle-line-comments`, `Q` and `q` onto the macro
+plugin, `` ` `` and ``alt-` `` onto `Doc:replace`. `ctrl-a` and `ctrl-x`
+are the plugin's own, since lite has no notion of a number under the
+cursor.
+
+two deliberate departures from helix's own bindings:
+
+- **`ctrl+s` still saves.** helix parks the selection in the jumplist
+  there; ctrl+s means save everywhere else on the planet, and losing
+  that is not worth the fidelity. the jumplist gets `ctrl+shift+s`, and
+  `ctrl+o` / `ctrl+i` walk it exactly as helix does. `gg`, `ge` and `/`
+  park a jump on the way past, which is where jumps actually come from.
+- **`*` fills a search register of the plugin's own**, and `n` / `N`
+  prefer it. core's find keeps `last_fn` and `last_text` as file-locals
+  with no way in, so `*` could not otherwise reach them; while the
+  register is empty -- which is how it starts, and what `/` puts it back
+  to -- `n` and `N` repeat the host's prompt, so the two ways of
+  searching do not each need their own history.
+
+`.` repeats the last insertion by remembering the text typed during an
+insert session, not by replaying keystrokes: a backspace taken during
+that session is therefore not part of what `.` plays back. `%` takes the
+whole document, and leaves its final newline behind -- there is no
+position past it, exactly as under lite's own select-all and delete.
+
+what is deliberately out for now: multiple selections and everything
+built on them (`C`, `s`, `&`, `alt-s`, `S`, `(`/`)`, `alt-,`), the
+tutor's chapter 5 in full, treesitter text objects, and `gw`'s two-letter
+jump labels.
+
 ## kept on purpose
 
 lite behaviors evaluated deliberately and kept, recorded so they are

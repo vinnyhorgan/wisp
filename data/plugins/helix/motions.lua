@@ -119,6 +119,81 @@ function motions.next_word_end(doc, line, col, big)
     return pl, pc
 end
 
+--- `f` / `F` / `t` / `T`: to the next occurrence of a character on this
+--- line, or onto the character beside it for the `till` flavours. helix
+--- stays put when there is none, so a mistyped `f` costs nothing
+function motions.find_char(doc, line, col, char, forward, till)
+    local text = doc.lines[line]
+    if forward then
+        local from = col + 1
+        -- a `t` already parked in front of its target has to look past
+        -- that one, or pressing it again would never move
+        if till and text:sub(from, from) == char then
+            from = from + 1
+        end
+        local at = text:find(char, from, true)
+        if not at then
+            return line, col
+        end
+        return line, till and at - 1 or at
+    end
+    -- backward: the last match before the cursor, found by walking
+    -- forward, since patterns only search one way
+    local limit = col
+    if till and text:sub(col - 1, col - 1) == char then
+        limit = col - 1
+    end
+    local from, at = 1, nil
+    while true do
+        local found = text:find(char, from, true)
+        if not found or found >= limit then
+            break
+        end
+        at = found
+        from = found + 1
+    end
+    if not at then
+        return line, col
+    end
+    return line, till and at + 1 or at
+end
+
+--- the run of same-class characters the cursor stands in -- what `miw`
+--- means by "this word". words do not cross lines, so neither does this
+function motions.word_range(doc, line, col, big)
+    local kind = class_of(at(doc, line, col), big)
+    local sl, sc = line, col
+    while true do
+        local l, c = back(doc, sl, sc)
+        if not l or l ~= sl or class_of(at(doc, l, c), big) ~= kind then
+            break
+        end
+        sl, sc = l, c
+    end
+    local el, ec = line, col
+    while true do
+        local l, c = fwd(doc, el, ec)
+        if not l or l ~= el or class_of(at(doc, l, c), big) ~= kind then
+            break
+        end
+        el, ec = l, c
+    end
+    return sl, sc, el, ec
+end
+
+--- the run of non-blank lines the cursor stands in -- `mip`. returns
+--- line numbers, since a paragraph is only ever whole lines
+function motions.paragraph_range(doc, line)
+    local first, last = line, line
+    while first > 1 and not doc.lines[first - 1]:find("^%s*$") do
+        first = first - 1
+    end
+    while last < #doc.lines and not doc.lines[last + 1]:find("^%s*$") do
+        last = last + 1
+    end
+    return first, last
+end
+
 --- `b` / `B`: backward to the first character of the previous word
 function motions.previous_word_start(doc, line, col, big)
     local l, c = back(doc, line, col)
