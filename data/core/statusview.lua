@@ -18,6 +18,8 @@ function StatusView:new()
     StatusView.super.new(self)
     self.message_timeout = 0
     self.message = {}
+    self.visible = true
+    self.init_size = true
 end
 
 function StatusView:on_mouse_pressed()
@@ -42,7 +44,19 @@ function StatusView:show_message(icon, icon_color, text)
 end
 
 function StatusView:update()
-    self.size.y = style.font:get_height() + style.padding.y * 2
+    -- hiding animates the height to zero the way the treeview animates
+    -- its width; the locked node reads this size, and get_locked_size
+    -- already drops the divider once a side collapses
+    local dest = 0
+    if self.visible then
+        dest = style.font:get_height() + style.padding.y * 2
+    end
+    if self.init_size then
+        self.size.y = dest
+        self.init_size = false
+    else
+        self:move_towards(self.size, "y", dest)
+    end
 
     if system.get_time() < self.message_timeout then
         self.scroll.to.y = self.size.y
@@ -154,8 +168,16 @@ function StatusView:draw()
         self:draw_items(self.message, false, self.size.y)
     end
 
+    -- the two groups are placed independently -- one from the left edge,
+    -- one from the right -- so a narrow window ran them straight through
+    -- each other. the left group gets only the room the right one leaves
+    -- and is cut off there
     local left, right = self:get_items()
+    local rw = draw_items(self, right, 0, 0, text_width)
+    local avail = math.max(0, self.size.x - rw - style.padding.x)
+    core.push_clip_rect(self.position.x, self.position.y, avail, self.size.y)
     self:draw_items(left)
+    core.pop_clip_rect()
     self:draw_items(right, true)
 end
 

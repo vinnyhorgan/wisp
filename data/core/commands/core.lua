@@ -20,6 +20,10 @@ command.add(nil, {
         system.set_window_mode(fullscreen and "fullscreen" or "normal")
     end,
 
+    ["core:toggle-status-bar"] = function()
+        core.status_view.visible = not core.status_view.visible
+    end,
+
     ["core:reload-module"] = function()
         core.command_view:enter("reload module", function(text, item)
             local text = item and item.text or text

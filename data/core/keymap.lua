@@ -92,6 +92,7 @@ keymap.add({
     ["ctrl+o"] = "core:open-file",
     ["ctrl+n"] = "core:new-doc",
     ["alt+return"] = "core:toggle-fullscreen",
+    ["ctrl+shift+\\"] = "core:toggle-status-bar",
 
     ["alt+shift+j"] = "root:split-left",
     ["alt+shift+l"] = "root:split-right",

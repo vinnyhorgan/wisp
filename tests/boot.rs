@@ -1483,6 +1483,72 @@ fn statusbar_column_counts_characters_not_bytes() {
 }
 
 #[test]
+fn a_long_name_never_crowds_the_right_of_the_status_bar() {
+    let _serial = serial();
+    // identical content, wildly different name lengths, a narrow window.
+    // the right-hand group ("N lines   lf") is the same string in both
+    // runs and lands at the same x, so any difference in the right of
+    // the strip means the left group painted straight through it
+    let run = |dirname: &str, file: &str| -> Vec<u32> {
+        let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join(dirname);
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(file), "hello\n").unwrap();
+        let mut editor = Headless::boot(&dir.display().to_string(), 500, 400, 1.0);
+        editor.run_until_frames(1, 10_000);
+        editor.set_focus(false);
+        ctrl(&editor, "o");
+        editor.run_steps(100);
+        editor.push_event(Event::TextInput(file.into()));
+        editor.run_steps(100);
+        press(&editor, "return");
+        editor.run_steps(500);
+        let (frame, w, h) = editor.last_frame();
+        // the rightmost 80px of the status strip: the left group is cut
+        // off exactly where the right group starts, well left of this
+        let mut out = Vec::new();
+        for y in (h - 25)..h {
+            for x in (w - 80)..w {
+                out.push(frame[(y * w + x) as usize]);
+            }
+        }
+        out
+    };
+    let short = run("statusshort", "a.txt");
+    let long = run(
+        "statuslong",
+        "a-very-long-file-name-that-crowds-the-status-bar-badly.txt",
+    );
+    assert_eq!(
+        short, long,
+        "a long filename painted into the right-hand status group"
+    );
+}
+
+#[test]
+fn the_status_bar_toggles_and_comes_back() {
+    let _serial = serial();
+    let mut editor = boot();
+    editor.set_focus(false);
+    editor.run_steps(500);
+    let before = editor.last_frame().0;
+
+    // ctrl+shift+\ collapses the bar; its height animates, so let it
+    // settle before looking
+    ctrl_shift(&editor, "\\");
+    editor.run_steps(1000);
+    assert_ne!(before, editor.last_frame().0, "the status bar did not hide");
+
+    ctrl_shift(&editor, "\\");
+    editor.run_steps(1000);
+    assert_eq!(
+        before,
+        editor.last_frame().0,
+        "the status bar did not come back the way it went"
+    );
+}
+
+#[test]
 fn saving_from_a_prompt_is_refused() {
     let _serial = serial();
     // the command view is a docview, so ctrl+s inside a prompt used to

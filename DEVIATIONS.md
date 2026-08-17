@@ -300,6 +300,11 @@ fix is small and local:
   stat and the open (a checkout, a build): the unchecked `io.open`
   raised inside the reload thread, which killed the thread and with it
   every later reload in the session.
+- **`data/core/statusview.lua`** -- the left and right item groups are
+  placed independently, one from each edge, so in a narrow window the
+  filename ran straight through the line count and the two overprinted
+  each other. the left group is now clipped to exactly the room the
+  right one leaves.
 - **`data/core/init.lua`** -- a modifier held while focus left the
   window stayed latched forever: wayland delivers no key releases on
   focus loss (x11 synthesizes them), so alt+tab with alt down turned
@@ -384,6 +389,18 @@ handling -- and the audit for the rest touched exactly these:
   their own one-byte chars instead of silently vanishing -- bytes
   should never disappear on their way to the screen.
 - `language_lua` highlights `global` as the keyword it now is.
+
+## 14. the status bar can be hidden
+
+**files:** `data/core/statusview.lua`, `data/core/commands/core.lua`,
+`data/core/keymap.lua`
+
+`core:toggle-status-bar` on `ctrl+shift+\` collapses the status bar and
+brings it back -- the sibling of the treeview's `ctrl+\`, and lite had
+no way to do it at all. the bar animates its height to zero exactly as
+the treeview animates its width, and nothing else in the layout needed
+changing: a locked node already reports its view's own size, and
+`get_locked_size` already drops the divider once a side collapses.
 
 ## kept on purpose
 
