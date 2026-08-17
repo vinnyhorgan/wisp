@@ -883,6 +883,40 @@ asking there is cheaper than a watcher that would have to be right all the
 time. a save under another name -- which is what the signal rescue does --
 was never the same file and skips the question.
 
+## 21. indentation belongs to the document
+
+**files:** `data/core/doc/init.lua`, `data/core/docview.lua`,
+`data/core/commands/doc.lua`
+
+lite reads `config.indent_size` and `config.tab_type` at every site that
+cares -- the tab key, backspace, the tab width the renderer draws with.
+one editor therefore has one opinion about indentation, which is wrong the
+moment two files disagree, and two files disagree constantly: a makefile
+and the lua beside it, a vendored dependency and your own source, one
+project you opened this morning and the one you opened after lunch.
+
+`Doc:get_indent_info()` returns `type, size, confirmed` and every one of
+those sites now reads through it. `doc.indent_info` is where an answer
+goes when something knows one; `nil` means nobody has looked, and the
+config is the fallback it always was. `confirmed` says the answer was
+measured rather than assumed, which is what lets a detector distinguish "i
+found tabs" from "i found nothing and left the default".
+
+this is lite-xl's shape, field for field and return for return, and taken
+deliberately: detectindent is the consumer, it is an upstream plugin
+worth adapting rather than rewriting, and matching the surface means it
+adapts with no impedance at all. rxi's own lite-plugins detectindent
+predates this affordance and does the only thing it could -- reassign the
+globals as you switch documents, so the last file you touched sets the
+indentation for every file you touch next. that is the bug this section
+exists to make impossible.
+
+there is no consumer in the tree yet: the affordance is the prerequisite,
+and it ships first so the plugin can be an adaptation instead of a
+rewrite. until then every document answers exactly what the config says,
+which is what lite did, and `data/user/init.lua` can already say
+otherwise per file.
+
 ## kept on purpose
 
 lite behaviors evaluated deliberately and kept, recorded so they are

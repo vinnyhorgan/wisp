@@ -101,7 +101,8 @@ function DocView:get_widest_line_width()
         or self.widest_font_size ~= font:get_size()
     then
         self.widest_font_size = font:get_size()
-        font:set_tab_width(font:get_width(" ") * config.indent_size)
+        local _, indent_size = self.doc:get_indent_info()
+        font:set_tab_width(font:get_width(" ") * indent_size)
         local widest = 0
         for _, line in ipairs(self.doc.lines) do
             widest = math.max(widest, font:get_width(line))
@@ -387,7 +388,8 @@ function DocView:draw()
     self:draw_background(style.background)
 
     local font = self:get_font()
-    font:set_tab_width(font:get_width(" ") * config.indent_size)
+    local _, indent_size = self.doc:get_indent_info()
+    font:set_tab_width(font:get_width(" ") * indent_size)
 
     local minline, maxline = self:get_visible_line_range()
     local lh = self:get_line_height()

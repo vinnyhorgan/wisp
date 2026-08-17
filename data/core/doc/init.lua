@@ -47,8 +47,25 @@ function Doc:reset()
     self.undo_stack = { idx = 1 }
     self.redo_stack = { idx = 1 }
     self.clean_change_id = 1
+    -- what this document is indented with, once something knows. nil
+    -- means nobody has looked, and the config's answer stands
+    self.indent_info = nil
     self.highlighter = Highlighter(self)
     self:reset_syntax()
+end
+
+-- indentation is a property of a file, not of an editor: two projects
+-- open side by side disagree, and so do a makefile and the lua next to
+-- it. `indent_info` is where a detector writes what it found, and every
+-- indent-aware site reads through here so the config is only ever the
+-- fallback. `confirmed` says the answer was measured rather than assumed
+function Doc:get_indent_info()
+    if not self.indent_info then
+        return config.tab_type, config.indent_size, false
+    end
+    return self.indent_info.type or config.tab_type,
+        self.indent_info.size or config.indent_size,
+        self.indent_info.confirmed
 end
 
 function Doc:reset_syntax()

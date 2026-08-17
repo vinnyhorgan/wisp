@@ -4101,3 +4101,91 @@ fn an_image_view_reloads_when_the_file_changes() {
         "the image view kept showing the picture that was there when it opened"
     );
 }
+
+/// indentation is a property of the file, not of the editor: one editor,
+/// one config, two documents, two answers. this is the affordance a
+/// detector writes into -- the user module here stands in for one
+#[test]
+fn indent_style_is_per_document() {
+    let _serial = serial();
+    let root = copy_data_root("indentroot");
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("indentproj");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("wide.txt"), "").unwrap();
+    std::fs::write(dir.join("hard.txt"), "").unwrap();
+    std::fs::write(dir.join("soft.txt"), "").unwrap();
+
+    std::fs::write(
+        root.join("data/user/init.lua"),
+        r#"
+local Doc = require("core.doc")
+local load = Doc.load
+function Doc:load(...)
+    load(self, ...)
+    if self.filename and self.filename:find("hard") then
+        self.indent_info = { type = "hard", size = 4, confirmed = true }
+    elseif self.filename and self.filename:find("wide") then
+        self.indent_info = { type = "soft", size = 4, confirmed = true }
+    end
+end
+"#,
+    )
+    .unwrap();
+
+    // all three open as tabs, in order, the last one active
+    let mut editor = Headless::boot_args(
+        &root.display().to_string(),
+        &[
+            &dir.display().to_string(),
+            &dir.join("wide.txt").display().to_string(),
+            &dir.join("hard.txt").display().to_string(),
+            &dir.join("soft.txt").display().to_string(),
+        ],
+        900,
+        600,
+        1.0,
+    );
+    editor.run_until_frames(1, 10_000);
+    assert_eq!(editor.window_title(), "soft.txt - wisp");
+
+    // the document nobody measured falls back to the config: two spaces
+    press(&editor, "tab");
+    editor.run_steps(200);
+    ctrl(&editor, "s");
+    editor.run_steps(200);
+    assert_eq!(
+        std::fs::read_to_string(dir.join("soft.txt")).unwrap(),
+        "  \n"
+    );
+
+    // and the one the detector spoke for gets a tab, in the same editor
+    ctrl_shift(&editor, "tab");
+    editor.run_steps(200);
+    assert_eq!(editor.window_title(), "hard.txt - wisp");
+    press(&editor, "tab");
+    editor.run_steps(200);
+    ctrl(&editor, "s");
+    editor.run_steps(200);
+    assert_eq!(
+        std::fs::read_to_string(dir.join("hard.txt")).unwrap(),
+        "\t\n"
+    );
+
+    // size is per-document too, and it is what backspace unindents by: a
+    // soft-4 document loses all four spaces, not the config's two
+    ctrl_shift(&editor, "tab");
+    editor.run_steps(200);
+    assert_eq!(editor.window_title(), "wide.txt - wisp");
+    press(&editor, "tab");
+    editor.run_steps(200);
+    press(&editor, "backspace");
+    editor.run_steps(200);
+    ctrl(&editor, "s");
+    editor.run_steps(200);
+    assert_eq!(
+        std::fs::read_to_string(dir.join("wide.txt")).unwrap(),
+        "\n",
+        "backspace unindented by the config's size instead of the document's"
+    );
+}

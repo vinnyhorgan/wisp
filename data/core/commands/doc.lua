@@ -1,7 +1,6 @@
 local core = require("core")
 local command = require("core.command")
 local common = require("core.common")
-local config = require("core.config")
 local translate = require("core.doc.translate")
 local DocView = require("core.docview")
 
@@ -14,10 +13,11 @@ local function doc()
 end
 
 local function get_indent_string()
-    if config.tab_type == "hard" then
+    local indent_type, indent_size = doc():get_indent_info()
+    if indent_type == "hard" then
         return "\t"
     end
-    return string.rep(" ", config.indent_size)
+    return string.rep(" ", indent_size)
 end
 
 local function insert_at_start_of_selected_lines(text, skip_empty)
@@ -110,8 +110,9 @@ local commands = {
         local line, col = doc():get_selection()
         if not doc():has_selection() then
             local text = doc():get_text(line, 1, line, col)
-            if #text >= config.indent_size and text:find("^ *$") then
-                doc():delete_to(0, -config.indent_size)
+            local _, indent_size = doc():get_indent_info()
+            if #text >= indent_size and text:find("^ *$") then
+                doc():delete_to(0, -indent_size)
                 return
             end
         end
