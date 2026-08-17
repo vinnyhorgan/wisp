@@ -213,8 +213,12 @@ fix is small and local:
 - **`data/core/commands/doc.lua`** -- `doc:rename` decided "same file" by
   comparing path strings, so on a case-insensitive filesystem renaming
   `Foo.txt` to `foo.txt` saved and then deleted the very same file. the
-  old path is now removed only when its stats differ from the file just
-  written; when in doubt nothing is deleted.
+  old path is now removed only when `system.absolute_path` resolves the
+  two names differently -- the filesystem's own answer to "same file".
+  the first attempt here compared stats instead and was wrong the other
+  way: mtimes are whole seconds and a clean doc's re-save is
+  byte-identical, so renaming inside one second read as "same file" and
+  left the old file on disk.
 - **`data/core/init.lua`**, **`data/core/config.lua`** -- the project scan
   had no bound, so opening the editor in a huge directory tree ate memory
   without limit (lite issues #185/#208; fix modeled on lite PR #218). the

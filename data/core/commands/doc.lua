@@ -345,15 +345,14 @@ local file_commands = {
             core.log('renamed "%s" to "%s"', old_filename, filename)
             -- on a case-insensitive filesystem a different string can
             -- still be the same file, and removing it would delete the
-            -- doc that was just saved; identical stats mean it is the
-            -- file just written, so when in doubt leave it alone
-            local old_info = system.get_file_info(old_filename)
-            local new_info = system.get_file_info(filename)
-            if
-                old_info
-                and new_info
-                and not (old_info.modified == new_info.modified and old_info.size == new_info.size)
-            then
+            -- doc that was just saved; absolute_path resolves both to
+            -- the name the filesystem really stores. stats cannot tell
+            -- them apart: mtimes are whole seconds and a clean doc's
+            -- re-save is byte-identical, so a rename in the same second
+            -- looked like the same file and left the old one behind
+            local old_path = system.absolute_path(old_filename)
+            local new_path = system.absolute_path(filename)
+            if old_path and new_path and old_path ~= new_path then
                 os.remove(old_filename)
             end
         end, common.path_suggest)

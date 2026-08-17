@@ -762,13 +762,21 @@ fn renaming_a_file_moves_it_on_disk() {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let old = dir.join("old.txt");
+    // line the write up with a fresh second so the rename's own save
+    // lands inside it too: both files then report the same whole-second
+    // mtime and, the doc being clean, the same size -- the collision the
+    // old stat-based same-file guard read as "same file", leaving the
+    // old file on disk
+    // (sleep a little past the boundary, not exactly onto it: waking a
+    // few microseconds early would put the two writes either side of it)
+    let subsec = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .subsec_nanos();
+    std::thread::sleep(std::time::Duration::from_nanos(u64::from(
+        1_050_000_000 - subsec,
+    )));
     std::fs::write(&old, "content\n").unwrap();
-    // age the old file's mtime so the same-file guard can tell the old
-    // file from the one the rename just wrote
-    let f = std::fs::OpenOptions::new().write(true).open(&old).unwrap();
-    f.set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(3600))
-        .unwrap();
-    drop(f);
 
     let mut editor = Headless::boot(&dir.display().to_string(), 900, 600, 1.0);
     editor.run_until_frames(1, 10_000);
