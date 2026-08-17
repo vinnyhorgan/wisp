@@ -154,12 +154,12 @@ its own core, so the work is adopting their shape, not inventing one.
 `font:set_size` (kills runtime zoom's font-cache monkey-patch) landed at
 the freeze. per-doc indent info (kills detectindent's global config swap,
 which is wrong the moment two files with different indentation are open)
-is the lua-side affordance the pass wants next: lite-xl's
-`Doc:get_indent_info()`, falling back to the global config for a doc that
-has none, is the shape to copy.
+landed the same way, ahead of its consumer and in lite-xl's exact shape,
+so detectindent adapts instead of being rewritten.
 
 the wave, roughly easiest-first: ~~runtime zoom~~ (done, DEVIATIONS
-§15), ~~imageview~~ (done, §20), per-doc indent info, detectindent,
+§15), ~~imageview~~ (done, §20), ~~per-doc indent info~~ (done, §21),
+detectindent,
 auto-close brackets + bracketmatch, indent guides, selection highlight,
 more languages, treeview file ops, project-wide replace, session restore
 + project memory (treeview width, last query), word wrap (lite #26),
