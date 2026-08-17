@@ -55,6 +55,12 @@ function keymap.get_binding(cmd)
     return keymap.reverse_map[cmd]
 end
 
+-- a mode name, or nil for the plain keymap everyone starts with. while
+-- one is set, a stroke is looked for under `"<mode>:<stroke>"` first and
+-- falls back to the unprefixed binding, so a mode overrides the letters
+-- it cares about and inherits ctrl+s, ctrl+f and the rest untouched
+keymap.mode = nil
+
 function keymap.on_key_pressed(k)
     local mk = modkey_map[k]
     if mk then
@@ -65,7 +71,8 @@ function keymap.on_key_pressed(k)
         end
     else
         local stroke = key_to_stroke(k)
-        local commands = keymap.map[stroke]
+        local commands = keymap.mode and keymap.map[keymap.mode .. ":" .. stroke]
+            or keymap.map[stroke]
         if commands then
             for _, cmd in ipairs(commands) do
                 local performed = command.perform(cmd)

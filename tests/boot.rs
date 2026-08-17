@@ -2766,3 +2766,71 @@ fn a_path_in_a_directory_that_does_not_exist_is_refused() {
         "the missing directory was created"
     );
 }
+
+/// helix mode, chapter 1 of `hx --tutor`: hjkl moves a block cursor, i
+/// enters insert mode where letters reach the document again, escape
+/// leaves it, and d deletes the selection under the block
+#[test]
+fn helix_mode_moves_a_block_cursor_and_edits_modally() {
+    let _serial = serial();
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("helix");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("hx.txt");
+    std::fs::write(&file, "abcdef\nghijkl\n").unwrap();
+
+    let mut editor = Headless::boot_args(
+        env!("CARGO_MANIFEST_DIR"),
+        &[&dir.display().to_string(), &file.display().to_string()],
+        900,
+        600,
+        1.0,
+    );
+    editor.run_until_frames(1, 10_000);
+    palette(&mut editor, "helix: toggle");
+    editor.run_steps(100);
+
+    // normal mode swallows typed letters: they are commands now
+    editor.push_event(Event::TextInput("zzz".into()));
+    editor.run_steps(50);
+    assert_eq!(
+        editor.window_title(),
+        "hx.txt - wisp",
+        "typing in normal mode reached the document"
+    );
+
+    // l l moves the block right twice, then i opens insert mode there
+    press(&editor, "l");
+    press(&editor, "l");
+    editor.run_steps(50);
+    press(&editor, "i");
+    editor.run_steps(50);
+    editor.push_event(Event::TextInput("XY".into()));
+    editor.run_steps(50);
+    press(&editor, "escape");
+    editor.run_steps(50);
+    ctrl(&editor, "s");
+    editor.run_steps(200);
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap(),
+        "abXYcdef\nghijkl\n",
+        "insert did not land at the block"
+    );
+
+    // back in normal mode, d deletes the character under the block
+    press(&editor, "d");
+    editor.run_steps(50);
+    ctrl(&editor, "s");
+    editor.run_steps(200);
+    let after = std::fs::read_to_string(&file).unwrap();
+    assert_eq!(
+        after.lines().count(),
+        2,
+        "d changed the line count: {after:?}"
+    );
+    assert_eq!(
+        after.lines().next().unwrap().len(),
+        7,
+        "d deleted the wrong amount"
+    );
+}

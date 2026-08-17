@@ -611,6 +611,47 @@ stopped at: left in place, the editor would have opened a document called
 there is a man page now, `wisp.1`, covering the arguments, the xdg
 directories from §17, `WISP_SCALE`, the signals and the exit statuses.
 
+## 19. keymap modes, and helix mode
+
+**files:** `data/core/keymap.lua`, `data/plugins/helix/`
+
+lite's keymap is a flat map from stroke to commands, which is all a
+non-modal editor needs. `keymap.mode` adds one level: while a mode name
+is set, a stroke is looked for under `"<mode>:<stroke>"` first and falls
+back to the unprefixed binding. a mode therefore overrides only the keys
+it cares about and inherits `ctrl+s`, `ctrl+f` and everything else
+untouched. unset -- which is how the editor starts -- the lookup is
+exactly lite's.
+
+`data/plugins/helix/` is the first consumer: selection-first modal
+editing in helix's lineage, built to what `hx --tutor` teaches. it is
+**opt in** (`config.helix_mode = true` in the user module, or the
+`helix: toggle` command) -- one theme and one font are decisions that
+can be made for someone, but whether an editor is modal is not.
+
+the model fits lite better than it has any right to. lite's selection is
+already an anchor and a head (`selection.b` and `selection.a`), which is
+exactly helix's; a helix cursor is a selection one character wide, and
+the block you see *is* that selection. so the plugin keeps one
+invariant -- outside insert mode a selection is never empty -- and gets
+motions, selections and the block cursor from machinery lite already had.
+two details follow from it:
+
+- **the block sits on a character, the head sits between two.** a
+  forward selection draws its block on the character *behind* the head,
+  a backward one on the character *at* it. every motion is fed the block
+  position, never the exclusive head, because that is what the person
+  typing is pointing at.
+- **the block is drawn after the line and the character redrawn over
+  it** in the background colour -- inverse video, and it covers lite's
+  thin caret without having to suppress it.
+
+typed text reaches the document only in insert mode; in normal and
+select mode the letters are commands, so `DocView:on_text_input`
+swallows them. the command prompt is a `DocView` subclass and is
+deliberately excluded from all of this: a modal layer over a one-line
+prompt helps nobody.
+
 ## kept on purpose
 
 lite behaviors evaluated deliberately and kept, recorded so they are
