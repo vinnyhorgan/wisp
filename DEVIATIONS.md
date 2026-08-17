@@ -99,7 +99,11 @@ can be grabbed again.
 lite's base view reports an infinite scrollable size, so the treeview
 scrolled past its last item into the void forever. wisp's treeview reports
 the real height of its visible items, so scrolling stops at the bottom
-like every other editor.
+like every other editor. counting those items means walking the project
+(up to `config.max_project_files` entries), and the clamp asks on every
+update while the scrollbar asks on every draw and every mouse move, so
+the count is cached and dropped when the project or a folder changes --
+the same shape as the docview's widest-line cache.
 
 ## 7. binary files are refused
 

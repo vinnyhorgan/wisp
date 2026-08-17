@@ -60,13 +60,20 @@ end
 
 -- the view base class reports math.huge (it cannot know its content),
 -- which let the treeview scroll into the void forever; report the real
--- height of the visible items so scrolling clamps to them
+-- height of the visible items so scrolling clamps to them. the clamp
+-- asks on every update and the scrollbar on every draw and every mouse
+-- move, so the walk -- up to config.max_project_files entries -- is
+-- counted once and kept until the project or a folder changes
 function TreeView:get_scrollable_size()
-    local count = 0
-    for _ in self:each_item() do
-        count = count + 1
+    self:check_cache()
+    if not self.item_count then
+        local count = 0
+        for _ in self:each_item() do
+            count = count + 1
+        end
+        self.item_count = count
     end
-    return style.padding.y * 2 + count * self:get_item_height()
+    return style.padding.y * 2 + self.item_count * self:get_item_height()
 end
 
 -- long filenames pan sideways like any other view (the clamp lives in
@@ -90,6 +97,7 @@ function TreeView:check_cache()
             v.skip = nil
         end
         self.last_project_files = core.project_files
+        self.item_count = nil
     end
 end
 
@@ -163,6 +171,7 @@ function TreeView:on_mouse_pressed(button, x, y, clicks)
         return
     elseif self.hovered_item.type == "dir" then
         self.hovered_item.expanded = not self.hovered_item.expanded
+        self.item_count = nil
     else
         core.try(function()
             core.root_view:open_doc(core.open_doc(self.hovered_item.filename))
