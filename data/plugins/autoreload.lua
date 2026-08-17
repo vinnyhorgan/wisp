@@ -5,8 +5,12 @@ local Doc = require("core.doc")
 local times = setmetatable({}, { __mode = "k" })
 
 local function update_time(doc)
+    -- a doc opened on a path that does not exist yet has no mtime to
+    -- remember. nil is the honest answer and the useful one: it differs
+    -- from every real mtime, so the moment the file appears the loop
+    -- below picks it up
     local info = system.get_file_info(doc.filename)
-    times[doc] = info.modified
+    times[doc] = info and info.modified
 end
 
 local function reload_doc(doc)

@@ -148,7 +148,10 @@ ideas agreed in spirit, not yet scheduled or designed:
   user expects and wisp did not do: the window names itself (wayland
   app id, x11 WM_CLASS), sigterm/sigint/sighup are caught and rescue
   unsaved work instead of killing the process where it stands,
-  `--help`/`--version` answer on stdout, and the xdg split is real
+  `--help`/`--version` answer on stdout, an unrecognized option is
+  refused with exit 2, a path that does not exist opens as a file
+  waiting to be written (lite #56, DEVIATIONS §18), there is a man
+  page, and the xdg split is real
   (DEVIATIONS §17) -- config and user plugins in
   `$XDG_CONFIG_HOME/wisp`, the unpacked editor in
   `$XDG_DATA_HOME/wisp`, `error.txt` and the temp files in
@@ -174,8 +177,7 @@ ideas agreed in spirit, not yet scheduled or designed:
 
 ## ideas queue
 
-filename-weighted fuzzy open (lite #151) - open nonexistent cli paths
-as unsaved docs (lite #56) - `command.add` replaces instead of
+filename-weighted fuzzy open (lite #151) - `command.add` replaces instead of
 asserting (plugin reload) - project-search prompt prefilled with the
 selection (doc find already does it) - per-syntax symbol pattern
 (fixes css autocomplete, lite #149) - long-line hang test before

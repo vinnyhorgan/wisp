@@ -131,7 +131,10 @@ impl Headless {
         Self::boot_args(exedir, &[project_dir], width, height, scale)
     }
 
-    fn boot_args(exedir: &str, args: &[&str], width: i32, height: i32, scale: f64) -> Headless {
+    /// boot with an arbitrary command line, as the editor would see it
+    /// after `parse_args`: the way to test how a path on the command line
+    /// is treated, including one that does not exist yet
+    pub fn boot_args(exedir: &str, args: &[&str], width: i32, height: i32, scale: f64) -> Headless {
         let exedir = exedir.to_owned();
         let engine = Engine::shared(Box::new(HeadlessPlatform::new(width, height)));
         let mut args: Vec<std::ffi::OsString> = args.iter().map(|a| a.into()).collect();

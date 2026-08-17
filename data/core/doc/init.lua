@@ -61,7 +61,18 @@ function Doc:reset_syntax()
 end
 
 function Doc:load(filename)
-    local fp = assert(io.open(filename, "rb"))
+    local fp, err = io.open(filename, "rb")
+    -- a path that does not exist is a file waiting to be written, not an
+    -- error: the buffer opens empty and the first save creates it. every
+    -- other failure (unreadable, a directory, a dead symlink target) is
+    -- still fatal, so the existence check decides which one this is
+    if not fp then
+        assert(not system.get_file_info(filename), err)
+        self:reset()
+        self.filename = filename
+        self:reset_syntax()
+        return
+    end
     -- a null byte near the start means binary, not text: refuse instead
     -- of loading garbage into a docview
     local chunk = fp:read(4096)

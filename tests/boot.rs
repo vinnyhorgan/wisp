@@ -2670,3 +2670,99 @@ command.add(nil, {{ ["trim-whitespace:trim-trailing-whitespace"] = function() en
         "the bundled plugin loaded too and the command collided"
     );
 }
+
+/// `wisp newfile.txt` used to be silently dropped: the argument was
+/// neither an existing file nor an existing directory, so the loop in
+/// core.init ignored it and you got the project with no buffer at all
+#[test]
+fn a_path_that_does_not_exist_opens_as_a_file_waiting_to_be_written() {
+    let _serial = serial();
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("newfile");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("new.txt");
+
+    let mut editor = Headless::boot_args(
+        env!("CARGO_MANIFEST_DIR"),
+        &[&dir.display().to_string(), &file.display().to_string()],
+        900,
+        600,
+        1.0,
+    );
+    editor.run_until_frames(1, 10_000);
+
+    // the buffer is there under the name asked for, and it is not dirty:
+    // an empty file you have not typed in yet is nothing to be prompted
+    // about on quit
+    assert_eq!(editor.window_title(), "new.txt - wisp");
+    assert!(
+        !file.exists(),
+        "the file was created before anything was saved"
+    );
+
+    // and the first save brings it into being
+    editor.push_event(Event::TextInput("written".into()));
+    editor.run_steps(100);
+    ctrl(&editor, "s");
+    editor.run_steps(200);
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "written\n");
+    assert_eq!(editor.window_title(), "new.txt - wisp");
+}
+
+/// core.open_doc keys its cache on the canonical path, which does not
+/// exist for a file that does not exist: every such doc answered nil,
+/// and nil == nil made the second new file reuse the first one's doc
+#[test]
+fn two_files_that_do_not_exist_yet_are_two_separate_docs() {
+    let _serial = serial();
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("twonew");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let mut editor = Headless::boot_args(
+        env!("CARGO_MANIFEST_DIR"),
+        &[
+            &dir.display().to_string(),
+            &dir.join("a.txt").display().to_string(),
+            &dir.join("b.txt").display().to_string(),
+        ],
+        900,
+        600,
+        1.0,
+    );
+    editor.run_until_frames(1, 10_000);
+
+    // the last one opened is the one in front. sharing a doc would show
+    // a.txt here, in a view that claims to be b.txt's
+    assert_eq!(editor.window_title(), "b.txt - wisp");
+}
+
+/// a buffer nothing could ever save is worse than a refusal, so a path
+/// whose directory is missing is reported instead of opened
+#[test]
+fn a_path_in_a_directory_that_does_not_exist_is_refused() {
+    let _serial = serial();
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("nodir");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let mut editor = Headless::boot_args(
+        env!("CARGO_MANIFEST_DIR"),
+        &[
+            &dir.display().to_string(),
+            &dir.join("nope").join("x.txt").display().to_string(),
+        ],
+        900,
+        600,
+        1.0,
+    );
+    editor.run_until_frames(1, 10_000);
+
+    // no doc opened, and the log is up front carrying the reason -- the
+    // success case for this same argument shows "x.txt - wisp"
+    assert_eq!(editor.window_title(), "log - wisp");
+    assert!(
+        !dir.join("nope").exists(),
+        "the missing directory was created"
+    );
+}

@@ -1,0 +1,93 @@
+.TH WISP 1 "2026-08-17" "wisp 0.1.0" "User Commands"
+.SH NAME
+wisp \- a lightweight text editor written in rust and lua
+.SH SYNOPSIS
+.B wisp
+.RI [ file " | " directory " ...]"
+.SH DESCRIPTION
+.B wisp
+is a pure\-rust rewrite of rxi's lite: a small, fast editor whose entire
+interface \(em views, syntax, commands, plugins \(em is lua, editable
+while the editor runs.
+.PP
+Each
+.I directory
+argument becomes the project the editor opens; the last one wins. Each
+.I file
+argument is opened in a view. A path that does not exist yet is opened
+as an empty buffer, and the first save creates it; if the directory that
+would hold it is missing, the path is reported in the log instead.
+.PP
+With no arguments wisp opens the directory it was launched from.
+.SH OPTIONS
+.TP
+.BR \-h ", " \-\-help
+Print a usage summary on standard output and exit.
+.TP
+.BR \-v ", " \-\-version
+Print the version on standard output and exit.
+.TP
+.B \-\-
+Treat every remaining argument as a path, even one beginning with a dash.
+.PP
+An unrecognized option is reported on standard error and wisp exits with
+status 2.
+.SH FILES
+.TP
+.I $XDG_CONFIG_HOME/wisp/init.lua
+The user module, run after the plugins load. Created on first start.
+.TP
+.I $XDG_CONFIG_HOME/wisp/plugins/
+User plugins. Searched before the bundled ones, so a file here of the
+same name replaces the shipped plugin.
+.TP
+.I $XDG_DATA_HOME/wisp/
+The unpacked editor. Rewritten whenever the version changes; nothing of
+the user's is kept here.
+.TP
+.I $XDG_STATE_HOME/wisp/
+What the editor writes for itself:
+.IR error.txt ,
+and temporary files, which are swept at start.
+.TP
+.I .wisp_project.lua
+Read from the project directory if present. Never written.
+.PP
+The directories default to
+.IR ~/.config ,
+.I ~/.local/share
+and
+.I ~/.local/state
+as usual. A relative value is invalid per the base directory
+specification and is ignored.
+.SH ENVIRONMENT
+.TP
+.B WISP_SCALE
+Overrides the display scale wisp would otherwise detect \(em what 100%
+means. Runtime zoom
+.RB ( ctrl +
+.BR = ", " ctrl + \- ", " ctrl + 0 )
+is relative to it.
+.TP
+.B SHELL
+The shell the built\-in terminal runs.
+.SH SIGNALS
+.TP
+.BR SIGTERM ", " SIGINT ", " SIGHUP
+Shut down cleanly. Any unsaved document is written beside its original
+with a
+.B ~
+suffix before the editor exits.
+.SH EXIT STATUS
+.TP
+.B 0
+Normal exit.
+.TP
+.B 2
+An unrecognized command line option.
+.SH SEE ALSO
+The full documentation lives with the source, notably
+.I DEVIATIONS.md
+\(em every deliberate difference from lite's lua layer.
+.SH AUTHORS
+wisp is written by dvh, after rxi's lite.

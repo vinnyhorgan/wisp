@@ -238,6 +238,9 @@ struct App {
     /// and the editor's own, kept out of the unpacked tree
     userdir: String,
     statedir: String,
+    /// argv as the editor should see it: the `--` terminator removed, so
+    /// the lua layer never mistakes it for a path to create
+    args: Vec<std::ffi::OsString>,
     start: Instant,
     lua: Option<(mlua::Lua, mlua::Thread)>,
     parked: Parked,
@@ -329,7 +332,6 @@ impl ApplicationHandler for App {
             p.surface = Some(surface);
         });
 
-        let args: Vec<std::ffi::OsString> = std::env::args_os().collect();
         let exefile = std::env::current_exe()
             .map(|p| p.display().to_string())
             .unwrap_or_else(|_| format!("{}/wisp", self.exedir));
@@ -339,7 +341,7 @@ impl ApplicationHandler for App {
             &self.userdir,
             &self.statedir,
             &exefile,
-            &args,
+            &self.args,
             scale,
             false,
         )
@@ -585,6 +587,40 @@ usage: wisp [file or directory ...]
 with no arguments wisp opens the directory it was launched from.
 ";
 
+/// the whole command line contract, kept pure so it can be tested. `Ok`
+/// is the argv the editor should see, with the `--` terminator removed
+/// so the lua layer never mistakes it for a path to create; `Err` is the
+/// text to print and the status to exit with -- zero for a question that
+/// was answered, and stdout, two for a line the user got wrong.
+///
+/// asked what it is, a program answers and exits. opening a window
+/// instead is the thing every linux user complains about
+fn parse_args(mut args: Vec<std::ffi::OsString>) -> Result<Vec<std::ffi::OsString>, (String, i32)> {
+    let mut i = 1;
+    while i < args.len() {
+        // a non-utf8 argument cannot be any of these, and falls through
+        // to the editor as the path it is
+        match args[i].to_str() {
+            // everything after is a path, however it is spelled
+            Some("--") => {
+                args.remove(i);
+                break;
+            }
+            Some("-h" | "--help") => return Err((USAGE.to_owned(), 0)),
+            Some("-v" | "--version") => {
+                return Err((format!("wisp {}\n", env!("CARGO_PKG_VERSION")), 0));
+            }
+            // an unknown flag is a typo, not a filename. opening a window
+            // and silently editing nothing is the worst of both answers
+            Some(flag) if flag.starts_with('-') && flag.len() > 1 => {
+                return Err((format!("wisp: unrecognized option '{flag}'\n{USAGE}"), 2));
+            }
+            _ => i += 1,
+        }
+    }
+    Ok(args)
+}
+
 /// sigterm (a logout, `kill`, a service manager), sigint (ctrl+c in the
 /// terminal that launched us) and sighup (that terminal going away) all
 /// mean the same thing: shut down now. unhandled, they kill the process
@@ -611,14 +647,14 @@ fn catch_terminating_signals() -> Arc<std::sync::atomic::AtomicBool> {
 pub fn run() {
     // asked what it is, a program answers on stdout and exits. opening a
     // window instead is the thing every linux user complains about
-    for arg in std::env::args().skip(1) {
-        match arg.as_str() {
-            "--" => break,
-            "-h" | "--help" => return print!("{USAGE}"),
-            "-v" | "--version" => return println!("wisp {}", env!("CARGO_PKG_VERSION")),
-            _ => {}
+    let args = match parse_args(std::env::args_os().collect()) {
+        Ok(args) => args,
+        Err((text, 0)) => return print!("{text}"),
+        Err((text, code)) => {
+            eprint!("{text}");
+            std::process::exit(code);
         }
-    }
+    };
     let terminated = catch_terminating_signals();
 
     let event_loop = EventLoop::new().expect("failed to create event loop");
@@ -631,6 +667,7 @@ pub fn run() {
         exedir,
         userdir,
         statedir,
+        args,
         start,
         lua: None,
         parked: Parked::Start,
@@ -644,7 +681,65 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{ClickCounter, catch_terminating_signals, clamp_deadline};
+    use super::{ClickCounter, catch_terminating_signals, clamp_deadline, parse_args};
+
+    fn parse(args: &[&str]) -> Result<Vec<String>, (String, i32)> {
+        let argv = std::iter::once("wisp")
+            .chain(args.iter().copied())
+            .map(Into::into)
+            .collect();
+        parse_args(argv).map(|args| {
+            args.iter()
+                .map(|a| a.to_string_lossy().into_owned())
+                .collect()
+        })
+    }
+
+    #[test]
+    fn paths_pass_through_untouched() {
+        assert_eq!(parse(&["a.txt", "src"]).unwrap(), ["wisp", "a.txt", "src"]);
+    }
+
+    #[test]
+    fn asking_what_it_is_answers_on_stdout_and_exits_zero() {
+        let (help, code) = parse(&["--help"]).unwrap_err();
+        assert_eq!(code, 0);
+        assert!(help.starts_with("usage: wisp"), "{help}");
+        assert_eq!(parse(&["-h"]).unwrap_err(), (help, 0));
+
+        let (version, code) = parse(&["-v"]).unwrap_err();
+        assert_eq!(code, 0);
+        assert_eq!(version, format!("wisp {}\n", env!("CARGO_PKG_VERSION")));
+        assert_eq!(parse(&["--version"]).unwrap_err(), (version, 0));
+    }
+
+    /// silently opening the editor on an unrecognized flag -- what wisp
+    /// used to do -- looks like the flag worked
+    #[test]
+    fn an_unrecognized_option_is_refused_with_the_usual_status() {
+        let (msg, code) = parse(&["--bogus", "a.txt"]).unwrap_err();
+        assert_eq!(code, 2);
+        assert!(
+            msg.starts_with("wisp: unrecognized option '--bogus'\n"),
+            "{msg}"
+        );
+        assert_eq!(parse(&["-x"]).unwrap_err().1, 2);
+    }
+
+    /// the terminator has to be dropped, not just stopped at: the editor
+    /// would otherwise open a document called `--`
+    #[test]
+    fn a_terminator_hides_the_flags_after_it_and_leaves_no_trace() {
+        assert_eq!(parse(&["--", "--bogus"]).unwrap(), ["wisp", "--bogus"]);
+        assert_eq!(parse(&["-h", "--", "-v"]).unwrap_err().1, 0);
+    }
+
+    /// a lone dash is a filename here, not a flag: nothing in wisp reads
+    /// a document from stdin
+    #[test]
+    fn a_lone_dash_is_a_path() {
+        assert_eq!(parse(&["-"]).unwrap(), ["wisp", "-"]);
+    }
 
     /// the handler is installed for the whole process, which only makes
     /// sigterm non-fatal here; raising it delivers to this thread

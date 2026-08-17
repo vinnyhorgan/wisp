@@ -117,6 +117,28 @@ local function project_scan_thread()
     end
 end
 
+-- `system.absolute_path` canonicalizes, so it has no answer for a path
+-- that does not exist yet. the directory holding it does exist, though,
+-- and resolving that is what pins the name down before a chdir moves it.
+-- nil means even the directory is missing, which is not a file anyone
+-- could save
+local function absolute_new_path(path)
+    local dir, name = path:match("^(.*)" .. PATHSEP .. "(.*)$")
+    if not dir then
+        dir, name = ".", path
+    elseif dir == "" then
+        dir = PATHSEP
+    end
+    if name == "" then
+        return nil
+    end
+    local abs = system.absolute_path(dir)
+    if not abs then
+        return nil
+    end
+    return abs == PATHSEP and abs .. name or abs .. PATHSEP .. name
+end
+
 function core.init()
     command = require("core.command")
     keymap = require("core.keymap")
@@ -128,13 +150,20 @@ function core.init()
     -- launched bare, the project is the directory we were launched from
     -- (lite fell back to EXEDIR, opening its own installation, lite #153)
     local project_dir = system.absolute_path(".")
-    local files = {}
+    local files, missing = {}, {}
     for i = 2, #ARGS do
         local info = system.get_file_info(ARGS[i]) or {}
         if info.type == "file" then
             table.insert(files, system.absolute_path(ARGS[i]))
         elseif info.type == "dir" then
             project_dir = ARGS[i]
+        else
+            -- a path that does not exist yet is a file to create, the way
+            -- every unix editor treats it. it has to be resolved here,
+            -- against the directory we were launched from, because the
+            -- chdir below is about to move what a relative name means
+            local abs = absolute_new_path(ARGS[i])
+            table.insert(abs and files or missing, abs or ARGS[i])
         end
     end
 
@@ -170,7 +199,10 @@ function core.init()
     local got_user_error = not core.try(core.load_user_module)
     local got_project_error = not core.load_project_module()
 
-    local got_file_error = false
+    local got_file_error = #missing > 0
+    for _, path in ipairs(missing) do
+        core.error("cannot open %q: no such directory", path)
+    end
     for _, filename in ipairs(files) do
         -- an unopenable file (binary, unreadable, ...) must not take the
         -- whole editor down with it
@@ -355,10 +387,14 @@ end
 
 function core.open_doc(filename)
     if filename then
-        -- try to find existing doc for filename
-        local abs_filename = system.absolute_path(filename)
+        -- try to find existing doc for filename. a file that does not
+        -- exist yet has no canonical path, so it falls back to the name
+        -- as given: without that, absolute_path answers nil for every
+        -- such doc and any two of them would collide on nil == nil
+        local abs_filename = system.absolute_path(filename) or filename
         for _, doc in ipairs(core.docs) do
-            if doc.filename and abs_filename == system.absolute_path(doc.filename) then
+            local open = doc.filename and (system.absolute_path(doc.filename) or doc.filename)
+            if open == abs_filename then
                 return doc
             end
         end

@@ -566,6 +566,51 @@ the details that matter:
   dot matched any character, so a plugin named `stylua.lua` would have
   loaded as `sty`.
 
+## 18. a path that does not exist yet is a file to create
+
+**files:** `data/core/init.lua`, `data/core/doc/init.lua`,
+`data/plugins/autoreload.lua` (and `src/desktop.rs` for the flags)
+
+`wisp newfile.txt` used to do nothing at all. lite's argument loop keeps
+an argument only when `get_file_info` says it is an existing file or an
+existing directory (lite #56); anything else was dropped without a word,
+and you got the project with no buffer in it. every unix editor gives you
+an empty buffer at that path and creates the file on the first save, so
+wisp does too.
+
+- `Doc:load` treats a path that does not exist as a new file rather than
+  an error. every *other* failure -- unreadable, a directory, a dead
+  symlink -- is still fatal, and the existence check is what tells them
+  apart, so a permissions problem still says so instead of quietly
+  handing back an empty buffer.
+- the name is resolved against the directory the editor was launched
+  from, before `system.chdir` moves what a relative path means.
+  `absolute_path` canonicalizes, so it has no answer for a file that is
+  not there; the directory holding it does exist, and resolving that is
+  what pins the name down.
+- if even that directory is missing, the path is refused with a message
+  and the log opens. a buffer nothing could ever save is worse than a
+  refusal.
+- `core.open_doc` keys its doc cache on the canonical path, which is
+  `nil` for a file that does not exist -- so any two such docs compared
+  equal as `nil == nil` and the second one silently reused the first
+  one's doc. it now falls back to the name as given.
+- autoreload's `update_time` indexed the stat result unconditionally. a
+  doc with no file on disk has no mtime; `nil` is both the honest answer
+  and the useful one, since it differs from every real mtime and so the
+  moment the file appears the reload loop picks it up.
+
+the command line got the other half of the same manners. an unrecognized
+option used to be ignored -- `wisp --bogus` opened the editor and exited
+0, which looks exactly like the flag working. it is now a line on stderr
+and exit 2, and the parsing lives in a pure `parse_args` so the whole
+contract is unit-tested. `--` is removed once consumed rather than merely
+stopped at: left in place, the editor would have opened a document called
+`--`.
+
+there is a man page now, `wisp.1`, covering the arguments, the xdg
+directories from §17, `WISP_SCALE`, the signals and the exit statuses.
+
 ## kept on purpose
 
 lite behaviors evaluated deliberately and kept, recorded so they are
