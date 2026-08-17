@@ -372,7 +372,7 @@ function core.on_event(type, ...)
             -- locks its whole gesture to the axis it starts on; a
             -- phaseless (wheel) event stands alone and its bigger axis
             -- wins
-            local axis = wheel_axis or (math.abs(y) >= math.abs(x or 0) and "y" or "x")
+            local axis = (phase and wheel_axis) or (math.abs(y) >= math.abs(x or 0) and "y" or "x")
             if phase then
                 wheel_axis = axis
             end

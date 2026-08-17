@@ -39,11 +39,13 @@ function common.color(str)
         b = tonumber(b, 16)
         a = 1
     elseif str:match("rgba?%s*%([%d%s%.,]+%)") then
+        -- gmatch yields strings; every other branch here returns
+        -- numbers, and style colors get arithmetic done to them
         local f = str:gmatch("[%d.]+")
-        r = (f() or 0)
-        g = (f() or 0)
-        b = (f() or 0)
-        a = f() or 1
+        r = tonumber(f()) or 0
+        g = tonumber(f()) or 0
+        b = tonumber(f()) or 0
+        a = tonumber(f()) or 1
     else
         error(string.format("bad color string '%s'", str))
     end
@@ -87,7 +89,7 @@ end
 
 function common.path_suggest(text)
     text = common.home_expand(text)
-    local path, name = text:match("^(.-)([^/\\]*)$")
+    local path = text:match("^(.-)[^/\\]*$")
     local files = system.list_dir(path == "" and "." or path) or {}
     local res = {}
     for _, name in ipairs(files) do

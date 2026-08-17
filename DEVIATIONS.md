@@ -147,7 +147,10 @@ diagonal input follows one axis: trackpad glides drift on both axes at
 once, and letting both through feels like panning a map instead of
 scrolling text. a trackpad gesture (the core forwards winit's touch
 phases) is railed to the axis it starts on until the fingers lift; a
-discrete wheel event stands alone and its bigger axis wins. the
+discrete wheel event stands alone and its bigger axis wins -- literally
+alone: it ignores any rail still latched, since the "ended" phase that
+would have cleared one is not guaranteed to arrive (focus can be lost
+mid-gesture). the
 docview's scrollable width leaves the same three-space margin as the
 caret band, so the wheel reaches exactly as far as caret-follow ever
 scrolls, and no further.
@@ -285,6 +288,16 @@ fix is small and local:
   save as, rename, path suggestions) use it, like every shell would.
 - **`data/plugins/language_c.lua`** -- `const` was defined twice in the
   symbol table (lite PR #224); one removed, no behavior change.
+- **`data/core/common.lua`** -- `common.color`'s `rgba()` branch handed
+  back gmatch's strings instead of numbers, which worked only because
+  every consumer coerced them. lite's own themes never took that branch;
+  wisp's `style.selection` does, so it returns numbers like the other
+  branches. `path_suggest` also drops a dead capture that the 5.5 loop
+  rename had quietly started shadowing.
+- **`data/plugins/autoreload.lua`** -- the file can vanish between the
+  stat and the open (a checkout, a build): the unchecked `io.open`
+  raised inside the reload thread, which killed the thread and with it
+  every later reload in the session.
 - **`data/core/init.lua`** -- a modifier held while focus left the
   window stayed latched forever: wayland delivers no key releases on
   focus loss (x11 synthesizes them), so alt+tab with alt down turned

@@ -1771,6 +1771,37 @@ fn a_trackpad_gesture_stays_railed_to_its_first_axis() {
 }
 
 #[test]
+fn a_discrete_wheel_ignores_a_stale_trackpad_rail() {
+    let _serial = serial();
+    let mut editor = boot();
+    editor.set_focus(false);
+
+    // a doc tall enough to scroll vertically
+    ctrl(&editor, "n");
+    editor.run_steps(50);
+    editor.push_event(Event::TextInput("line\n".repeat(100)));
+    editor.run_steps(500);
+    editor.push_event(Event::MouseMoved(450, 300, 0, 0));
+    editor.run_steps(50);
+
+    // a sideways gesture rails the axis, then the fingers lift without
+    // an "ended" phase ever arriving (focus lost mid-gesture, a
+    // compositor that drops it). the rail must not outlive the gesture:
+    // a phaseless wheel stands alone, which is what §8 promises
+    editor.push_event(Event::MouseWheel(-3.0, 0.0, Some("moved")));
+    editor.run_steps(200);
+    let (before, _, _) = editor.last_frame();
+
+    editor.push_event(Event::MouseWheel(0.0, -3.0, None));
+    editor.run_steps(500);
+    assert_ne!(
+        before,
+        editor.last_frame().0,
+        "a latched trackpad rail swallowed a discrete wheel"
+    );
+}
+
+#[test]
 fn lua_spawns_a_subprocess_and_round_trips_data() {
     let _serial = serial();
     // the whole system.spawn surface, driven from a user-module command:

@@ -19,7 +19,7 @@ function ResultsView:get_name()
 end
 
 local function find_all_matches_in_file(t, filename, fn)
-    local fp = io.open(filename)
+    local fp = io.open(filename, "rb")
     if not fp then
         return t
     end

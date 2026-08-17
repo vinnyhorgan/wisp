@@ -10,7 +10,13 @@ local function update_time(doc)
 end
 
 local function reload_doc(doc)
+    -- the file can vanish between the stat and the open (a checkout, a
+    -- build): raising here would kill the thread and with it every
+    -- later reload
     local fp = io.open(doc.filename, "rb")
+    if not fp then
+        return
+    end
     local text = fp:read("*a")
     fp:close()
 
