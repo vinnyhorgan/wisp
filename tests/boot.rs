@@ -3496,3 +3496,82 @@ fn helix_wires_the_hosts_edits_onto_its_own_keys() {
         "% did not select the whole document"
     );
 }
+
+/// helix mode, chapter 9 of the tutor: `*` puts the selection in the
+/// search register, `n` walks the matches and wraps at the end, and the
+/// jumplist remembers where you were before a jump
+#[test]
+fn helix_searches_from_the_selection_and_walks_the_jumplist() {
+    let _serial = serial();
+    let (mut editor, file) = helix_editor("helixsearch", "s.txt", "alpha\nbeta\nalpha\ngamma\n");
+    let save = |editor: &mut Headless| {
+        ctrl(editor, "s");
+        editor.run_steps(200);
+        std::fs::read_to_string(&file).unwrap()
+    };
+
+    // miw takes the word, * makes it the search, n finds the next one
+    press(&editor, "m");
+    typed(&editor, "i");
+    typed(&editor, "w");
+    shift(&editor, "8");
+    press(&editor, "n");
+    press(&editor, "d");
+    editor.run_steps(50);
+    assert_eq!(
+        save(&mut editor),
+        "alpha\nbeta\n\ngamma\n",
+        "* then n did not find the second alpha"
+    );
+
+    // and n wraps round the end of the document back to the first
+    press(&editor, "n");
+    press(&editor, "d");
+    editor.run_steps(50);
+    assert_eq!(
+        save(&mut editor),
+        "\nbeta\n\ngamma\n",
+        "n did not wrap back to the first match"
+    );
+
+    // ctrl+shift+s parks this spot, 4gg jumps away, ctrl+o comes back
+    ctrl_shift(&editor, "s");
+    press(&editor, "4");
+    press(&editor, "g");
+    press(&editor, "g");
+    ctrl(&editor, "o");
+    press(&editor, "d");
+    editor.run_steps(50);
+    assert_eq!(
+        save(&mut editor),
+        "beta\n\ngamma\n",
+        "ctrl+o did not return to the parked selection"
+    );
+}
+
+/// helix mode's view keys: `zt` puts the cursor's line at the top of the
+/// view and `zz` centres it, which cannot be the same picture on a
+/// document taller than the window
+#[test]
+fn helix_view_mode_moves_the_view_under_the_cursor() {
+    let _serial = serial();
+    let text = (1..=200).map(|n| format!("line {n}\n")).collect::<String>();
+    let (mut editor, _file) = helix_editor("helixview", "v.txt", &text);
+    // an unfocused editor draws no caret, so the frames stop depending
+    // on the blink phase
+    editor.set_focus(false);
+
+    // the end of the document, put at the top of the view
+    press(&editor, "g");
+    press(&editor, "e");
+    press(&editor, "z");
+    press(&editor, "t");
+    editor.run_steps(200);
+    let top = editor.last_frame();
+
+    // and then centred, which has to move the text
+    press(&editor, "z");
+    press(&editor, "z");
+    editor.run_steps(200);
+    assert_ne!(top, editor.last_frame(), "zt and zz drew the same view");
+}
