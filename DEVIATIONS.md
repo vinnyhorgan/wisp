@@ -665,6 +665,25 @@ two behaviours worth naming, because both were wrong first:
   second `w` selects the gap on its own and a count never advances past
   the first word, so a motion may name the anchor it wants and `w` does.
 
+where helix stops being an editing model and starts talking to the
+editor around it, the keys are routed into wisp's own commands -- the
+same shape zed's helix mode takes over its host. `:` opens a prompt
+speaking helix's vocabulary (`w`, `wq`, `q`, `qa!`, `o`, `bc`, ...) and
+maps each name onto a wisp command, rather than exposing the command
+palette; `space` is a one-stroke prefix onto the file finder, project
+search, the tree view, the palette and the system clipboard; `/` and
+`n` are wisp's find and repeat-find. the mode is recomputed on every
+keystroke rather than stored, so a prompt taking the keyboard gets its
+own keys back without anything having to remember to give them back.
+
+`y` yanks into a register of helix's own, so copying inside the editor
+does not trample the system clipboard -- that is `space y` and
+`space p`, deliberately a different key. whether a yank was linewise is
+carried *alongside* the text rather than sniffed back out of a trailing
+newline: the last line of a document has no position past its newline,
+so a whole-line yank there comes back without one and would paste
+inline.
+
 typed text reaches the document only in insert mode; in normal and
 select mode the letters are commands, so `DocView:on_text_input`
 swallows them. the command prompt is a `DocView` subclass and is

@@ -19,6 +19,7 @@ local style = require("core.style")
 local common = require("core.common")
 local translate = require("core.doc.translate")
 local motions = require("plugins.helix.motions")
+local ex = require("plugins.helix.ex")
 local DocView = require("core.docview")
 local StatusView = require("core.statusview")
 
@@ -31,6 +32,18 @@ helix.mode = "normal"
 
 -- a count typed before a motion (`3w`), consumed by whatever runs next
 helix.count = nil
+
+-- a one-stroke prefix: space, and later g / m / z. it names a keymap
+-- mode of its own and lasts exactly one key
+helix.pending = nil
+
+-- helix yanks into its own register, not the system clipboard; `space y`
+-- and `space p` are the ones that reach outside the editor. whether the
+-- yank was linewise is carried alongside the text rather than sniffed
+-- back out of it: the last line of a document has no position past its
+-- newline, so a whole-line yank there comes back without one
+helix.register = ""
+helix.register_linewise = false
 
 function helix.take_count()
     local n = helix.count or 1
@@ -52,8 +65,25 @@ end
 
 function helix.set_mode(mode)
     helix.mode = mode
-    keymap.mode = helix.enabled and ("helix-" .. mode) or nil
     core.redraw = true
+end
+
+-- the mode is decided fresh on every keystroke rather than stored, so a
+-- prompt taking the keyboard (find, the `:` line, the command palette)
+-- gets its own keys back without anything having to remember to put
+-- them back afterwards
+local on_key_pressed = keymap.on_key_pressed
+
+function keymap.on_key_pressed(k)
+    keymap.mode = helix.active() and ("helix-" .. (helix.pending or helix.mode)) or nil
+    local handled = on_key_pressed(k)
+    -- a prefix lasts one stroke, whether or not what followed meant
+    -- anything; modifiers are not that stroke
+    if helix.pending and not keymap.modkey_map[k] then
+        helix.pending = nil
+        core.redraw = true
+    end
+    return handled
 end
 
 function helix.enable()
@@ -66,6 +96,7 @@ end
 
 function helix.disable()
     helix.enabled = false
+    helix.pending = nil
     keymap.mode = nil
     core.redraw = true
 end
@@ -193,6 +224,47 @@ local function enter_insert(where)
     helix.set_mode("insert")
 end
 
+-- helix selects what it pasted, so the block ends up on the new text
+-- rather than back where it started
+-- does the selection cover whole lines? the two shapes that mean it are
+-- ending at the start of a later line, and ending at the end of the last
+-- one -- which is all the end of the document allows
+local function is_linewise(d)
+    local l1, c1, l2, c2 = d:get_selection(true)
+    if c1 ~= 1 then
+        return false
+    end
+    return (l2 > l1 and c2 == 1) or c2 >= #d.lines[l2]
+end
+
+local function paste(after, text, linewise)
+    local d = core.active_view.doc
+    if text == nil then
+        text, linewise = helix.register, helix.register_linewise
+    end
+    if text == "" then
+        return
+    end
+    local l1, c1, l2, c2 = d:get_selection(true)
+    local sl, sc
+    if linewise then
+        -- a linewise yank lands on a line of its own, the way it was taken
+        if after then
+            sl, sc = l2, #d.lines[l2]
+            d:insert(sl, sc, "\n" .. text:sub(1, -2))
+            sl, sc = sl + 1, 1
+        else
+            sl, sc = l1, 1
+            d:insert(sl, sc, text)
+        end
+    else
+        sl, sc = after and l2 or l1, after and c2 or c1
+        d:insert(sl, sc, text)
+    end
+    local el, ec = d:position_offset(sl, sc, #text)
+    helix.place(d, sl, sc, translate.previous_char(d, el, ec))
+end
+
 local function delete_selection()
     local doc = core.active_view.doc
     if not doc:has_selection() then
@@ -251,7 +323,7 @@ function StatusView:get_items()
     local left, right = get_items(self)
     if helix.active() then
         table.insert(left, 1, style.accent)
-        table.insert(left, 2, helix.mode)
+        table.insert(left, 2, helix.pending and (helix.mode .. " " .. helix.pending) or helix.mode)
         table.insert(left, 3, style.dim)
         table.insert(left, 4, self.separator2)
     end
@@ -413,6 +485,75 @@ command.add(helix.active, {
         delete_selection()
         helix.set_mode("insert")
     end,
+
+    -- undo restores whatever selection the edit was made with, which may
+    -- be a bare caret; the block invariant has to be put back
+    ["helix:undo"] = function()
+        for _ = 1, helix.take_count() do
+            doc():undo()
+        end
+        helix.widen(doc())
+    end,
+    ["helix:redo"] = function()
+        for _ = 1, helix.take_count() do
+            doc():redo()
+        end
+        helix.widen(doc())
+    end,
+
+    -- helix yanks into a register of its own. the system clipboard is
+    -- deliberately a different key (`space y`), so copying in the editor
+    -- does not trample what you copied out of a browser
+    ["helix:yank"] = function()
+        local d = doc()
+        helix.register_linewise = is_linewise(d)
+        helix.register = d:get_text(d:get_selection())
+        if helix.register_linewise and not helix.register:find("\n$") then
+            helix.register = helix.register .. "\n"
+        end
+        core.log("yanked %d characters", #helix.register)
+    end,
+    ["helix:paste-after"] = function()
+        paste(true)
+    end,
+    ["helix:paste-before"] = function()
+        paste(false)
+    end,
+    ["helix:yank-to-clipboard"] = function()
+        system.set_clipboard(doc():get_text(doc():get_selection()))
+        core.log("yanked to the system clipboard")
+    end,
+    ["helix:paste-from-clipboard"] = function()
+        -- nothing outside carries a linewise flag, so it is read back
+        -- off the text the way every other editor does
+        local text = (system.get_clipboard() or ""):gsub("\r", "")
+        paste(true, text, text:find("\n$") ~= nil)
+    end,
+
+    -- searching is the host's, not the model's: wisp already has a find
+    -- prompt and a repeat, and helix's keys are wired onto them
+    ["helix:search"] = function()
+        command.perform("find-replace:find")
+    end,
+    ["helix:search-next"] = function()
+        for _ = 1, helix.take_count() do
+            command.perform("find-replace:repeat-find")
+        end
+        helix.widen(doc())
+    end,
+    ["helix:search-previous"] = function()
+        for _ = 1, helix.take_count() do
+            command.perform("find-replace:previous-find")
+        end
+        helix.widen(doc())
+    end,
+
+    ["helix:ex"] = function()
+        ex.enter()
+    end,
+    ["helix:space-mode"] = function()
+        helix.pending = "space"
+    end,
 })
 
 -- digits before a motion build a count; `0` only continues one, so it
@@ -459,8 +600,37 @@ keymap.add({
     ["helix-normal:alt+;"] = "helix:flip-selections",
     ["helix-normal:c"] = "helix:change",
 
+    ["helix-normal:u"] = "helix:undo",
+    ["helix-normal:shift+u"] = "helix:redo",
+    ["helix-normal:y"] = "helix:yank",
+    ["helix-normal:p"] = "helix:paste-after",
+    ["helix-normal:shift+p"] = "helix:paste-before",
+    ["helix-normal:/"] = "helix:search",
+    ["helix-normal:n"] = "helix:search-next",
+    ["helix-normal:shift+n"] = "helix:search-previous",
+    ["helix-normal:;"] = "helix:collapse-selection",
+    ["helix-normal:space"] = "helix:space-mode",
+
     ["helix-insert:escape"] = "helix:normal-mode",
     ["helix-select:escape"] = "helix:normal-mode",
+})
+
+-- `:` is not a motion and must not be mirrored into select mode's map
+-- as one, so it is added on its own alongside the space menu
+keymap.add({
+    ["helix-normal:shift+;"] = "helix:ex",
+    ["helix-select:shift+;"] = "helix:ex",
+
+    -- the space menu is where helix talks to the editor around it rather
+    -- than to the buffer, so these follow zed's lead and route straight
+    -- into wisp's own commands
+    ["helix-space:f"] = "core:find-file",
+    ["helix-space:shift+f"] = "core:open-file",
+    ["helix-space:/"] = "project-search:find",
+    ["helix-space:y"] = "helix:yank-to-clipboard",
+    ["helix-space:p"] = "helix:paste-from-clipboard",
+    ["helix-space:k"] = "core:find-command",
+    ["helix-space:e"] = "treeview:toggle",
 })
 
 for digit = 0, 9 do

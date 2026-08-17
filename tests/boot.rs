@@ -2906,3 +2906,59 @@ fn helix_word_motions_counts_and_line_selection() {
         "W did not treat one-of-a-kind style text as a single WORD"
     );
 }
+
+/// helix mode, chapter 4 and the `:` line: u undoes, y/p yank and paste
+/// through helix's own register, and `:w` saves through the host's
+/// command rather than a keybinding
+#[test]
+fn helix_undo_yank_paste_and_the_ex_line() {
+    let _serial = serial();
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("helixex");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("e.txt");
+    std::fs::write(&file, "alpha beta\n").unwrap();
+
+    let mut editor = Headless::boot_args(
+        env!("CARGO_MANIFEST_DIR"),
+        &[&dir.display().to_string(), &file.display().to_string()],
+        900,
+        600,
+        1.0,
+    );
+    editor.run_until_frames(1, 10_000);
+    palette(&mut editor, "helix: toggle");
+    editor.run_steps(100);
+
+    // `:` opens a prompt speaking helix's vocabulary, not wisp's palette
+    let write = |editor: &mut Headless| {
+        press(editor, "shift+;");
+        editor.run_steps(100);
+        editor.push_event(Event::TextInput("w".into()));
+        editor.run_steps(100);
+        press(editor, "return");
+        editor.run_steps(200);
+        std::fs::read_to_string(&file).unwrap()
+    };
+
+    press(&editor, "w");
+    press(&editor, "d");
+    editor.run_steps(50);
+    assert_eq!(write(&mut editor), "beta\n", ":w did not save");
+
+    // u puts it back, and the block invariant survives the undo
+    press(&editor, "u");
+    editor.run_steps(50);
+    assert_eq!(write(&mut editor), "alpha beta\n", "u did not undo");
+
+    // x y takes the whole line, p drops it back on a line of its own
+    press(&editor, "x");
+    press(&editor, "y");
+    press(&editor, "p");
+    editor.run_steps(50);
+    assert_eq!(
+        write(&mut editor),
+        "alpha beta\nalpha beta\n",
+        "a linewise yank did not paste onto its own line"
+    );
+}
