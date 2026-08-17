@@ -419,7 +419,7 @@ is now its own function, independent of the animated size.
 ## 15. runtime zoom
 
 **files:** `data/plugins/scale.lua` (new), `data/core/keymap.lua`,
-`data/core/init.lua`, `data/plugins/treeview.lua`
+`data/core/init.lua`, `data/plugins/treeview.lua`, `data/core/view.lua`
 
 `ctrl+=` / `ctrl+-` / `ctrl+0` and `ctrl+wheel` zoom the editor. lite
 could not do it at all -- fonts were immutable once loaded -- and
@@ -449,14 +449,24 @@ three decisions differ from lite-xl's version:
   (divider, caret, scrollbar) keep a floor of 1px, since a hairline
   that rounds to zero stops being drawn at all.
 
-two supporting changes. `keymap.on_mouse_wheel` gives the vertical
+the zoom a session ends on is not remembered: that belongs with the
+wave's session-restore work. until then the way to boot at something
+other than 100% is the user module -- `require("plugins.scale").set(1.3)`
+in `data/user/init.lua`, which runs after the plugins load -- and a test
+pins that path against the same zoom typed in. `WISP_SCALE` is a
+different knob and stays: it sets what 100% *means* on a display whose
+reported scale is wrong, and a reset returns to it.
+
+three supporting changes. `keymap.on_mouse_wheel` gives the vertical
 wheel a stroke name (`wheelup` / `wheeldown`, with modifiers) so
 `ctrl+wheel` is an ordinary binding rather than a special case in
 `core.on_event`; an unbound wheel falls through to scrolling exactly as
 before. and the treeview stores its width at the scale the editor
 booted at, multiplying it up on the way out, so a zoom scales a
 hand-dragged width exactly and a reset returns it to the pixel it was
-dragged to.
+dragged to. and `View:get_scrollbar_rect` scales the minimum thumb
+height: lite floored it at a hardcoded 20 pixels, which is a
+different-sized grab target on every display and at every zoom.
 
 ## 16. the project is watched, not polled
 

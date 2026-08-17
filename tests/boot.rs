@@ -2514,3 +2514,43 @@ fn a_file_created_outside_the_editor_appears_without_the_timer() {
     }
     assert!(appeared, "the new file never reached the treeview");
 }
+
+#[test]
+fn a_user_module_can_set_the_zoom_at_boot() {
+    let _serial = serial();
+
+    // the zoom a session ends on is not remembered yet, so the way to
+    // start somewhere other than 100% is the user module -- it is
+    // required after the plugins, so the plugin's own table is there to
+    // call. this pins that path
+    let root = copy_data_root("userzoom");
+    std::fs::write(
+        root.join("data/user/init.lua"),
+        "require(\"plugins.scale\").set(1.3)\n",
+    )
+    .unwrap();
+    let mut booted =
+        Headless::boot_with_exedir(&root.display().to_string(), &project_dir(), 900, 600, 1.0);
+    booted.run_until_frames(1, 10_000);
+    open_hello_via_treeview(&mut booted);
+    booted.set_focus(false);
+    booted.run_steps(500);
+    let from_user_module = booted.last_frame().0;
+    drop(booted);
+
+    // the same zoom reached by pressing ctrl+= three times
+    let mut pressed = boot();
+    open_hello_via_treeview(&mut pressed);
+    pressed.set_focus(false);
+    pressed.run_steps(500);
+    for _ in 0..3 {
+        ctrl(&pressed, "=");
+        pressed.run_steps(300);
+    }
+
+    assert_eq!(
+        from_user_module,
+        pressed.last_frame().0,
+        "a zoom set from the user module does not match the same zoom typed in"
+    );
+}

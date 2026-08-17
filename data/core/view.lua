@@ -52,7 +52,10 @@ function View:get_scrollbar_rect()
     if sz <= self.size.y or sz == math.huge then
         return 0, 0, 0, 0
     end
-    local h = math.max(20, self.size.y * self.size.y / sz)
+    -- the thumb never shrinks below a grabbable height; lite hardcoded
+    -- 20 pixels, which is a different-sized target on every display and
+    -- at every zoom
+    local h = math.max(20 * SCALE, self.size.y * self.size.y / sz)
     return self.position.x + self.size.x - style.scrollbar_size,
         self.position.y + self.scroll.y * (self.size.y - h) / (sz - self.size.y),
         style.scrollbar_size,
