@@ -825,6 +825,17 @@ the quit prompt and the signal rescue both walk `core.docs`, which a hex
 view is not in, so the plugin wraps both: unsaved bytes are exactly as
 hard to lose as unsaved text.
 
+two guards follow from the model rather than from taste. the buffer is
+memory-resident, so a file past 64 mb is **refused** with its size in the
+message -- binaries are where the enormous files live, and an editor that
+stops responding with no way back is worse than one that says no. and
+nothing watches the file behind a hex view the way autoreload watches a
+doc, so **saving asks before it overwrites a file that changed
+underneath**: that is the one moment a stale buffer can cost anything, and
+asking there is cheaper than a watcher that would have to be right all the
+time. a save under another name -- which is what the signal rescue does --
+was never the same file and skips the question.
+
 ## kept on purpose
 
 lite behaviors evaluated deliberately and kept, recorded so they are

@@ -3859,3 +3859,74 @@ io.open([[{marker}]], "w"):close()
         "the hex grid is wrong; see the user module"
     );
 }
+
+/// the hex view holds a whole file in memory, so it refuses one that is
+/// too large instead of stopping the editor dead with no way back
+#[test]
+fn an_enormous_binary_is_refused_rather_than_loaded() {
+    let _serial = serial();
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("hexhuge");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let blob = dir.join("huge.img");
+    // sparse: the bytes are nulls, so it reads as binary and costs no disk
+    std::fs::File::create(&blob)
+        .unwrap()
+        .set_len(200 * 1024 * 1024)
+        .unwrap();
+
+    let mut editor = boot();
+    ctrl(&editor, "o");
+    editor.run_steps(100);
+    editor.push_event(Event::TextInput(blob.display().to_string()));
+    editor.run_steps(100);
+    press(&editor, "return");
+    editor.run_steps(500);
+
+    assert_eq!(editor.exited, None, "refusing a huge file must not exit");
+    assert_eq!(
+        editor.window_title(),
+        "wisp",
+        "a 200mb file was loaded into memory instead of being refused"
+    );
+}
+
+/// nothing watches the file behind a hex view, so saving asks before it
+/// overwrites one that has changed underneath: the only moment a stale
+/// buffer can actually cost anything
+#[test]
+fn saving_a_hex_view_refuses_to_clobber_a_changed_file() {
+    let _serial = serial();
+    let (mut editor, file) = hex_editor("hexstale", "s.bin", b"\0abcdefgh");
+
+    // edit a byte, then let the file change underneath
+    typed(&editor, "f");
+    editor.run_steps(20);
+    typed(&editor, "f");
+    editor.run_steps(20);
+    std::fs::write(&file, b"\0ZZZZZZZZ").unwrap();
+    let f = std::fs::File::options().write(true).open(&file).unwrap();
+    f.set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(3600))
+        .unwrap();
+    drop(f);
+
+    // the save asks instead of writing
+    ctrl(&editor, "s");
+    editor.run_steps(200);
+    assert_eq!(
+        std::fs::read(&file).unwrap(),
+        b"\0ZZZZZZZZ",
+        "the save clobbered a file that had changed on disk"
+    );
+
+    // and answering yes goes through
+    editor.push_event(Event::TextInput("yes".into()));
+    editor.run_steps(100);
+    press(&editor, "return");
+    editor.run_steps(200);
+    assert_eq!(
+        std::fs::read(&file).unwrap(),
+        b"\xffabcdefgh",
+        "confirming the overwrite did not save the buffer"
+    );
+}

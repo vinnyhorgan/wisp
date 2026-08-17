@@ -45,6 +45,12 @@ end
 local TEXT_COL = hex_column(COLUMNS - 1) + 4
 local TOTAL_COLS = TEXT_COL + COLUMNS
 
+-- the buffer is memory-resident by design, and this is the honest edge of
+-- that. binaries are where the enormous files live -- a disk image opened
+-- by accident is an editor that stops responding with no way back --
+-- and saying no is the only decent answer past some size
+local MAX_SIZE = 64 * 1024 * 1024
+
 local HexView = View:extend()
 
 -- bytes are coloured by what they are, which is most of what reading a
@@ -86,6 +92,9 @@ function HexView:new(filename)
     -- which half of the byte the next hex digit lands in
     self.nibble = 0
     self.scrollable = true
+    -- the file as it was when the bytes were read, so saving can tell
+    -- whether it is still the file they came from
+    self.stat = filename and system.get_file_info(filename) or nil
 end
 
 function HexView:get_name()
@@ -406,6 +415,17 @@ end
 --- opens `filename` in a hex view, or focuses the one already showing it
 function HexView.open(filename)
     filename = system.absolute_path(filename) or filename
+    local info = system.get_file_info(filename)
+    if info and info.size > MAX_SIZE then
+        error(
+            string.format(
+                "%q is %d mb; the hex view holds a whole file in memory",
+                filename,
+                info.size // (1024 * 1024)
+            ),
+            0
+        )
+    end
     for _, view in ipairs(each_hexview()) do
         if view.filename == filename then
             local node = core.root_view.root_node:get_node_for_view(view)
@@ -486,12 +506,32 @@ function core.terminate()
     return terminate()
 end
 
+-- a doc has autoreload watching for this; the hex view has none, so the
+-- question is asked at the one moment a stale buffer can cost anything.
+-- a file that has been deleted is not stale -- saving simply writes it
+-- back -- and one being saved under another name was never the same file
+function HexView:changed_on_disk()
+    local info = self.filename and system.get_file_info(self.filename)
+    if not info or not self.stat then
+        return false
+    end
+    return info.modified ~= self.stat.modified or info.size ~= self.stat.size
+end
+
 function HexView:save(filename)
     filename = filename or assert(self.filename, "no filename set to default to")
+    if filename == self.filename and self:changed_on_disk() then
+        error("the file changed on disk since it was opened", 0)
+    end
+    self:write_out(filename)
+end
+
+function HexView:write_out(filename)
     local fp = assert(io.open(filename, "wb"))
     fp:write(self.buffer:tostring())
     fp:close()
     if filename == self.filename then
+        self.stat = system.get_file_info(filename)
         self.buffer:clean()
     end
 end
@@ -606,8 +646,21 @@ command.add(active, {
 
     ["hex:save"] = function()
         local v = view()
-        v:save()
-        core.log("saved %q (%d bytes)", v.filename, v.buffer.size)
+        local function done()
+            core.log("saved %q (%d bytes)", v.filename, v.buffer.size)
+        end
+        if not v:changed_on_disk() then
+            v:save()
+            return done()
+        end
+        core.command_view:enter("the file changed on disk; overwrite it?", function(answer)
+            if answer:lower():find("^y") then
+                v:write_out(v.filename)
+                done()
+            end
+        end, function(answer)
+            return common.fuzzy_match({ "no", "yes" }, answer)
+        end)
     end,
 
     -- inserting and deleting move every byte after the cursor, so they
