@@ -33,7 +33,7 @@ wins; the old one is cancelled exactly as if escape had been pressed.
 ## 2. branding says wisp, not lite
 
 **files:** `data/core/init.lua`, `data/core/rootview.lua`,
-`data/core/commands/core.lua`
+`data/core/commands/core.lua` (and `src/boot.rs` for `WISP_SCALE`)
 
 the editor is called wisp everywhere the user can see the name: the window
 title (`"file - wisp"`), the wordmark on the empty view, the project module
@@ -125,7 +125,8 @@ refusing everything binary that nothing claims.
 
 **files:** `data/core/view.lua`, `data/core/docview.lua`,
 `data/core/doc/init.lua`, `data/core/init.lua`,
-`data/core/commandview.lua`
+`data/core/commandview.lua`, `data/core/logview.lua`,
+`data/plugins/projectsearch.lua`, `data/plugins/treeview.lua`
 
 lite had no horizontal scrolling: the wheel's x axis was dropped by the c
 core and the lua layer only handled y. wisp's core always delivered both
@@ -181,7 +182,7 @@ fix is small and local:
   "Cannot open doc on locked node": the fallback went to the last active
   view, which by submit time is the also-locked command view. a new
   `get_active_node_default()` falls back to the first unlocked leaf --
-  the editing area, which always exists -- and the three open sites use
+  the editing area, which always exists -- and the four open sites use
   it.
 - **`data/core/docview.lua`** -- the caret-follow scroll recomputed the
   horizontal offset from the caret position alone, parking the caret at
@@ -204,10 +205,11 @@ fix is small and local:
   pattern is rejected at the prompt with an error message instead of
   raising inside the search thread; binary files are skipped by the same
   null-byte rule the doc loader uses (§7); and a superseded search
-  cancels through an explicit generation check instead of lite's weak
-  thread key, which cancelled only whenever the gc got around to it (the
-  old thread could cross into the next file, and the new results list,
-  in the gap).
+  cancels through an explicit generation check on top of lite's weak
+  thread key, which on its own cancelled only whenever the gc got around
+  to it (the old thread could cross into the next file, and the new
+  results list, in the gap). the weak key is still passed; the check
+  closes the window it left open.
 - **`data/core/init.lua`** -- a background thread that raises no longer
   takes the whole main loop down with it (lite asserted on the resume):
   the error is shown via `core.error` and the dead thread is reaped. an
@@ -365,11 +367,11 @@ handling -- and the audit for the rest touched exactly these:
   died on it. the regression test seeds a fractional virtual clock
   before boot (`Headless::set_clock`), closing the class. everything
   else feeding `%d`, `string.sub` and friends is integer-sourced.
-- **for-loop variables are const in 5.5.** nine loops reassigned
+- **for-loop variables are const in 5.5.** eight loops reassigned
   their control variable (crlf stripping in `Doc:load`/`save`, the
   advancing `x` in treeview and projectsearch draws, normalization in
-  keymap/commandview/autocomplete/`common.path_suggest`); each now
-  shadows with a local, semantics identical.
+  keymap/commandview/autocomplete/`common.path_suggest`); six shadow
+  with a local, two read better renamed, semantics identical either way.
 - **`global` is a reserved word in 5.5**, so lite's
   `function global(t)` in strict.lua no longer parses -- and neither
   would any caller, so the old name was unkeepable by definition. the
