@@ -2471,3 +2471,46 @@ fn ctrl_wheel_zooms_instead_of_scrolling() {
     );
 }
 
+#[test]
+fn a_file_created_outside_the_editor_appears_without_the_timer() {
+    let _serial = serial();
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("watched");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("a.txt"), "a\n").unwrap();
+
+    let mut editor = Headless::boot(&dir.display().to_string(), 900, 600, 1.0);
+    editor.run_until_frames(1, 10_000);
+    editor.run_steps(60);
+
+    // only the treeview strip: it is where core.project_files is drawn,
+    // and the caret blinking in the document beside it would otherwise
+    // read as a change. the editor stays focused on purpose -- a focused
+    // step is exactly one 60fps frame of editor time, an idle unfocused
+    // one is core.run's whole 0.25s wait
+    let strip = |e: &Headless| -> Vec<u32> {
+        let (frame, w, h) = e.last_frame();
+        (0..h)
+            .flat_map(|y| {
+                let row = (y * w) as usize;
+                frame[row..row + 150].to_vec()
+            })
+            .collect()
+    };
+    let before = strip(&editor);
+
+    // 60 + 6*30 = 240 steps, four seconds of editor time: the standing
+    // rescan runs every config.project_scan_rate (5s), so it cannot be
+    // what noticed
+    std::fs::write(dir.join("b.txt"), "b\n").unwrap();
+    let mut appeared = false;
+    for _ in 0..6 {
+        std::thread::sleep(std::time::Duration::from_millis(25));
+        editor.run_steps(30);
+        if strip(&editor) != before {
+            appeared = true;
+            break;
+        }
+    }
+    assert!(appeared, "the new file never reached the treeview");
+}

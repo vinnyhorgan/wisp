@@ -458,6 +458,35 @@ booted at, multiplying it up on the way out, so a zoom scales a
 hand-dragged width exactly and a reset returns it to the pixel it was
 dragged to.
 
+## 16. the project is watched, not polled
+
+**file:** `data/core/init.lua`
+
+lite walked the whole project tree every `config.project_scan_rate`
+seconds, forever, and compared the result to the last one -- the
+standing cost that `config.max_project_files` exists to bound. wisp
+opens a `system.watch` on the project directory at startup and walks
+the tree when the watcher says something under it changed. a checkout
+or a build shows up within a poll interval instead of up to five
+seconds later, and an idle project costs nothing at all.
+
+the shape is deliberate:
+
+- **the poll always follows a wait, never precedes it**, so the poll
+  interval is also the fastest the tree can be walked. a build emits
+  events for as long as it runs; this holds it to four walks a second
+  no matter how many arrive.
+- **0.25s is free.** `core.run` already waits at most that long when
+  idle, so asking the watcher costs nothing it was not already paying.
+- **the timer survives as a safety net, at a minute.** the backend
+  thread can die -- the api reports that exactly once and then goes
+  quiet forever -- and there are filesystems inotify cannot see into.
+  a file list that goes stale and never heals is worse than one walk a
+  minute.
+- **a watcher that fails to open is a fine answer.** the scan thread
+  falls back to `config.project_scan_rate` exactly as before, and the
+  reason is logged quietly.
+
 ## kept on purpose
 
 lite behaviors evaluated deliberately and kept, recorded so they are

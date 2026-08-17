@@ -11,6 +11,37 @@ local Doc
 
 local core = {}
 
+-- how often the watcher is asked what changed. core.run already wakes at
+-- least this often when idle (its wait_event timeout is the same 0.25s),
+-- so asking costs nothing it was not already paying
+local WATCH_POLL_RATE = 0.25
+
+-- a watched project is still walked this often. the backend thread can
+-- die -- the api says so exactly once and then goes quiet forever -- and
+-- there are filesystems it cannot see into at all; a file list that goes
+-- stale and never heals is worse than one walk a minute
+local WATCH_SAFETY_RATE = 60
+
+-- fs events replace the standing rescan: the tree is walked when the
+-- watcher says something under it changed, not on a timer. the poll
+-- always comes after a wait, never before, so the poll rate is also the
+-- fastest the tree can be walked -- a build or a checkout emits events
+-- for as long as it runs, and this holds that to four walks a second no
+-- matter how many arrive
+local function wait_for_change(scanned_at)
+    local watch = core.project_watch
+    if not watch then
+        coroutine.yield(config.project_scan_rate)
+        return
+    end
+    repeat
+        if system.get_time() - scanned_at >= WATCH_SAFETY_RATE then
+            return
+        end
+        coroutine.yield(WATCH_POLL_RATE)
+    until #watch:poll() > 0
+end
+
 local function project_scan_thread()
     local function diff_files(a, b)
         if #a ~= #b then
@@ -71,6 +102,7 @@ local function project_scan_thread()
         -- get project files and replace previous table if the new table is
         -- different
         local t = get_files(".")
+        local scanned_at = system.get_time()
         if not warned and #t >= config.max_project_files then
             core.log("project too large, stopped scanning at %d files", config.max_project_files)
             warned = true
@@ -80,8 +112,8 @@ local function project_scan_thread()
             core.redraw = true
         end
 
-        -- wait for next scan
-        coroutine.yield(config.project_scan_rate)
+        -- wait for the next scan
+        wait_for_change(scanned_at)
     end
 end
 
@@ -122,6 +154,15 @@ function core.init()
 
     core.root_view.root_node:split("down", core.command_view, true)
     core.root_view.root_node.b:split("down", core.status_view, true)
+
+    -- native fs events, so an external change (a checkout, a build) shows
+    -- up at once instead of on the next tick of a timer. a failure is a
+    -- fine answer: the scan thread falls back to the timer it always had
+    local watch_err
+    core.project_watch, watch_err = system.watch(system.absolute_path("."))
+    if watch_err then
+        core.log_quiet("%s; scanning the project on a timer instead", watch_err)
+    end
 
     core.add_thread(project_scan_thread)
     command.add_defaults()
