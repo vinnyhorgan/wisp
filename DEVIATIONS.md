@@ -671,9 +671,14 @@ two behaviours worth naming, because both were wrong first:
   to the one character under the block, the second lays a selection from
   where the cursor was to where the motion landed. in select mode both
   keep the anchor they already had.
-- **`w` from inside a gap anchors at the word after it.** otherwise a
-  second `w` selects the gap on its own and a count never advances past
-  the first word, so a motion may name the anchor it wants and `w` does.
+- **`w` names its own anchor, and it wins.** where the selection starts
+  is not always where the cursor was: a cursor in a gap belongs to the
+  word after it, and a cursor already on the last character of its token
+  belongs to the token after *that* -- without the second rule a
+  one-character token like `(` never lets the cursor past, because the
+  walk to the end of the token ends where it began and there is no gap
+  to cross. select mode ignores a named anchor, since keeping the one it
+  has is the whole point of it.
 
 where helix stops being an editing model and starts talking to the
 editor around it, the keys are routed into wisp's own commands -- the

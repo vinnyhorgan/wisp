@@ -3103,3 +3103,55 @@ io.open(EXEDIR .. "/binding-ok", "wb"):close()
         "a mode binding took over the displayed key; see the user module"
     );
 }
+
+/// `w` used to stick on punctuation: it walked to the end of the token
+/// under the cursor, and for a one-character token like `(` that walk
+/// ended where it began with no gap to cross, so the cursor never got past
+#[test]
+fn helix_w_walks_over_punctuation_instead_of_sticking() {
+    let _serial = serial();
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("helixpunct");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("p.txt");
+    std::fs::write(&file, "foo(bar) baz\n").unwrap();
+
+    let mut editor = Headless::boot_args(
+        env!("CARGO_MANIFEST_DIR"),
+        &[&dir.display().to_string(), &file.display().to_string()],
+        900,
+        600,
+        1.0,
+    );
+    editor.run_until_frames(1, 10_000);
+    palette(&mut editor, "helix: toggle");
+    editor.run_steps(100);
+
+    // first w takes "foo", second must land on the "(" rather than
+    // re-selecting the tail of the word it is already sitting in
+    press(&editor, "w");
+    press(&editor, "w");
+    press(&editor, "d");
+    editor.run_steps(50);
+    ctrl(&editor, "s");
+    editor.run_steps(200);
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap(),
+        "foobar) baz\n",
+        "the second w did not get past the punctuation"
+    );
+
+    // and it keeps walking: one w takes "bar", the next takes ") " as its
+    // own token plus the gap, and only that last selection is deleted
+    press(&editor, "w");
+    press(&editor, "w");
+    press(&editor, "d");
+    editor.run_steps(50);
+    ctrl(&editor, "s");
+    editor.run_steps(200);
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap(),
+        "foobarbaz\n",
+        "w did not keep walking through the punctuation"
+    );
+}

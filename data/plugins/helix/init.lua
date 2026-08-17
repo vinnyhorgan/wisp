@@ -186,19 +186,25 @@ function helix.motion(fn, kind, ...)
     local doc = core.active_view.doc
     local line, col = helix.head_char(doc)
     local al, ac
-    if helix.mode == "select" then
+    local extending = helix.mode == "select"
+    if extending then
         al, ac = helix.anchor_char(doc)
-    elseif kind == "select" then
-        al, ac = line, col
     end
     for i = 1, helix.take_count() do
         -- unpacked into locals first: a call in any but the last
         -- argument position is truncated to one value, which would
-        -- silently drop the column. a motion may also name the anchor it
-        -- wants, which is how `w` skips a leading gap
+        -- silently drop the column
         local dline, dcol, sline, scol = fn(doc, line, col, ...)
-        if i == 1 and sline and not al then
-            al, ac = sline, scol
+        -- a motion may name where the selection should start, and it
+        -- wins: `w` moves its own anchor to skip a gap or a token the
+        -- cursor had already finished. select mode ignores all of that,
+        -- since keeping the anchor is the whole point of it
+        if i == 1 and not extending then
+            if sline then
+                al, ac = sline, scol
+            elseif kind == "select" then
+                al, ac = line, col
+            end
         end
         line, col = dline, dcol
     end
