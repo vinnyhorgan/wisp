@@ -22,6 +22,15 @@ function StatusView:new()
     self.init_size = true
 end
 
+-- the bar's natural height. the message row sits exactly this far below
+-- the item row and scrolls up to replace it, so it must not follow
+-- `size.y` while a toggle animates that to zero: both the row's offset
+-- and the box it is centred in would collapse, sliding a stale message
+-- up into view on the way down
+function StatusView:get_row_height()
+    return style.font:get_height() + style.padding.y * 2
+end
+
 function StatusView:on_mouse_pressed()
     core.set_active_view(core.last_active_view)
     if system.get_time() < self.message_timeout and not core.active_view:is(LogView) then
@@ -49,7 +58,7 @@ function StatusView:update()
     -- already drops the divider once a side collapses
     local dest = 0
     if self.visible then
-        dest = style.font:get_height() + style.padding.y * 2
+        dest = self:get_row_height()
     end
     if self.init_size then
         self.size.y = dest
@@ -59,7 +68,7 @@ function StatusView:update()
     end
 
     if system.get_time() < self.message_timeout then
-        self.scroll.to.y = self.size.y
+        self.scroll.to.y = self:get_row_height()
     else
         self.scroll.to.y = 0
     end
@@ -165,19 +174,35 @@ function StatusView:draw()
     self:draw_background(style.background2)
 
     if self.message then
-        self:draw_items(self.message, false, self.size.y)
+        self:draw_items(self.message, false, self:get_row_height())
     end
 
-    -- the two groups are placed independently -- one from the left edge,
-    -- one from the right -- so a narrow window ran them straight through
-    -- each other. the left group gets only the room the right one leaves
-    -- and is cut off there
+    -- the two groups are placed independently -- one from each edge --
+    -- so a narrow window ran them straight through each other. the left
+    -- group gets the room the right one leaves, less a gap, and fades
+    -- out into it rather than stopping dead against the icon
     local left, right = self:get_items()
     local rw = draw_items(self, right, 0, 0, text_width)
-    local avail = math.max(0, self.size.x - rw - style.padding.x)
+    local avail = math.max(0, self.size.x - rw - style.padding.x * 2)
     core.push_clip_rect(self.position.x, self.position.y, avail, self.size.y)
     self:draw_items(left)
     core.pop_clip_rect()
+
+    if draw_items(self, left, 0, 0, text_width) + style.padding.x > avail then
+        local _, y = self:get_content_offset()
+        local bg = style.background2
+        local fade = math.min(avail, style.padding.x * 2)
+        for i = 1, fade do
+            local a = math.floor(255 * i / fade)
+            renderer.draw_rect(self.position.x + avail - fade + i - 1, y, 1, self.size.y, {
+                bg[1],
+                bg[2],
+                bg[3],
+                a,
+            })
+        end
+    end
+
     self:draw_items(right, true)
 end
 

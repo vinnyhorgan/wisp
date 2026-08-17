@@ -303,8 +303,9 @@ fix is small and local:
 - **`data/core/statusview.lua`** -- the left and right item groups are
   placed independently, one from each edge, so in a narrow window the
   filename ran straight through the line count and the two overprinted
-  each other. the left group is now clipped to exactly the room the
-  right one leaves.
+  each other. the left group now gets the room the right one leaves less
+  a `padding.x` gap, and fades out into that gap over the last `2 *
+  padding.x` rather than stopping dead against the right group's icon.
 - **`data/core/init.lua`** -- a modifier held while focus left the
   window stayed latched forever: wayland delivers no key releases on
   focus loss (x11 synthesizes them), so alt+tab with alt down turned
@@ -401,6 +402,13 @@ no way to do it at all. the bar animates its height to zero exactly as
 the treeview animates its width, and nothing else in the layout needed
 changing: a locked node already reports its view's own size, and
 `get_locked_size` already drops the divider once a side collapses.
+
+one thing did have to change. the message row is drawn one row-height
+below the item row and scrolls up to replace it, and lite keyed that
+offset to `size.y` -- fine when the height never moved. animated, both
+the offset and the box the text is centred in collapse together, sliding
+an expired message up into view partway through the hide. the row height
+is now its own function, independent of the animated size.
 
 ## kept on purpose
 

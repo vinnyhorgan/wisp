@@ -1526,6 +1526,47 @@ fn a_long_name_never_crowds_the_right_of_the_status_bar() {
 }
 
 #[test]
+fn hiding_the_status_bar_never_flashes_a_stale_message() {
+    let _serial = serial();
+    // the message row sits one row-height below the item row and scrolls
+    // up to replace it. while a toggle animates the bar's height that
+    // offset must stay put -- keyed to size.y it collapses, sliding an
+    // expired message into view partway down.
+    //
+    // two editors, same everything, except one has shown a message that
+    // has since expired: the collapse must look identical in both
+    let run = |with_message: bool| -> Vec<Vec<u32>> {
+        let mut editor = boot();
+        editor.set_focus(false);
+        open_hello_via_treeview(&mut editor);
+        if with_message {
+            // logs "no previous finds" through core.error, which is what
+            // puts a message in the bar
+            palette(&mut editor, "find-replace:previous-find");
+            editor.run_steps(200);
+        }
+        // jump well past config.message_timeout, then let the message
+        // scroll back out so both editors are at rest and identical
+        editor.set_clock(1000.0);
+        editor.run_steps(500);
+
+        ctrl_shift(&editor, "\\");
+        let mut frames = Vec::new();
+        for _ in 0..10 {
+            editor.run_steps(2);
+            let (frame, w, h) = editor.last_frame();
+            frames.push(frame[((h - 40) * w) as usize..].to_vec());
+        }
+        frames
+    };
+    assert_eq!(
+        run(false),
+        run(true),
+        "collapsing the bar flashed an expired message"
+    );
+}
+
+#[test]
 fn the_status_bar_toggles_and_comes_back() {
     let _serial = serial();
     let mut editor = boot();
