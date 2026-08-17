@@ -306,6 +306,16 @@ fix is small and local:
   each other. the left group now gets the room the right one leaves less
   a `padding.x` gap, and fades out into that gap over the last `2 *
   padding.x` rather than stopping dead against the right group's icon.
+- **`data/core/config.lua`**, **`data/core/init.lua`** -- one
+  `mouse_wheel_scroll` served both devices. a wheel notch is a
+  quantized command and a trackpad glide is direct manipulation
+  measured in finger pixels; the core hands both over in notch units
+  (a glide's pixels divided down), and lite only ever saw the wheel, so
+  it only had the one number. a glide's delta is now multiplied by
+  `config.trackpad_scroll_gain` in `core.on_event` -- the one place
+  that knows which device sent the event -- so every consumer
+  downstream, the terminal's scrollback included, stays
+  device-agnostic.
 - **`data/core/init.lua`** -- a modifier held while focus left the
   window stayed latched forever: wayland delivers no key releases on
   focus loss (x11 synthesizes them), so alt+tab with alt down turned

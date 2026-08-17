@@ -2554,3 +2554,36 @@ fn a_user_module_can_set_the_zoom_at_boot() {
         "a zoom set from the user module does not match the same zoom typed in"
     );
 }
+
+#[test]
+fn a_trackpad_glide_scrolls_further_than_the_same_wheel_delta() {
+    let _serial = serial();
+
+    // a wheel notch and a pixel of finger travel are different units;
+    // the gain is what reconciles them. three notches of wheel must land
+    // exactly where one notch-equivalent of glide does at gain 3
+    let text = "line\n".repeat(200);
+    let mut glided = boot();
+    let mut notched = boot();
+    for (editor, delta, phase) in [
+        (&mut glided, -1.0, Some("moved")),
+        (&mut notched, -3.0, None),
+    ] {
+        ctrl(editor, "n");
+        editor.run_steps(50);
+        editor.push_event(Event::TextInput(text.clone().into()));
+        editor.set_focus(false);
+        editor.run_steps(300);
+        let (_, w, h) = editor.last_frame();
+        editor.push_event(Event::MouseMoved(w / 2, h / 2, 0, 0));
+        editor.run_steps(50);
+        editor.push_event(Event::MouseWheel(0.0, delta, phase));
+        editor.run_steps(500);
+    }
+
+    assert_eq!(
+        glided.last_frame().0,
+        notched.last_frame().0,
+        "a glide is not gained up to match the wheel"
+    );
+}

@@ -403,6 +403,15 @@ function core.on_event(type, ...)
         core.root_view:on_mouse_released(...)
     elseif type == "mousewheel" then
         local y, x, phase = ...
+        -- a glide arrives as pixels the finger moved, a notch as one
+        -- quantized step; the core hands both over in notch units, and
+        -- this is the one place that knows which device sent it. every
+        -- consumer downstream stays device-agnostic, the terminal's
+        -- scrollback included
+        if phase then
+            y = y * config.trackpad_scroll_gain
+            x = (x or 0) * config.trackpad_scroll_gain
+        end
         -- shift turns a vertical wheel into a horizontal one; hardware
         -- that already scrolls sideways is left untouched
         if keymap.modkeys["shift"] and (x or 0) == 0 then
