@@ -22,11 +22,25 @@ bug-fixed where not. every deliberate difference is written down in
   through the same renderer as everything else
 - `unsafe_code = "deny"`, with a single documented exception, and it's lua's
   fault
-- the whole editor boots headless in the test suite: 56 of its 154 tests
+- the whole editor boots headless in the test suite: 63 of its 174 tests
   feed it fake input and read the pixels coming back. the screenshots on
   this page were rendered that way too
 
 <p align="center"><img src=".github/palette.png" width="820"></p>
+
+## the rules
+
+wisp is an artifact, not a toolkit: one finished editor, one font, one
+theme, one binary. the bar it is built against is the **monday morning
+test** -- clone, build, and do a week of real work without installing
+anything or wishing you had a different editor.
+
+the core is frozen. an api added speculatively is forever, so it grows
+only when a consumer lands alongside it, and everything from here is
+lua. lsp and ai integration are deliberately out for now, with the door
+left open and the reasons written down in [ROADMAP.md](ROADMAP.md) --
+the terminal used to be on that list, and it turned out to be the answer
+to the ai question. no os dialogs, ever.
 
 ## running
 

@@ -74,13 +74,18 @@ its perfection pass (api and consumer land together, same commit),
 and a real bug in the core is always a bug. everything else is lua
 from here -- the way rxi intended.
 
-## phase c -- v0.1.0, the plugin baseline
+## phase c -- v0.1.0, the plugin baseline (done)
 
-- pin the philosophy in CLAUDE.md + readme: artifact-vs-tool, the
-  monday morning test, the declared exceptions, "an api added
-  speculatively is forever".
-- tag and release. release artifact is a true single binary once
-  data/ is embedded.
+tagged 2026-08-17. the philosophy is pinned in CLAUDE.md and the readme
+-- artifact-vs-tool, the monday morning test, the declared exceptions,
+"an api added speculatively is forever" -- and v0.1.0 marks the baseline
+the plugin pass builds on: lite's editor, faithfully, on a frozen rust
+core, with the lua layer audited and its every divergence in
+DEVIATIONS.md.
+
+what the tag deliberately does not include: a github release with a
+prebuilt binary. the single binary works (data/ is embedded), so that is
+a packaging decision, not a code one -- cut it whenever it is wanted.
 
 ## phase d -- the plugin pass (road to v0.2.0)
 

@@ -20,6 +20,26 @@ way rxi intended.
 - `examples/screenshot.rs` -- renders the readme screenshots with the
   headless editor.
 
+## philosophy
+
+the north star, written down so it is not re-litigated every session.
+
+- **wisp is an artifact, not a toolkit.** one finished editor -- one
+  font, one theme, one binary -- not a kit to be assembled. an option is
+  a cost; a decision made well and written down beats a setting.
+- **the monday morning test.** clone, build, and do a week of real work
+  without installing anything or wishing you had a different editor.
+  that is the bar, and it is what a release means.
+- **an api added speculatively is forever.** the core gets a function
+  when its consumer exists, in the same commit, and not before. the core
+  is frozen; the two named exceptions are the terminal's own surface
+  during its perfection pass, and real bugs.
+- **declared exceptions, door left open.** lsp and ai integration are
+  deliberately out (the terminal is the answer to ai for now; it used to
+  be the third name on this list, and it landed). the full ledger of
+  noes lives in ROADMAP.md so they are not re-chased.
+- **everything from here is lua**, the way rxi intended.
+
 ## hard rules
 
 - no os dialogs in the core, ever. anything that must ask the user goes
