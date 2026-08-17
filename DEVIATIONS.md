@@ -538,15 +538,23 @@ the core fixes lite's bugs instead of reproducing them. the observable
 differences, all deliberate:
 
 - **the window names itself.** `wisp` is set as the wayland app id and
-  the x11 WM_CLASS. neither lite nor lite-xl does this; without it the
-  compositor has no way to find the window's .desktop file, so it shows
-  a placeholder icon and cannot group the window in a task list.
+  the x11 WM_CLASS. without one the compositor cannot find the window's
+  .desktop file, so it shows a placeholder icon and cannot group the
+  window in a task list. this is a hole the port opened rather than a
+  bug inherited: lite-xl names itself explicitly
+  (`SDL_SetAppMetadata("Lite XL", ..., "com.lite_xl.LiteXL")`), and sdl
+  documents a sensible default from the application's own name for
+  anyone who does not, while winit sets an app id only if asked --
+  `if let Some(name) = attributes.platform_specific.name` -- and wisp
+  had never asked.
 - **sigterm, sigint and sighup are caught** and arrive in lua as a
   `terminate` event, distinct from `quit` (which is a user closing a
   window and may still be argued with). unhandled, they kill the
   process outright: unsaved work gone and the terminal's children
-  orphaned. registering the handler through signal-hook's safe api
-  keeps the crate's one `unsafe` exception at one.
+  orphaned. neither reference does this -- lite handles no signal at
+  all, lite-xl only `signal(SIGPIPE, SIG_IGN)`, which rust's std
+  already does for us. registering the handler through signal-hook's
+  safe api keeps the crate's one `unsafe` exception at one.
 - **`--help` and `--version` answer on stdout and exit**, and `--` ends
   option parsing. lite and lite-xl treat every argument as a path, so
   asking either one what it is opens a window.
