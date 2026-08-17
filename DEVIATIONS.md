@@ -303,7 +303,7 @@ directory it was launched from, like every other terminal program.
 
 ## 12. a real terminal
 
-**files:** `data/plugins/terminal.lua` (new)
+**files:** `data/plugins/terminal.lua` (new), `data/core/keymap.lua`
 
 lite's answer to a terminal was the toy console plugin. wisp ships a
 real one: the core embeds alacritty's vt engine on a polled pty
@@ -316,6 +316,12 @@ editor keys that stay editor keys live in
 `config.terminal_pass_through` (the palette, `ctrl+\``, tab and split
 navigation). `terminal:toggle` on `ctrl+\`` jumps between the
 terminal and the last view; a finished shell closes its own tab.
+
+deciding that takes the two questions keymap asks itself on every key
+-- is this key a modifier, what stroke is held -- so `modkey_map` and
+`key_to_stroke` are public on the keymap module instead of copied into
+the plugin. any view that takes the keyboard over (a modal mode, one
+day) needs the same two.
 
 ## 13. lua 5.5
 

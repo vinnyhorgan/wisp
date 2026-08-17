@@ -5,7 +5,10 @@ keymap.modkeys = {}
 keymap.map = {}
 keymap.reverse_map = {}
 
-local modkey_map = {
+-- both public: a view that takes the keyboard over (the terminal) has
+-- to ask the same two questions keymap does -- is this key itself a
+-- modifier, and what stroke is held right now
+keymap.modkey_map = {
     ["left ctrl"] = "ctrl",
     ["right ctrl"] = "ctrl",
     ["left shift"] = "shift",
@@ -13,10 +16,11 @@ local modkey_map = {
     ["left alt"] = "alt",
     ["right alt"] = "altgr",
 }
+local modkey_map = keymap.modkey_map
 
 local modkeys = { "ctrl", "alt", "altgr", "shift" }
 
-local function key_to_stroke(k)
+function keymap.key_to_stroke(k)
     local stroke = ""
     for _, mk in ipairs(modkeys) do
         if keymap.modkeys[mk] then
@@ -25,6 +29,7 @@ local function key_to_stroke(k)
     end
     return stroke .. k
 end
+local key_to_stroke = keymap.key_to_stroke
 
 function keymap.add(map, overwrite)
     for stroke, commands in pairs(map) do

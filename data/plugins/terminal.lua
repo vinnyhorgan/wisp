@@ -71,9 +71,10 @@ function TerminalView:new()
     self.scrollable = false
     self.title = "terminal"
     local cw, ch = self:get_cell_size()
+    -- no cwd: the shell inherits the editor's, which core.init already
+    -- pointed at the project
     local term, err = system.terminal(80, 24, {
         argv = config.terminal_argv,
-        cwd = core.project_dir,
         cell_width = cw,
         cell_height = ch,
     })
@@ -82,7 +83,7 @@ function TerminalView:new()
     end
     self.terminal = term
     self.terminal:set_palette(palette, fg_color, bg_color)
-    self.color_cache = {}
+    self.color_cache, self.color_count = {}, 0
     -- the pty poller; the weak key ties its lifetime to the view
     core.add_thread(function()
         while self.terminal do
@@ -106,10 +107,15 @@ function TerminalView:get_cell_size()
     return style.code_font:get_width("a"), style.code_font:get_height()
 end
 
--- packed 0xrrggbb from the core becomes a color table exactly once
+-- packed 0xrrggbb from the core becomes a color table exactly once. a
+-- truecolor program can name sixteen million of them, so the cache
+-- starts over instead of growing for the life of the view
 function TerminalView:color_of(packed)
     local color = self.color_cache[packed]
     if not color then
+        if self.color_count >= 4096 then
+            self.color_cache, self.color_count = {}, 0
+        end
         color = {
             math.floor(packed / 65536) % 256,
             math.floor(packed / 256) % 256,
@@ -117,6 +123,7 @@ function TerminalView:color_of(packed)
             255,
         }
         self.color_cache[packed] = color
+        self.color_count = self.color_count + 1
     end
     return color
 end
@@ -276,28 +283,13 @@ local function key_sequence(term, k)
     end
 end
 
-local modifier_keys = {
-    ["left ctrl"] = true,
-    ["right ctrl"] = true,
-    ["left shift"] = true,
-    ["right shift"] = true,
-    ["left alt"] = true,
-    ["right alt"] = true,
-}
-
 local on_key_pressed = keymap.on_key_pressed
 function keymap.on_key_pressed(k)
     local view = core.active_view
-    if not (view.terminal and view:is(TerminalView)) or modifier_keys[k] then
+    if not (view.terminal and view:is(TerminalView)) or keymap.modkey_map[k] then
         return on_key_pressed(k)
     end
-    local stroke = ""
-    for _, mk in ipairs({ "ctrl", "alt", "altgr", "shift" }) do
-        if keymap.modkeys[mk] then
-            stroke = stroke .. mk .. "+"
-        end
-    end
-    if config.terminal_pass_through[stroke .. k] then
+    if config.terminal_pass_through[keymap.key_to_stroke(k)] then
         return on_key_pressed(k)
     end
     local seq = key_sequence(view.terminal, k)
@@ -350,6 +342,9 @@ command.add(nil, {
 command.add(TerminalView, {
     ["terminal:paste"] = function()
         local view = core.active_view
+        if not view.terminal then
+            return
+        end
         local text = system.get_clipboard() or ""
         view.terminal:scroll_reset()
         if view.terminal:bracketed_paste() then
