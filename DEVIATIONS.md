@@ -421,12 +421,18 @@ is now its own function, independent of the animated size.
 **files:** `data/plugins/scale.lua` (new), `data/core/keymap.lua`,
 `data/core/init.lua`, `data/plugins/treeview.lua`, `data/core/view.lua`
 
-`ctrl+=` / `ctrl+-` / `ctrl+0` and `ctrl+wheel` zoom the editor. lite
-could not do it at all -- fonts were immutable once loaded -- and
-lite-xl's scale plugin works around that by monkey-patching the font
-cache; wisp's core resizes a font in place (`font:set_size`, landed at
-the freeze with this as its named consumer), so the plugin is only
-arithmetic.
+`ctrl+=` / `ctrl+-` / `ctrl+0` and `ctrl+wheel` zoom the editor.
+
+lite's whole font api is `load`, `get_width`, `get_height` and
+`set_tab_width`: a loaded font's size is fixed. so rxi's scale plugin
+monkey-patches `renderer.font.load`, keeps a weak table of every font's
+path and size, and reloads each one from disk at every step -- and
+seeds that table with a hardcoded copy of style.lua's four font lines
+that a comment asks you to keep in sync by hand. lite-xl added
+`font:set_size` to its core and its plugin uses it; wisp's core took
+the same shape (landed at the freeze with this as its named consumer),
+so the plugin here is only arithmetic. the difference from lite-xl is
+in the arithmetic, not in the api.
 
 three decisions differ from lite-xl's version:
 

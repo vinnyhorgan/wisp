@@ -186,7 +186,11 @@ than that the swap waits under a settled ecosystem.
 
 ime - lsp (in doubt, not dead) - ai integration in the editor (the
 terminal is the answer for now) - gamma-correct blending - dynamic
-hidpi rescale - tree-sitter while grammars mean compiling c - the js
+hidpi rescale (still no, but the reason has changed: `font:set_size`
+and the scale plugin make the lua side of it trivial now, so all that
+is missing is a way for lua to hear that the window's scale factor
+moved -- a core change, and the core is frozen) - tree-sitter while
+grammars mean compiling c - the js
 division-vs-regex pattern (lite #248) - lite #275 (no effect under
 integer line heights) - full non-utf8 support (replacement chars,
 never hang) - os dialogs, forever
