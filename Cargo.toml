@@ -36,6 +36,10 @@ notify = "8.2"
 # safe wrappers for sigterm (process:terminate) and o_nonblock on the
 # pty master (terminal); compiles no c
 nix = { version = "0.29", features = ["signal", "fs"] }
+# installs the sigterm/sigint/sighup handler. registering one by hand
+# means an unsafe block; this crate's safe api keeps the count at the
+# one exception lua forces on us, and compiles no c either
+signal-hook = { version = "0.3", default-features = false }
 
 [dev-dependencies]
 proptest = "1"

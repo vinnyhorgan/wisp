@@ -330,6 +330,7 @@ fn check_color(t: Option<Table>) -> mlua::Result<Color> {
 fn event_to_multi(lua: &Lua, event: Event) -> mlua::Result<MultiValue> {
     match event {
         Event::Quit => ("quit",).into_lua_multi(lua),
+        Event::Terminate => ("terminate",).into_lua_multi(lua),
         Event::Resized(w, h) => ("resized", w, h).into_lua_multi(lua),
         Event::Exposed => ("exposed",).into_lua_multi(lua),
         Event::FileDropped(file, x, y) => {

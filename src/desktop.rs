@@ -241,6 +241,8 @@ struct App {
     /// the first move cannot report a phantom delta from the origin
     cursor: Option<(f64, f64)>,
     clicks: ClickCounter,
+    /// set from a signal handler, cleared when the editor is told
+    terminated: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl App {
@@ -298,6 +300,15 @@ impl ApplicationHandler for App {
             .with_title("")
             .with_visible(false)
             .with_inner_size(PhysicalSize::new(w, h));
+        // wayland matches a window to its .desktop file by app id, x11 by
+        // WM_CLASS; a window with neither gets a placeholder icon and no
+        // grouping in whatever the desktop uses for a task list. winit
+        // keeps both in one field, so naming it once covers both
+        #[cfg(all(unix, not(target_os = "macos")))]
+        let attrs = {
+            use winit::platform::wayland::WindowAttributesExtWayland;
+            attrs.with_name("wisp", "wisp")
+        };
         let window = Arc::new(
             event_loop
                 .create_window(attrs)
@@ -454,6 +465,14 @@ impl ApplicationHandler for App {
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         let Some((_, thread)) = &self.lua else { return };
         let thread = thread.clone();
+        // swap, not load: the editor must be told once, and telling it
+        // twice would interrupt the shutdown it already started
+        if self
+            .terminated
+            .swap(false, std::sync::atomic::Ordering::Relaxed)
+        {
+            self.push(Event::Terminate);
+        }
         // resume the editor at most a handful of times before returning to
         // winit: consecutive slow frames would otherwise never let the os
         // deliver events (sdl pumped its own queue; winit only pumps when
@@ -529,7 +548,51 @@ fn find_exedir() -> String {
     root.display().to_string()
 }
 
+const USAGE: &str = "\
+usage: wisp [file or directory ...]
+
+  -h, --help     show this message and exit
+  -v, --version  show the version and exit
+
+with no arguments wisp opens the directory it was launched from.
+";
+
+/// sigterm (a logout, `kill`, a service manager), sigint (ctrl+c in the
+/// terminal that launched us) and sighup (that terminal going away) all
+/// mean the same thing: shut down now. unhandled, they kill the process
+/// outright -- unsaved work gone, the terminal's children orphaned.
+///
+/// the flag they set is read in `about_to_wait`, so it is acted on within
+/// one turn of the editor's loop; that loop never waits longer than a
+/// quarter of a second, so the delay is not one anybody can feel
+fn catch_terminating_signals() -> Arc<std::sync::atomic::AtomicBool> {
+    let flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    #[cfg(unix)]
+    for signal in [
+        signal_hook::consts::SIGTERM,
+        signal_hook::consts::SIGINT,
+        signal_hook::consts::SIGHUP,
+    ] {
+        // failing to register costs only the graceful shutdown, which is
+        // not worth refusing to start over
+        let _ = signal_hook::flag::register(signal, Arc::clone(&flag));
+    }
+    flag
+}
+
 pub fn run() {
+    // asked what it is, a program answers on stdout and exits. opening a
+    // window instead is the thing every linux user complains about
+    for arg in std::env::args().skip(1) {
+        match arg.as_str() {
+            "--" => break,
+            "-h" | "--help" => return print!("{USAGE}"),
+            "-v" | "--version" => return println!("wisp {}", env!("CARGO_PKG_VERSION")),
+            _ => {}
+        }
+    }
+    let terminated = catch_terminating_signals();
+
     let event_loop = EventLoop::new().expect("failed to create event loop");
     let start = Instant::now();
     let engine = Engine::shared(Box::new(DesktopPlatform::new(start)));
@@ -542,13 +605,28 @@ pub fn run() {
         mods: ModifiersState::empty(),
         cursor: None,
         clicks: ClickCounter::new(),
+        terminated,
     };
     event_loop.run_app(&mut app).expect("event loop error");
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{ClickCounter, clamp_deadline};
+    use super::{ClickCounter, catch_terminating_signals, clamp_deadline};
+
+    /// the handler is installed for the whole process, which only makes
+    /// sigterm non-fatal here; raising it delivers to this thread
+    #[cfg(unix)]
+    #[test]
+    fn a_terminating_signal_reaches_the_flag() {
+        let flag = catch_terminating_signals();
+        assert!(!flag.load(std::sync::atomic::Ordering::Relaxed));
+        nix::sys::signal::raise(nix::sys::signal::Signal::SIGTERM).unwrap();
+        assert!(
+            flag.load(std::sync::atomic::Ordering::Relaxed),
+            "sigterm never reached the flag: the editor would die on a logout"
+        );
+    }
 
     #[test]
     fn rapid_clicks_cycle_through_caret_word_line() {

@@ -209,6 +209,19 @@ function core.temp_filename(ext)
         .. (ext or "")
 end
 
+-- sigterm, sigint or sighup: the session is ending and there is nobody
+-- to answer the prompt core.quit would raise. save what would otherwise
+-- be lost beside the original -- the same rescue an unhandled error
+-- does -- and then leave the ordinary way
+function core.terminate()
+    for _, doc in ipairs(core.docs) do
+        if doc:is_dirty() and doc.filename then
+            core.try(doc.save, doc, doc.filename .. "~")
+        end
+    end
+    core.quit(true)
+end
+
 function core.quit(force)
     if force then
         delete_temp_files()
@@ -453,6 +466,8 @@ function core.on_event(type, ...)
         end
     elseif type == "quit" then
         core.quit()
+    elseif type == "terminate" then
+        core.terminate()
     end
     return did_keymap
 end

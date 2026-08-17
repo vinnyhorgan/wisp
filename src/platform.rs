@@ -15,6 +15,10 @@ use crate::renderer::{Framebuffer, Rect};
 #[derive(Clone, Debug, PartialEq)]
 pub enum Event {
     Quit,
+    /// sigterm, sigint or sighup: the session is ending and nobody is
+    /// there to answer a prompt. distinct from `Quit`, which is the
+    /// user closing a window and may still be argued with
+    Terminate,
     Resized(i32, i32),
     Exposed,
     FileDropped(std::path::PathBuf, i32, i32),

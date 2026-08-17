@@ -2601,3 +2601,36 @@ fn a_trackpad_glide_scrolls_further_than_the_same_wheel_delta() {
         "a glide is not gained up to match the wheel"
     );
 }
+
+#[test]
+fn a_terminating_signal_rescues_unsaved_work() {
+    let _serial = serial();
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("terminated");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("hello.txt"), "hello wisp\n").unwrap();
+
+    let mut editor = Headless::boot(&dir.display().to_string(), 900, 600, 1.0);
+    editor.run_until_frames(1, 10_000);
+    open_hello_via_treeview(&mut editor);
+    editor.push_event(Event::TextInput("dirty".into()));
+    editor.run_steps(100);
+    assert_eq!(editor.window_title(), "hello.txt* - wisp");
+
+    // a logout or a kill: there is nobody to answer the prompt an
+    // ordinary quit would raise, so the editor must not raise one -- and
+    // must not take the unsaved edit with it
+    editor.push_event(Event::Terminate);
+    editor.run_steps(500);
+    assert!(editor.exited.is_some(), "the editor ignored a terminate");
+    let rescued = std::fs::read_to_string(dir.join("hello.txt~")).expect("no rescue file");
+    assert!(
+        rescued.starts_with("dirty"),
+        "the rescue file lost the edit: {rescued:?}"
+    );
+    // and the original is untouched: the rescue is a copy, not a save
+    assert_eq!(
+        std::fs::read_to_string(dir.join("hello.txt")).unwrap(),
+        "hello wisp\n"
+    );
+}

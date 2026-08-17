@@ -306,12 +306,22 @@ fix is small and local:
   each other. the left group now gets the room the right one leaves less
   a `padding.x` gap, and fades out into that gap over the last `2 *
   padding.x` rather than stopping dead against the right group's icon.
+- **`data/core/init.lua`** -- a `terminate` event (sigterm, sigint,
+  sighup) had no handler because lite's core never delivered one. it
+  cannot go through `core.quit`: that prompts about unsaved changes, and
+  a session that is already ending has nobody to answer. `core.terminate`
+  writes each dirty doc beside its original as `name~` -- the same rescue
+  an unhandled error does -- and then force-quits.
 - **`data/core/config.lua`**, **`data/core/init.lua`** -- one
   `mouse_wheel_scroll` served both devices. a wheel notch is a
   quantized command and a trackpad glide is direct manipulation
   measured in finger pixels; the core hands both over in notch units
   (a glide's pixels divided down), and lite only ever saw the wheel, so
-  it only had the one number. a glide's delta is now multiplied by
+  it only had the one number. the wheel itself was slow, too:
+  50 pixels a notch is 2.4 lines at wisp's metrics (21px of line,
+  measured, not guessed), where the rest of the desktop moves three or
+  more, so it is 84 now -- four lines exactly, which also keeps a notch
+  landing on a line boundary. and a glide's delta is multiplied by
   `config.trackpad_scroll_gain` in `core.on_event` -- the one place
   that knows which device sent the event -- so every consumer
   downstream, the terminal's scrollback included, stays
@@ -527,6 +537,19 @@ not mistaken for oversights:
 the core fixes lite's bugs instead of reproducing them. the observable
 differences, all deliberate:
 
+- **the window names itself.** `wisp` is set as the wayland app id and
+  the x11 WM_CLASS. neither lite nor lite-xl does this; without it the
+  compositor has no way to find the window's .desktop file, so it shows
+  a placeholder icon and cannot group the window in a task list.
+- **sigterm, sigint and sighup are caught** and arrive in lua as a
+  `terminate` event, distinct from `quit` (which is a user closing a
+  window and may still be argued with). unhandled, they kill the
+  process outright: unsaved work gone and the terminal's children
+  orphaned. registering the handler through signal-hook's safe api
+  keeps the crate's one `unsafe` exception at one.
+- **`--help` and `--version` answer on stdout and exit**, and `--` ends
+  option parsing. lite and lite-xl treat every argument as a path, so
+  asking either one what it is opens a window.
 - invalid utf-8 renders as the replacement character; lite's decoder walked
   out of bounds on malformed input.
 - `SCALE` defaults to the real display scale factor; lite detected dpi only
