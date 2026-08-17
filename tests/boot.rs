@@ -516,7 +516,19 @@ fn wheel_scrolls_the_document() {
     let mut editor = boot();
     ctrl(&editor, "n");
     editor.run_steps(50);
-    editor.push_event(Event::TextInput("line\n".repeat(200)));
+    // dense lines that differ from each other at every column: a notch
+    // is a whole number of lines now, so scrolling lands exactly on a
+    // line boundary and a document of repeated text would come back
+    // looking almost identical
+    let text: String = (0..200)
+        .map(|i| {
+            let line: String = (0..60)
+                .map(|c| (b'a' + ((i + c) % 26) as u8) as char)
+                .collect();
+            format!("{line}\n")
+        })
+        .collect();
+    editor.push_event(Event::TextInput(text.into()));
     editor.run_steps(200);
     let (before, w, h) = editor.last_frame();
 
@@ -2562,12 +2574,14 @@ fn a_trackpad_glide_scrolls_further_than_the_same_wheel_delta() {
     // a wheel notch and a pixel of finger travel are different units;
     // the gain is what reconciles them. three notches of wheel must land
     // exactly where one notch-equivalent of glide does at gain 3
+    // must match config.trackpad_scroll_gain
+    const GAIN: f64 = 1.75;
     let text = "line\n".repeat(200);
     let mut glided = boot();
     let mut notched = boot();
     for (editor, delta, phase) in [
         (&mut glided, -1.0, Some("moved")),
-        (&mut notched, -3.0, None),
+        (&mut notched, -GAIN, None),
     ] {
         ctrl(editor, "n");
         editor.run_steps(50);
