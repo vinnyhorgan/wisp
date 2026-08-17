@@ -3040,3 +3040,66 @@ fn helix_mode_is_off_until_it_is_asked_for() {
         "typed text did not reach the document, so helix mode was on"
     );
 }
+
+/// the space prefix used to die on the keystroke that started it: the
+/// same call that set it also cleared it, so the key after space always
+/// fell through to plain normal mode
+#[test]
+fn the_helix_space_prefix_survives_to_the_next_key() {
+    let _serial = serial();
+    // a document has to be in front: with the empty view active there is
+    // no buffer, so helix mode is not engaged at all
+    let mut editor = Headless::boot_args(
+        env!("CARGO_MANIFEST_DIR"),
+        &[&project_dir(), &format!("{}/hello.txt", project_dir())],
+        900,
+        600,
+        1.0,
+    );
+    editor.run_until_frames(1, 10_000);
+    palette(&mut editor, "helix: toggle");
+    editor.run_steps(100);
+
+    // space k reaches the command palette, which then runs a command
+    // whose effect is visible in the title
+    press(&editor, "space");
+    editor.run_steps(50);
+    press(&editor, "k");
+    editor.run_steps(100);
+    editor.push_event(Event::TextInput("core: new doc".into()));
+    editor.run_steps(100);
+    press(&editor, "return");
+    editor.run_steps(200);
+    assert_eq!(
+        editor.window_title(),
+        "unsaved - wisp",
+        "space k did not reach the command palette"
+    );
+}
+
+/// binding a command inside a keymap mode used to claim its *displayed*
+/// binding, so the empty view advertised `helix-space:f` to everybody --
+/// a key that does nothing unless you are in helix mode
+#[test]
+fn a_mode_binding_does_not_claim_the_key_shown_to_everyone() {
+    let _serial = serial();
+    let root = copy_data_root("bindingroot");
+    std::fs::write(
+        root.join("data/user/init.lua"),
+        r#"
+local keymap = require "core.keymap"
+local shown = keymap.get_binding("core:find-file")
+assert(shown == "ctrl+p", "find-file advertises " .. tostring(shown))
+assert(keymap.get_binding("core:find-command") == "ctrl+shift+p")
+io.open(EXEDIR .. "/binding-ok", "wb"):close()
+"#,
+    )
+    .unwrap();
+    let mut editor =
+        Headless::boot_with_exedir(&root.display().to_string(), &project_dir(), 900, 600, 1.0);
+    editor.run_until_frames(1, 10_000);
+    assert!(
+        root.join("binding-ok").exists(),
+        "a mode binding took over the displayed key; see the user module"
+    );
+}

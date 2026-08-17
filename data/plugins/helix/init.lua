@@ -76,10 +76,14 @@ local on_key_pressed = keymap.on_key_pressed
 
 function keymap.on_key_pressed(k)
     keymap.mode = helix.active() and ("helix-" .. (helix.pending or helix.mode)) or nil
+    -- read before the stroke runs: `space` sets the prefix from inside
+    -- this very call, and clearing it afterwards would end it before the
+    -- key it exists to qualify was ever pressed
+    local pending = helix.pending
     local handled = on_key_pressed(k)
     -- a prefix lasts one stroke, whether or not what followed meant
     -- anything; modifiers are not that stroke
-    if helix.pending and not keymap.modkey_map[k] then
+    if pending and helix.pending == pending and not keymap.modkey_map[k] then
         helix.pending = nil
         core.redraw = true
     end

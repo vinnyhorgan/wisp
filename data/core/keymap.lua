@@ -46,7 +46,13 @@ function keymap.add(map, overwrite)
             end
         end
         for _, cmd in ipairs(commands) do
-            keymap.reverse_map[cmd] = stroke
+            -- a mode-qualified stroke does not claim the command's
+            -- displayed binding. `get_binding` answers what to show
+            -- someone who is *not* in that mode -- the empty view would
+            -- otherwise advertise a key that does nothing there
+            if not stroke:find(":", 1, true) then
+                keymap.reverse_map[cmd] = stroke
+            end
         end
     end
 end

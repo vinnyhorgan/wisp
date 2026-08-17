@@ -623,6 +623,13 @@ it cares about and inherits `ctrl+s`, `ctrl+f` and everything else
 untouched. unset -- which is how the editor starts -- the lookup is
 exactly lite's.
 
+binding a command inside a mode does **not** claim its displayed
+binding: `keymap.get_binding` answers what to show someone who is not in
+that mode, and the empty view would otherwise advertise `helix-space:f`
+to everyone -- a key that does nothing unless helix mode is on. a stroke
+containing `:` is mode-qualified by construction, since that is the
+separator the lookup itself uses.
+
 `data/plugins/helix/` is the first consumer: selection-first modal
 editing in helix's lineage, built to what `hx --tutor` teaches. it is
 **opt in** (`config.helix_mode = true` in the user module, or the
