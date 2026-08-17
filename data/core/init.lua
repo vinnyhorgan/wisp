@@ -206,9 +206,7 @@ function core.init()
     for _, filename in ipairs(files) do
         -- an unopenable file (binary, unreadable, ...) must not take the
         -- whole editor down with it
-        local ok = core.try(function()
-            core.root_view:open_doc(core.open_doc(filename))
-        end)
+        local ok = core.try(core.open_file, filename)
         got_file_error = got_file_error or not ok
     end
 
@@ -406,6 +404,25 @@ function core.open_doc(filename)
     return doc
 end
 
+-- a file is opened by whatever claims it. lite had one answer for every
+-- path -- a docview -- and DEVIATIONS §7 made binaries an error rather
+-- than garbage on screen. this is the door that refusal left open: a
+-- plugin adds a claim, gets first refusal on the filename, and returns
+-- the view it opened; the docview stays the answer for everything
+-- nothing else wants.
+core.file_openers = {}
+
+--- opens `filename` in whichever view claims it, and a docview otherwise
+function core.open_file(filename)
+    for _, claim in ipairs(core.file_openers) do
+        local view = claim(filename)
+        if view then
+            return view
+        end
+    end
+    return core.root_view:open_doc(core.open_doc(filename))
+end
+
 function core.get_views_referencing_doc(doc)
     local res = {}
     local views = core.root_view.root_node:get_children()
@@ -518,12 +535,9 @@ function core.on_event(type, ...)
         if info and info.type == "dir" then
             system.exec(string.format("%q %q", EXEFILE, filename))
         else
-            local ok, doc = core.try(core.open_doc, filename)
-            if ok then
-                local node = core.root_view.root_node:get_child_overlapping_point(mx, my)
-                node:set_active_view(node.active_view)
-                core.root_view:open_doc(doc)
-            end
+            local node = core.root_view.root_node:get_child_overlapping_point(mx, my)
+            node:set_active_view(node.active_view)
+            core.try(core.open_file, filename)
         end
     elseif type == "quit" then
         core.quit()

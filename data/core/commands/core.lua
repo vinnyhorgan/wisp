@@ -60,7 +60,7 @@ command.add(nil, {
     ["core:find-file"] = function()
         core.command_view:enter("open file from project", function(text, item)
             text = item and item.text or text
-            core.root_view:open_doc(core.open_doc(text))
+            core.open_file(text)
         end, function(text)
             local files = {}
             for _, item in pairs(core.project_files) do
@@ -78,7 +78,7 @@ command.add(nil, {
 
     ["core:open-file"] = function()
         core.command_view:enter("open file", function(text)
-            core.root_view:open_doc(core.open_doc(common.home_expand(text)))
+            core.open_file(common.home_expand(text))
         end, common.path_suggest)
     end,
 

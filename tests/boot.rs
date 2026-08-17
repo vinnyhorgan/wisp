@@ -485,16 +485,54 @@ fn treeview_scrolling_is_clamped_to_its_content() {
     );
 }
 
+/// the doc still refuses a binary file -- DEVIATIONS §7 -- even though
+/// the hex view now claims every one of them before the doc is asked.
+/// the refusal is the last resort, not the answer, and it has to survive
+/// as the answer for anything that opens a doc directly
 #[test]
-fn binary_files_are_refused() {
+fn binary_files_are_refused_by_the_doc() {
+    let _serial = serial();
+    let root = copy_data_root("binaryroot");
+    let blob = root.join("blob.bin");
+    std::fs::write(&blob, b"\x7fELF\x02\x01\x01\0\0\0\0\0\0\0\0\0\x03\0").unwrap();
+    let marker = root.join("refused");
+    std::fs::write(
+        root.join("data/user/init.lua"),
+        format!(
+            r#"
+local core = require("core")
+local ok, err = pcall(core.open_doc, [[{blob}]])
+assert(not ok, "the doc opened a binary file")
+assert(err:find("binary"), err)
+io.open([[{marker}]], "w"):close()
+"#,
+            blob = blob.display(),
+            marker = marker.display()
+        ),
+    )
+    .unwrap();
+    let mut editor =
+        Headless::boot_with_exedir(&root.display().to_string(), &project_dir(), 900, 600, 1.0);
+    editor.run_until_frames(1, 10_000);
+    assert!(
+        marker.exists(),
+        "the doc did not refuse; see the user module"
+    );
+}
+
+/// a binary file opens in the hex view instead of being turned away: the
+/// hex view claims it through `core.file_openers`, which is the door
+/// DEVIATIONS §7 left open when it made the refusal the default
+#[test]
+fn a_binary_file_opens_in_the_hex_view() {
     let _serial = serial();
     let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("binary");
+    let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let blob = dir.join("blob.bin");
     std::fs::write(&blob, b"\x7fELF\x02\x01\x01\0\0\0\0\0\0\0\0\0\x03\0").unwrap();
 
     let mut editor = boot();
-    // ctrl+o, type the absolute path, return
     ctrl(&editor, "o");
     editor.run_steps(100);
     editor.push_event(Event::TextInput(blob.display().to_string()));
@@ -502,11 +540,11 @@ fn binary_files_are_refused() {
     press(&editor, "return");
     editor.run_steps(500);
 
-    assert_eq!(editor.exited, None, "refusing a binary file must not exit");
+    assert_eq!(editor.exited, None, "opening a binary file must not exit");
     assert_eq!(
         editor.window_title(),
-        "wisp",
-        "a binary file must not open as a document"
+        "blob.bin - wisp",
+        "a binary file did not open in the hex view"
     );
 }
 
@@ -3574,4 +3612,116 @@ fn helix_view_mode_moves_the_view_under_the_cursor() {
     press(&editor, "z");
     editor.run_steps(200);
     assert_ne!(top, editor.last_frame(), "zt and zz drew the same view");
+}
+
+/// boots an editor with a binary file open, which the hex view claims
+fn hex_editor(name: &str, file: &str, bytes: &[u8]) -> (Headless, std::path::PathBuf) {
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(file);
+    std::fs::write(&path, bytes).unwrap();
+    let mut editor = Headless::boot_args(
+        env!("CARGO_MANIFEST_DIR"),
+        &[&dir.display().to_string(), &path.display().to_string()],
+        900,
+        600,
+        1.0,
+    );
+    editor.run_until_frames(1, 10_000);
+    editor.run_steps(100);
+    (editor, path)
+}
+
+/// the hex view's two panes over one cursor: two digits write a byte on
+/// the left, tab moves to the right where a keystroke writes the byte it
+/// is, and the whole run undoes as the one burst of typing it was
+#[test]
+fn the_hex_view_types_bytes_in_both_panes() {
+    let _serial = serial();
+    let original: Vec<u8> = (0u8..32).collect();
+    let (mut editor, file) = hex_editor("hextype", "t.bin", &original);
+
+    // the hex pane takes two digits a byte, then moves on by itself
+    for digit in ["f", "f", "4", "1"] {
+        typed(&editor, digit);
+        editor.run_steps(20);
+    }
+    // tab hands the keyboard to the text pane, which writes the byte you
+    // typed rather than a digit of it
+    press(&editor, "tab");
+    editor.run_steps(20);
+    typed(&editor, "Z");
+    editor.run_steps(50);
+
+    ctrl(&editor, "s");
+    editor.run_steps(200);
+    let mut expected = original.clone();
+    expected[0] = 0xff;
+    expected[1] = 0x41;
+    expected[2] = b'Z';
+    assert_eq!(
+        std::fs::read(&file).unwrap(),
+        expected,
+        "typing did not overwrite the bytes under the cursor"
+    );
+
+    // and it all comes back: a run of typing is one undo, so a handful
+    // of presses is more than enough to reach the file as it was
+    for _ in 0..8 {
+        ctrl(&editor, "z");
+        editor.run_steps(20);
+    }
+    ctrl(&editor, "s");
+    editor.run_steps(200);
+    assert_eq!(
+        std::fs::read(&file).unwrap(),
+        original,
+        "undo did not put the original bytes back"
+    );
+}
+
+/// finding, deleting and inserting: the three things that make a hex
+/// dump an editor rather than a viewer
+#[test]
+fn the_hex_view_finds_deletes_and_inserts_bytes() {
+    let _serial = serial();
+    let (mut editor, file) = hex_editor("hexedit", "e.bin", b"\0hello world\0");
+
+    // a quoted needle is bytes as typed; the match is left selected
+    ctrl(&editor, "f");
+    editor.run_steps(100);
+    editor.push_event(Event::TextInput("\"world\"".into()));
+    editor.run_steps(100);
+    press(&editor, "return");
+    editor.run_steps(100);
+    press(&editor, "delete");
+    editor.run_steps(50);
+    ctrl(&editor, "s");
+    editor.run_steps(200);
+    assert_eq!(
+        std::fs::read(&file).unwrap(),
+        b"\0hello \0",
+        "find then delete did not remove the match"
+    );
+
+    // ctrl+return makes room for a byte at the cursor, and typing fills it
+    ctrl(&editor, "home");
+    editor.run_steps(20);
+    ctrl(&editor, "return");
+    editor.run_steps(20);
+    typed(&editor, "5");
+    editor.run_steps(20);
+    typed(&editor, "8");
+    editor.run_steps(20);
+    // and ctrl+shift+return adds one to the end
+    ctrl_shift(&editor, "return");
+    editor.run_steps(50);
+    ctrl(&editor, "s");
+    editor.run_steps(200);
+    assert_eq!(
+        std::fs::read(&file).unwrap(),
+        b"X\0hello \0\0",
+        "inserting and appending did not change the file's size"
+    );
 }

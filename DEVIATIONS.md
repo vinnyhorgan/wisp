@@ -762,6 +762,69 @@ built on them (`C`, `s`, `&`, `alt-s`, `S`, `(`/`)`, `alt-,`), the
 tutor's chapter 5 in full, treesitter text objects, and `gw`'s two-letter
 jump labels.
 
+## 20. a file is opened by whatever claims it
+
+**files:** `data/core/init.lua`, `data/core/commands/core.lua`,
+`data/plugins/treeview.lua`, `data/plugins/hexview/`
+
+lite had one answer for every path -- build a doc, put a docview on it --
+and §7 turned that into an *error* for binary files rather than garbage
+on screen, leaving one sentence open: "a view that claims a file type can
+open it". `core.open_file(filename)` is that door. `core.file_openers` is
+an ordered list of claims; each is handed the filename and returns the
+view it opened, or nothing. the docview is the fallback and stays the
+answer for everything nothing else wants.
+
+the call sites that changed are the ones where a *person* asks for a file
+-- the open prompt, the project file finder, the tree view, a dropped
+file, the command line. `core.open_doc` is untouched and still what the
+rest of the editor uses: project search opens its result as a doc because
+it then puts the selection on a line, and a split reuses the doc it
+already has.
+
+`data/plugins/hexview/` is the first claim, and it is the universal one.
+where an imageview will claim pngs, a hexview claims every binary file,
+so §7's refusal moves from being the answer to being the last resort --
+what happens when nothing claims the file.
+
+**the model is not a doc.** a doc is a list of `"\n"`-terminated lines,
+and no arrangement of lines survives a round trip through arbitrary
+bytes: loading strips the newlines and saving puts them back. so
+`plugins/hexview/buffer.lua` is its own model -- fixed-size chunks of a
+lua string, so an overwrite (which is what nearly every keystroke is)
+rewrites one chunk and leaves every other byte's address alone. only a
+change of *size* rebuilds, which is honest, because every byte after the
+edit really has moved. offsets are 0-based there and nowhere else in
+wisp: that is what every hex editor, debugger and format spec uses, and
+translating once at the view's edge is cheaper than translating in the
+reader's head on every line.
+
+the undo stack is the doc's, borrowed. an entry is the splice that puts
+things back, so undo and redo are one operation reading from opposite
+stacks, and dirtiness is that stack's index walking back *down* rather
+than a counter going up -- undoing to where the file was saved is clean
+again, not merely older. a run of typing merges into one entry, including
+the second hex digit of a byte, which must not cost an undo step of its
+own.
+
+**two panes over one cursor**, hex on the left and the same bytes as text
+on the right, `tab` between them. the pane that does not have the
+keyboard draws an outline where the other draws a filled block, so both
+halves always say where you are and only one claims to be listening.
+bytes are coloured by what they are -- padding fades, printable text
+reads as text, tabs and newlines stand apart from the rest of the noise
+-- which is most of what reading a hex dump is.
+
+editing **overwrites**: a file format usually has a shape, and typing
+into it should not move everything after the cursor. inserting and
+deleting bytes are deliberately their own keys. sixteen bytes a row is
+not a setting -- it is what every hex dump anyone has ever read is laid
+out in, and an offset ending in zero is a landmark you can count from.
+
+the quit prompt and the signal rescue both walk `core.docs`, which a hex
+view is not in, so the plugin wraps both: unsaved bytes are exactly as
+hard to lose as unsaved text.
+
 ## kept on purpose
 
 lite behaviors evaluated deliberately and kept, recorded so they are

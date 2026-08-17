@@ -184,7 +184,7 @@ function TreeView:on_mouse_pressed(button, x, y, clicks)
         self.item_count = nil
     else
         core.try(function()
-            core.root_view:open_doc(core.open_doc(self.hovered_item.filename))
+            core.open_file(self.hovered_item.filename)
         end)
     end
 end

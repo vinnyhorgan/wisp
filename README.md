@@ -20,9 +20,12 @@ bug-fixed where not. every deliberate difference is written down in
   caret), one binary
 - a real terminal in a view: alacritty's vt engine on a polled pty, drawn
   through the same renderer as everything else
+- helix mode, opt in: selection-first modal editing built to what
+  `hx --tutor` teaches
+- a hex editor: binary files open in it instead of being turned away
 - `unsafe_code = "deny"`, with a single documented exception, and it's lua's
   fault
-- the whole editor boots headless in the test suite: 87 of its 207 tests
+- the whole editor boots headless in the test suite: 90 of its 210 tests
   feed it fake input and read the pixels coming back. the screenshots on
   this page were rendered that way too
 
