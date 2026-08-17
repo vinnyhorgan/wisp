@@ -4051,3 +4051,53 @@ fn a_documents_bare_keys_survive_the_image_views_bindings() {
         "typing = into a document did nothing; a mode leaked into the plain keymap"
     );
 }
+
+/// an image view follows the file the way a document does: iterating on
+/// an asset in another program and flipping back to wisp has to show the
+/// asset, not the one that was there when it was opened
+#[test]
+fn an_image_view_reloads_when_the_file_changes() {
+    let _serial = serial();
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("imgreload");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("asset.png");
+    // red in the top-left quadrant only
+    image::RgbaImage::from_fn(80, 80, |x, y| {
+        if x < 40 && y < 40 {
+            image::Rgba([255, 0, 0, 255])
+        } else {
+            image::Rgba([0, 0, 255, 255])
+        }
+    })
+    .save(&file)
+    .unwrap();
+
+    let mut editor = Headless::boot_args(
+        env!("CARGO_MANIFEST_DIR"),
+        &[&dir.display().to_string(), &file.display().to_string()],
+        900,
+        600,
+        1.0,
+    );
+    editor.run_until_frames(1, 10_000);
+    editor.run_steps(300);
+    assert_eq!(count_color(&editor, 0xff_00_00), 40 * 40);
+
+    // the same shape, all red now
+    image::RgbaImage::from_pixel(80, 80, image::Rgba([255, 0, 0, 255]))
+        .save(&file)
+        .unwrap();
+    let f = std::fs::OpenOptions::new().write(true).open(&file).unwrap();
+    f.set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(3600))
+        .unwrap();
+    drop(f);
+
+    // the scan runs every 5 virtual seconds, like autoreload's
+    editor.run_steps(5000);
+    assert_eq!(
+        count_color(&editor, 0xff_00_00),
+        80 * 80,
+        "the image view kept showing the picture that was there when it opened"
+    );
+}

@@ -13,6 +13,7 @@
 local core = require("core")
 local common = require("core.common")
 local command = require("core.command")
+local config = require("core.config")
 local keymap = require("core.keymap")
 local style = require("core.style")
 local View = require("core.view")
@@ -46,7 +47,54 @@ function ImageView:new(filename, image)
     self.scale = 1
     -- until something is zoomed by hand, the image follows the window
     self.fitting = true
+    -- the file as it was when it was decoded, so the loop below can tell
+    -- that the picture on screen is no longer the picture on disk
+    self.stat = filename and system.get_file_info(filename) or nil
 end
+
+-- the editor auto-reloads a doc whose file changes underneath it, and an
+-- image view that did not would be the editor quietly showing something
+-- that is no longer there -- which is the whole of what an image view is
+-- for. same loop, same rate as autoreload's
+function ImageView:reload_if_changed()
+    local info = self.filename and system.get_file_info(self.filename)
+    if not info or not self.stat then
+        return
+    end
+    if info.modified == self.stat.modified and info.size == self.stat.size then
+        return
+    end
+    self.stat = info
+    -- a file caught mid-write is not an error: the next scan sees the
+    -- finished one, and until then the picture already on screen is the
+    -- better answer
+    local ok, image = pcall(renderer.image.load, self.filename)
+    if not ok then
+        return
+    end
+    local w, h = self.image:get_width(), self.image:get_height()
+    self.image = image
+    -- a picture of the same shape must not jump: iterating on an asset
+    -- means looking at the same corner of it over and over, so the zoom
+    -- and the point are kept. a different shape has nowhere to keep them
+    if image:get_width() ~= w or image:get_height() ~= h then
+        self.fitting = true
+    end
+    core.redraw = true
+    core.log_quiet('auto-reloaded image "%s"', self.filename)
+end
+
+core.add_thread(function()
+    while true do
+        for _, view in ipairs(core.root_view.root_node:get_children()) do
+            if view:is(ImageView) then
+                view:reload_if_changed()
+            end
+            coroutine.yield()
+        end
+        coroutine.yield(config.project_scan_rate)
+    end
+end)
 
 function ImageView:get_name()
     return self.filename and self.filename:match("[^/\\]*$") or "image"

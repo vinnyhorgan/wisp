@@ -856,6 +856,22 @@ than a checkerboard -- transparency reads against it, the image's extent
 is always visible, and it is one rectangle instead of the thousands a
 checkerboard would put on the draw path every frame.
 
+an image view follows its file the way a doc does, on autoreload's own
+loop and at its rate: an image view that did not would be the editor
+quietly showing something that is no longer there, which is the whole of
+what an image view is for. a picture that comes back the same shape keeps
+its zoom and its point -- iterating on an asset means looking at the same
+corner of it over and over -- and one caught mid-write is not an error,
+because the next scan sees the finished file and until then what is
+already on screen is the better answer.
+
+what is **not** guarded there: an image is decoded whole, four bytes a
+pixel, and nothing knows how many pixels it has until it has been
+decoded. a png that says it is 30000 square is 3.6 gb before anything can
+refuse it. the honest place for that limit is the core's own
+`renderer.image.load`, not a second png header parser in lua, so it is
+written down here rather than half-solved.
+
 two guards follow from the model rather than from taste. the buffer is
 memory-resident, so a file past 64 mb is **refused** with its size in the
 message -- binaries are where the enormous files live, and an editor that
