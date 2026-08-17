@@ -86,6 +86,27 @@ function keymap.on_key_released(k)
     end
 end
 
+-- a modified wheel is a stroke like any other, so ctrl+wheel can be
+-- bound to a command. only the vertical wheel has a name: it is the one
+-- with a consumer, and the horizontal one already means "pan sideways"
+-- everywhere in the editor. returns true when a command ran, and the
+-- wheel is then not also a scroll
+function keymap.on_mouse_wheel(y)
+    if y == 0 then
+        return false
+    end
+    local commands = keymap.map[key_to_stroke(y > 0 and "wheelup" or "wheeldown")]
+    if not commands then
+        return false
+    end
+    for _, cmd in ipairs(commands) do
+        if command.perform(cmd) then
+            return true
+        end
+    end
+    return false
+end
+
 keymap.add({
     ["ctrl+shift+p"] = "core:find-command",
     ["ctrl+p"] = "core:find-file",

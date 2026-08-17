@@ -132,10 +132,17 @@ end
 -- long result lines pan sideways through the §8 protocol. the result
 -- list is unbounded, so the widest row is cached against the result
 -- count (results only ever grow, and a new search replaces the list)
+-- and against the font size, which a zoom changes under it
 function ResultsView:get_h_scrollable_size()
-    if self.widest_count ~= #self.results or self.widest_of ~= self.results then
+    local size = style.code_font:get_size()
+    if
+        self.widest_count ~= #self.results
+        or self.widest_of ~= self.results
+        or self.widest_size ~= size
+    then
         self.widest_count = #self.results
         self.widest_of = self.results
+        self.widest_size = size
         local w = 0
         for _, item in ipairs(self.results) do
             local text = string.format("%s at line %d (col %d): ", item.file, item.line, item.col)

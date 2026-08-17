@@ -385,7 +385,9 @@ function core.on_event(type, ...)
         if phase == "ended" then
             wheel_axis = nil
         end
-        core.root_view:on_mouse_wheel(y, x)
+        if not keymap.on_mouse_wheel(y) then
+            core.root_view:on_mouse_wheel(y, x)
+        end
     elseif type == "filedropped" then
         local filename, mx, my = ...
         local info = system.get_file_info(filename)

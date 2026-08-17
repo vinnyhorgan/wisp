@@ -91,10 +91,16 @@ function DocView:get_scrollable_size()
 end
 
 -- measuring every line to find the widest is too slow to repeat per
--- frame, so the result is cached until the doc reports a change
+-- frame, so the result is cached until the doc reports a change -- or
+-- until the font resizes under it, which changes every width the cache
+-- holds without touching a single line
 function DocView:get_widest_line_width()
-    if self.widest_change_count ~= self.doc.change_count then
-        local font = self:get_font()
+    local font = self:get_font()
+    if
+        self.widest_change_count ~= self.doc.change_count
+        or self.widest_font_size ~= font:get_size()
+    then
+        self.widest_font_size = font:get_size()
         font:set_tab_width(font:get_width(" ") * config.indent_size)
         local widest = 0
         for _, line in ipairs(self.doc.lines) do

@@ -8,6 +8,16 @@ local View = require("core.view")
 
 config.treeview_size = 200 * SCALE
 
+-- the width is the one piece of layout the user sets by hand, so it is
+-- kept at the scale the editor booted at and multiplied up on the way
+-- out. zooming then scales a dragged width exactly, and returning to
+-- 100% returns it to the pixel it was dragged to
+local boot_scale = SCALE
+
+local function to_screen(size)
+    return size * SCALE / boot_scale
+end
+
 local function get_depth(filename)
     local n = 0
     for sep in filename:gmatch("[\\/]") do
@@ -31,7 +41,7 @@ end
 -- of a locked split is dragged
 function TreeView:set_target_size(axis, value)
     if axis == "x" then
-        self.target_size = math.max(value, 80 * SCALE)
+        self.target_size = math.max(value, 80 * SCALE) * boot_scale / SCALE
         return true
     end
 end
@@ -184,7 +194,11 @@ function TreeView:update()
     -- stays on screen and can be grabbed again
     local dest = 0
     if self.visible then
-        dest = common.clamp(self.target_size, 80 * SCALE, core.root_view.size.x - 80 * SCALE)
+        dest = common.clamp(
+            to_screen(self.target_size),
+            80 * SCALE,
+            core.root_view.size.x - 80 * SCALE
+        )
     end
     if self.init_size then
         self.size.x = dest

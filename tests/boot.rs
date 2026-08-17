@@ -2374,3 +2374,100 @@ fn a_finished_shell_closes_its_tab() {
     let ok = poll_editor(&mut editor, 5, |e| !e.window_title().contains("terminal"));
     assert!(ok, "terminal tab never closed: {}", editor.window_title());
 }
+
+/// everything that is not one of the two flat background colors:
+/// glyphs, icons, dividers, scrollbars. a bigger font paints more of it
+fn ink(frame: &[u32]) -> usize {
+    frame
+        .iter()
+        .filter(|&&p| p != 0x1e1e2e && p != 0x181825)
+        .count()
+}
+
+#[test]
+fn zooming_grows_the_editor_and_a_reset_puts_every_pixel_back() {
+    let _serial = serial();
+    let mut editor = boot();
+    open_hello_via_treeview(&mut editor);
+    editor.set_focus(false);
+    editor.run_steps(500);
+    let before = editor.last_frame().0;
+
+    for _ in 0..3 {
+        ctrl(&editor, "=");
+        editor.run_steps(300);
+    }
+    let bigger = editor.last_frame().0;
+    assert!(
+        ink(&bigger) > ink(&before),
+        "ctrl+= painted no more ink ({} -> {})",
+        ink(&before),
+        ink(&bigger)
+    );
+
+    for _ in 0..6 {
+        ctrl(&editor, "-");
+        editor.run_steps(300);
+    }
+    let smaller = editor.last_frame().0;
+    assert!(
+        ink(&smaller) < ink(&before),
+        "ctrl+- painted no less ink ({} -> {})",
+        ink(&before),
+        ink(&smaller)
+    );
+
+    // the whole reason every metric is measured from its boot value: a
+    // reset is an identity. lite-xl multiplies the live numbers by a
+    // ratio per step, so its rounding compounds and a reset lands near,
+    // but not on, where it started
+    ctrl(&editor, "0");
+    editor.run_steps(500);
+    assert_eq!(
+        before,
+        editor.last_frame().0,
+        "a reset did not restore the boot scale exactly"
+    );
+}
+
+#[test]
+fn ctrl_wheel_zooms_instead_of_scrolling() {
+    let _serial = serial();
+
+    // the reference: one zoom step out, driven by the keyboard, on a doc
+    // long enough that any stray scroll would move the text
+    let long_text = "line\n".repeat(200);
+    let mut reference = boot();
+    ctrl(&reference, "n");
+    reference.run_steps(50);
+    reference.push_event(Event::TextInput(long_text.clone().into()));
+    reference.set_focus(false);
+    reference.run_steps(300);
+    ctrl(&reference, "-");
+    reference.run_steps(500);
+    let expected = reference.last_frame().0;
+    drop(reference);
+
+    let mut editor = boot();
+    ctrl(&editor, "n");
+    editor.run_steps(50);
+    editor.push_event(Event::TextInput(long_text.into()));
+    editor.set_focus(false);
+    editor.run_steps(300);
+
+    // the wheel goes to the view under the mouse, so move there first
+    let (_, w, h) = editor.last_frame();
+    editor.push_event(Event::MouseMoved(w / 2, h / 2, 0, 0));
+    editor.run_steps(50);
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    editor.push_event(Event::MouseWheel(0.0, -1.0, None));
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(500);
+
+    assert_eq!(
+        expected,
+        editor.last_frame().0,
+        "ctrl+wheel did not land exactly where scale:decrease does"
+    );
+}
+

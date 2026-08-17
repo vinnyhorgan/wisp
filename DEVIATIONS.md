@@ -316,6 +316,12 @@ fix is small and local:
   silently dropped empty fields (`a,,b` became `a,b`) and corrupted
   multi-character delimiters (`a->b` became `a->>b`). splitting is now a
   plain full-delimiter split that keeps empty fields.
+- **`data/core/docview.lua`**, **`data/plugins/projectsearch.lua`** --
+  both cache a widest-line measurement in pixels, keyed on the content
+  that produced it: the doc's `change_count`, the result list's length.
+  a font that resizes under the cache invalidates every width in it
+  without touching either key, so the sideways scroll range went stale
+  the moment §15 landed. both caches now also key on the font's size.
 
 ## 11. launched bare, wisp opens the current directory
 
@@ -409,6 +415,48 @@ offset to `size.y` -- fine when the height never moved. animated, both
 the offset and the box the text is centred in collapse together, sliding
 an expired message up into view partway through the hide. the row height
 is now its own function, independent of the animated size.
+
+## 15. runtime zoom
+
+**files:** `data/plugins/scale.lua` (new), `data/core/keymap.lua`,
+`data/core/init.lua`, `data/plugins/treeview.lua`
+
+`ctrl+=` / `ctrl+-` / `ctrl+0` and `ctrl+wheel` zoom the editor. lite
+could not do it at all -- fonts were immutable once loaded -- and
+lite-xl's scale plugin works around that by monkey-patching the font
+cache; wisp's core resizes a font in place (`font:set_size`, landed at
+the freeze with this as its named consumer), so the plugin is only
+arithmetic.
+
+three decisions differ from lite-xl's version:
+
+- **one mode, not two.** lite-xl offers "code" (the editor font only)
+  and "ui" (everything), defaulting to code. with one font at four
+  sizes there is nothing to gain from leaving the chrome behind at the
+  old size next to text at the new one, so zooming scales everything --
+  the way a browser does. `config.plugins.scale` and its config_spec
+  have no counterpart here.
+- **every value is recomputed from its boot value, never from its
+  current one.** lite-xl multiplies the live numbers by the step's
+  ratio, so `common.round` on padding and divider sizes throws away a
+  little each step and a reset lands near, but not on, where it
+  started. measuring from a base makes a reset an identity, which the
+  regression test asserts as whole-frame pixel equality after
+  +3 steps, -6 steps, reset. that test fails against lite-xl's shape.
+- **zoom is a multiple of the boot scale**, not an absolute scale
+  factor, so 1 is always "normal" and a step is the same fraction of it
+  whatever `WISP_SCALE` or the display said. the one-pixel details
+  (divider, caret, scrollbar) keep a floor of 1px, since a hairline
+  that rounds to zero stops being drawn at all.
+
+two supporting changes. `keymap.on_mouse_wheel` gives the vertical
+wheel a stroke name (`wheelup` / `wheeldown`, with modifiers) so
+`ctrl+wheel` is an ordinary binding rather than a special case in
+`core.on_event`; an unbound wheel falls through to scrolling exactly as
+before. and the treeview stores its width at the scale the editor
+booted at, multiplying it up on the way out, so a zoom scales a
+hand-dragged width exactly and a reset returns it to the pixel it was
+dragged to.
 
 ## kept on purpose
 
