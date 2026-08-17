@@ -646,6 +646,25 @@ two details follow from it:
   it** in the background colour -- inverse video, and it covers lite's
   thin caret without having to suppress it.
 
+word motions are the plugin's own (`plugins/helix/motions.lua`) rather
+than lite's. lite's `translate` splits the world in two -- word
+characters and `config.non_word_chars` -- which is all its own motions
+need; helix stops at every change of *class*, and the tutor's own test
+is that `one-of-a-kind` takes seven `w` presses (word, punctuation,
+word, ...) where `W` takes one. that needs three classes, so the plugin
+carries its own classifier and leaves lite's alone.
+
+two behaviours worth naming, because both were wrong first:
+
+- **`h j k l` move, `w e b` select.** they are different verbs in helix
+  and cannot share an implementation: the first collapses the selection
+  to the one character under the block, the second lays a selection from
+  where the cursor was to where the motion landed. in select mode both
+  keep the anchor they already had.
+- **`w` from inside a gap anchors at the word after it.** otherwise a
+  second `w` selects the gap on its own and a count never advances past
+  the first word, so a motion may name the anchor it wants and `w` does.
+
 typed text reaches the document only in insert mode; in normal and
 select mode the letters are commands, so `DocView:on_text_input`
 swallows them. the command prompt is a `DocView` subclass and is

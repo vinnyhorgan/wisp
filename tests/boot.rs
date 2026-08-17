@@ -2834,3 +2834,75 @@ fn helix_mode_moves_a_block_cursor_and_edits_modally() {
         "d deleted the wrong amount"
     );
 }
+
+/// helix mode, chapter 3 of the tutor: w/e/b select by word, W/E/B by
+/// WORD (the tutor's own case is that `one-of-a-kind` takes seven w and
+/// one W), counts repeat a motion, c changes, x takes whole lines
+#[test]
+fn helix_word_motions_counts_and_line_selection() {
+    let _serial = serial();
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("helixwords");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("w.txt");
+    std::fs::write(&file, "one two three\nalpha-beta gamma\nlast line\n").unwrap();
+
+    let mut editor = Headless::boot_args(
+        env!("CARGO_MANIFEST_DIR"),
+        &[&dir.display().to_string(), &file.display().to_string()],
+        900,
+        600,
+        1.0,
+    );
+    editor.run_until_frames(1, 10_000);
+    palette(&mut editor, "helix: toggle");
+    editor.run_steps(100);
+
+    let save_and_read = |editor: &mut Headless| {
+        ctrl(editor, "s");
+        editor.run_steps(200);
+        std::fs::read_to_string(&file).unwrap()
+    };
+
+    // w selects "one " (the word and the gap after it), d deletes it
+    press(&editor, "w");
+    press(&editor, "d");
+    editor.run_steps(50);
+    assert_eq!(
+        save_and_read(&mut editor).lines().next().unwrap(),
+        "two three",
+        "w then d did not take one word and its gap"
+    );
+
+    // x takes the whole line including its newline, so d removes it
+    press(&editor, "x");
+    press(&editor, "d");
+    editor.run_steps(50);
+    assert_eq!(
+        save_and_read(&mut editor),
+        "alpha-beta gamma\nlast line\n",
+        "x then d did not remove the line"
+    );
+
+    // W takes the whole hyphenated WORD where w would stop at every dash
+    press(&editor, "shift+w");
+    press(&editor, "d");
+    editor.run_steps(50);
+    assert_eq!(
+        save_and_read(&mut editor),
+        "gamma\nlast line\n",
+        "W did not treat one-of-a-kind style text as a single WORD"
+    );
+
+    // a count folds the repeats into one selection: 2w crosses two words
+    // and the newline between them
+    press(&editor, "2");
+    press(&editor, "w");
+    press(&editor, "d");
+    editor.run_steps(50);
+    assert_eq!(
+        save_and_read(&mut editor),
+        "line\n",
+        "W did not treat one-of-a-kind style text as a single WORD"
+    );
+}

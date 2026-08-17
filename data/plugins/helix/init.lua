@@ -16,7 +16,9 @@ local command = require("core.command")
 local config = require("core.config")
 local keymap = require("core.keymap")
 local style = require("core.style")
+local common = require("core.common")
 local translate = require("core.doc.translate")
+local motions = require("plugins.helix.motions")
 local DocView = require("core.docview")
 local StatusView = require("core.statusview")
 
@@ -26,6 +28,15 @@ local helix = {}
 
 helix.enabled = false
 helix.mode = "normal"
+
+-- a count typed before a motion (`3w`), consumed by whatever runs next
+helix.count = nil
+
+function helix.take_count()
+    local n = helix.count or 1
+    helix.count = nil
+    return n
+end
 
 -- ---------------------------------------------------------------- state
 
@@ -103,30 +114,63 @@ function helix.head_char(doc)
     return hl, hc
 end
 
--- every motion in helix is the same shape: the head goes to `line, col`,
--- and the anchor either follows it (normal mode: a fresh selection) or
--- stays put (select mode: the selection grows)
-function helix.move_head(doc, line, col, extend)
-    if extend then
-        local _, _, al, ac = doc:get_selection()
-        doc:set_selection(line, col, al, ac)
-    else
-        doc:set_selection(line, col, line, col)
+-- the anchor block, the mirror of `head_char`: the character the far end
+-- of the selection is standing on
+function helix.anchor_char(doc)
+    local hl, hc, al, ac = doc:get_selection()
+    if hl > al or (hl == al and hc > ac) then
+        return al, ac
     end
-    helix.widen(doc)
+    return doc:position_offset(al, ac, translate.previous_char)
 end
 
--- a motion expressed the way lite's translate functions are: it receives
--- the position the block sits on, which is what a helix user is pointing
--- at, never the exclusive head one past it
-function helix.motion(fn, extend, ...)
+-- lay the selection down in block terms: it runs from the character at
+-- `(al, ac)` to the character at `(line, col)`, both included. lite's
+-- head lives *between* characters, so whichever end is further on gets
+-- pushed one character past the block it covers
+function helix.place(doc, al, ac, line, col)
+    if line > al or (line == al and col >= ac) then
+        local hl, hc = translate.next_char(doc, line, col)
+        -- at the very end of the document there is nothing in front to
+        -- take, so the block is as wide as it can be
+        doc:set_selection(hl, hc, al, ac)
+    else
+        local nl, nc = translate.next_char(doc, al, ac)
+        doc:set_selection(line, col, nl, nc)
+    end
+end
+
+-- helix has two flavours of motion and they are not interchangeable.
+-- `h j k l` *move*: the block jumps and the selection collapses to the
+-- one character under it. `w e b` *select*: the selection is laid from
+-- where the cursor was to wherever the motion landed. in select mode
+-- both keep the anchor they already had, which is the whole point of it.
+--
+-- `kind` is "select" for the second flavour, nil for the first
+function helix.motion(fn, kind, ...)
     local doc = core.active_view.doc
     local line, col = helix.head_char(doc)
-    -- the destination is unpacked into locals first: a call in any but
-    -- the last argument position is truncated to one value, which would
-    -- silently drop the column
-    local dline, dcol = fn(doc, line, col, ...)
-    helix.move_head(doc, dline, dcol, extend or helix.mode == "select")
+    local al, ac
+    if helix.mode == "select" then
+        al, ac = helix.anchor_char(doc)
+    elseif kind == "select" then
+        al, ac = line, col
+    end
+    for i = 1, helix.take_count() do
+        -- unpacked into locals first: a call in any but the last
+        -- argument position is truncated to one value, which would
+        -- silently drop the column. a motion may also name the anchor it
+        -- wants, which is how `w` skips a leading gap
+        local dline, dcol, sline, scol = fn(doc, line, col, ...)
+        if i == 1 and sline and not al then
+            al, ac = sline, scol
+        end
+        line, col = dline, dcol
+    end
+    if not al then
+        al, ac = line, col
+    end
+    helix.place(doc, al, ac, line, col)
 end
 
 -- ---------------------------------------------------------------- edits
@@ -151,10 +195,15 @@ end
 
 local function delete_selection()
     local doc = core.active_view.doc
-    if doc:has_selection() then
-        doc:remove(doc:get_selection())
+    if not doc:has_selection() then
+        return
     end
-    local line, col = doc:get_selection()
+    -- the start of the range, taken *before* the removal: sanitize only
+    -- clamps the old head, and a head one line down is still a valid
+    -- position afterwards, so it would survive as a cursor in the wrong
+    -- place rather than collapsing to where the text used to be
+    local line, col = doc:get_selection(true)
+    doc:remove(doc:get_selection())
     doc:set_selection(line, col, line, col)
 end
 
@@ -226,6 +275,14 @@ local function doc()
     return core.active_view.doc
 end
 
+-- j and k as ordinary motions, so a count applies to them like any other
+local function vertical(step)
+    return function(d, line, col)
+        line = common.clamp(line + step, 1, #d.lines)
+        return line, math.min(col, math.max(1, #d.lines[line] - 1))
+    end
+end
+
 command.add(nil, {
     ["helix:toggle"] = function()
         if helix.enabled then
@@ -289,14 +346,87 @@ command.add(helix.active, {
         helix.motion(translate.next_char)
     end,
     ["helix:move-up"] = function()
-        local line, col = helix.head_char(doc())
-        helix.move_head(doc(), line - 1, col, helix.mode == "select")
+        helix.motion(vertical(-1))
     end,
     ["helix:move-down"] = function()
+        helix.motion(vertical(1))
+    end,
+
+    ["helix:next-word-start"] = function()
+        helix.motion(motions.next_word_start, "select", false)
+    end,
+    ["helix:next-word-end"] = function()
+        helix.motion(motions.next_word_end, "select", false)
+    end,
+    ["helix:previous-word-start"] = function()
+        helix.motion(motions.previous_word_start, "select", false)
+    end,
+    ["helix:next-long-word-start"] = function()
+        helix.motion(motions.next_word_start, "select", true)
+    end,
+    ["helix:next-long-word-end"] = function()
+        helix.motion(motions.next_word_end, "select", true)
+    end,
+    ["helix:previous-long-word-start"] = function()
+        helix.motion(motions.previous_word_start, "select", true)
+    end,
+
+    ["helix:select-mode"] = function()
+        helix.set_mode(helix.mode == "select" and "normal" or "select")
+    end,
+
+    -- `x` takes the whole line the cursor is on, and takes one more each
+    -- time it is pressed -- the anchor stays at the top of the run
+    ["helix:select-line"] = function()
+        local d = doc()
+        local hl, hc = helix.head_char(d)
+        local al = helix.anchor_char(d)
+        local top = math.min(al, hl)
+        local bottom = math.max(al, hl)
+        local n = helix.take_count()
+        -- the first press squares up whatever lines the selection
+        -- touches; once it already reaches a line end, each press takes
+        -- one more line
+        if hc >= #d.lines[bottom] and hl >= al then
+            bottom = math.min(#d.lines, bottom + n)
+        elseif n > 1 then
+            bottom = math.min(#d.lines, bottom + n - 1)
+        end
+        -- the line's newline is taken too, so `x d` removes the line
+        -- rather than emptying it
+        helix.place(d, top, 1, bottom, #d.lines[bottom])
+    end,
+
+    -- `;` throws the selection away and keeps the cursor where it is
+    ["helix:collapse-selection"] = function()
         local line, col = helix.head_char(doc())
-        helix.move_head(doc(), line + 1, col, helix.mode == "select")
+        helix.place(doc(), line, col, line, col)
+    end,
+
+    -- `alt-;` keeps the selection and moves the cursor to its other end
+    ["helix:flip-selections"] = function()
+        local hl, hc, al, ac = doc():get_selection()
+        doc():set_selection(al, ac, hl, hc)
+    end,
+
+    ["helix:change"] = function()
+        delete_selection()
+        helix.set_mode("insert")
     end,
 })
+
+-- digits before a motion build a count; `0` only continues one, so it
+-- stays free for the line-start binding helix gives it
+for digit = 0, 9 do
+    command.add(helix.active, {
+        ["helix:count-" .. digit] = function()
+            if digit == 0 and not helix.count then
+                return
+            end
+            helix.count = math.min((helix.count or 0) * 10 + digit, 10000)
+        end,
+    })
+end
 
 keymap.add({
     ["helix-normal:h"] = "helix:move-left",
@@ -316,8 +446,38 @@ keymap.add({
     ["helix-normal:o"] = "helix:open-below",
     ["helix-normal:shift+o"] = "helix:open-above",
 
+    ["helix-normal:w"] = "helix:next-word-start",
+    ["helix-normal:e"] = "helix:next-word-end",
+    ["helix-normal:b"] = "helix:previous-word-start",
+    ["helix-normal:shift+w"] = "helix:next-long-word-start",
+    ["helix-normal:shift+e"] = "helix:next-long-word-end",
+    ["helix-normal:shift+b"] = "helix:previous-long-word-start",
+
+    ["helix-normal:v"] = "helix:select-mode",
+    ["helix-normal:x"] = "helix:select-line",
+    ["helix-normal:;"] = "helix:collapse-selection",
+    ["helix-normal:alt+;"] = "helix:flip-selections",
+    ["helix-normal:c"] = "helix:change",
+
     ["helix-insert:escape"] = "helix:normal-mode",
     ["helix-select:escape"] = "helix:normal-mode",
 })
+
+for digit = 0, 9 do
+    keymap.add({ ["helix-normal:" .. digit] = "helix:count-" .. digit })
+end
+
+-- select mode is normal mode with every motion extending instead of
+-- replacing, so it shares the bindings outright: `helix.mode` is the
+-- only thing that makes them behave differently. collected first and
+-- added after, since keymap.add writes to the table being walked
+local extending = {}
+for stroke, commands in pairs(keymap.map) do
+    local key = stroke:match("^helix%-normal:(.*)$")
+    if key then
+        extending["helix-select:" .. key] = commands
+    end
+end
+keymap.add(extending)
 
 return helix
