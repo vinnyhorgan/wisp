@@ -20,6 +20,10 @@ bug-fixed where not. every deliberate difference is written down in
   caret), one binary
 - twenty-three languages highlighted out of the box, git's own files and
   the config formats included
+- fifty-three plugins bundled and every one of them on: there is no
+  plugin manager and nothing to enable, because bundling *is* enabling
+- it comes back the way you left it -- splits, tabs, carets, scroll --
+  and it puts that state in `$XDG_STATE_HOME`, not in your repository
 - opinions about the files it writes: everything wisp saves is utf-8, lf,
   ends in exactly one newline, and carries no trailing whitespace --
   markdown excepted, where two trailing spaces are a line break
@@ -31,7 +35,7 @@ bug-fixed where not. every deliberate difference is written down in
   hex editor for everything else
 - `unsafe_code = "deny"`, with a single documented exception, and it's lua's
   fault
-- the whole editor boots headless in the test suite: 103 of its 223 tests
+- the whole editor boots headless in the test suite: 113 of its 233 tests
   feed it fake input and read the pixels coming back. the screenshots on
   this page were rendered that way too
 

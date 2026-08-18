@@ -105,3 +105,6 @@ keymap.add({
     ["ctrl+f2"] = "markers:toggle-marker",
     ["f2"] = "markers:go-to-next-marker",
 })
+
+-- the session plugin persists these across restarts
+return { cache = cache }

@@ -387,3 +387,7 @@ command.add(hovering, {
 })
 
 keymap.add({ ["ctrl+\\"] = "treeview:toggle" })
+
+-- the session plugin restores this view's width and visibility, so
+-- the instance has to be reachable
+return view

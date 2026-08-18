@@ -15,6 +15,12 @@ use crate::api::{self, Shared};
 const BOOTSTRAP: &str = r#"
 local headless = ...
 
+-- the editor draws exactly one thing that is not a function of its own
+-- state -- the clock on the empty view -- and every whole-frame test in
+-- the suite stands on two boots drawing the same pixels. this is the
+-- boot flag lua was already handed, given a name so `data/` can see it
+HEADLESS = headless
+
 PATHSEP = package.config:sub(1, 1)
 package.path = EXEDIR .. '/data/?.lua;' .. package.path
 package.path = EXEDIR .. '/data/?/init.lua;' .. package.path

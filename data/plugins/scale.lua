@@ -32,7 +32,7 @@ local base = {
     mouse_wheel_scroll = config.mouse_wheel_scroll,
 }
 
-local fonts = { "font", "big_font", "icon_font", "code_font" }
+local fonts = { "font", "big_font", "icon_font", "code_font", "clock_font" }
 local base_size = {}
 for _, name in ipairs(fonts) do
     base_size[name] = style[name]:get_size()

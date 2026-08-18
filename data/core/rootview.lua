@@ -8,6 +8,32 @@ local DocView = require("core.docview")
 
 local EmptyView = View:extend()
 
+-- with nothing open, the space is otherwise dead, so it is a clock. the
+-- wordmark and the two bindings stay underneath it, dimmer: they are
+-- the whole of wisp's onboarding and the readme says so out loud ("the
+-- rest the editor will tell you itself").
+--
+-- it is skipped in headless boots. the clock is the only thing the
+-- editor draws that is not a function of its own state, and every
+-- whole-frame test in the suite stands on two boots drawing the same
+-- pixels -- so the one surface that reads the wall clock is the one
+-- surface a test can never see
+local function clock_text()
+    if HEADLESS then
+        return nil
+    end
+    return os.date("%H:%M:%S"), os.date("%A, %d %B"):lower()
+end
+
+function EmptyView:update()
+    EmptyView.super.update(self)
+    local time = clock_text()
+    if time ~= self.time then
+        self.time = time
+        core.redraw = true
+    end
+end
+
 local function draw_text(x, y, color)
     local th = style.big_font:get_height()
     local dh = th + style.padding.y * 2
@@ -31,9 +57,27 @@ end
 
 function EmptyView:draw()
     self:draw_background(style.background)
+
+    -- the wordmark block is measured by drawing it transparent, which
+    -- is lite's own trick and is kept
     local w, h = draw_text(0, 0, { 0, 0, 0, 0 })
+    local time, date = clock_text()
+
+    local ch = time and style.clock_font:get_height() or 0
+    local dh = time and style.font:get_height() + style.padding.y * 2 or 0
+    local y = self.position.y + (self.size.y - h - ch - dh) / 2
+
+    if time then
+        local center = function(font, text, ty, color)
+            local tw = font:get_width(text)
+            renderer.draw_text(font, text, self.position.x + (self.size.x - tw) / 2, ty, color)
+        end
+        center(style.clock_font, time, y, style.text)
+        center(style.font, date, y + ch, style.dim)
+        y = y + ch + dh
+    end
+
     local x = self.position.x + math.max(style.padding.x, (self.size.x - w) / 2)
-    local y = self.position.y + (self.size.y - h) / 2
     draw_text(x, y, style.dim)
 end
 

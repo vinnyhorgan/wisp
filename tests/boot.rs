@@ -12,7 +12,20 @@ use wisp::platform::Event;
 static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 fn serial() -> std::sync::MutexGuard<'static, ()> {
-    SERIAL.lock().unwrap_or_else(|e| e.into_inner())
+    let guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    forget_sessions();
+    guard
+}
+
+/// headless boots use the exedir as their state directory, and the
+/// exedir is this repository -- so the session plugin's files survive
+/// from one editor to the next, from one test to the next, and from one
+/// whole run to the next, restoring somebody else's tabs into what was
+/// meant to be a fresh editor. every test, and every `boot()` inside
+/// one, starts from no session at all
+fn forget_sessions() {
+    let _ =
+        std::fs::remove_dir_all(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("sessions"));
 }
 
 /// a minimal, stable project directory (its listing is rendered by the
@@ -30,6 +43,7 @@ fn project_dir() -> String {
 }
 
 fn boot() -> Headless {
+    forget_sessions();
     let mut editor = Headless::boot(&project_dir(), 900, 600, 1.0);
     editor.run_until_frames(1, 10_000);
     editor
@@ -2051,6 +2065,7 @@ fn growing_a_view_reclamps_a_stale_sideways_scroll() {
     // the reference was 1100 wide all along: the caret never left the
     // view, so it never scrolled. growing the first editor must land it
     // on this exact frame instead of leaving the stale pan in place
+    forget_sessions();
     let mut reference = Headless::boot(&project_dir(), 1100, 600, 1.0);
     reference.run_until_frames(1, 10_000);
     reference.set_focus(false);
@@ -5026,4 +5041,133 @@ fn the_treeview_creates_renames_and_deletes_through_its_own_prompts() {
         editor.run_steps(400);
         assert!(!dir.join("doomed.txt").exists(), "delete kept the file");
     }
+}
+
+/// the editor comes back the way it was left: the document that was
+/// open, where the caret was in it, and whether the tree was showing.
+/// both editors boot from the same tree so they share a state directory,
+/// which is what keys the session file
+#[test]
+fn a_session_restores_the_document_the_caret_and_the_tree() {
+    let _serial = serial();
+    let root = copy_data_root("sessionroot");
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("sessionproj");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("a.txt"), "one\ntwo\nthree\n").unwrap();
+
+    let out = dir.join("dump.txt");
+    std::fs::write(
+        root.join("data/user/init.lua"),
+        format!(
+            r#"
+local core = require("core")
+local command = require("core.command")
+command.add(nil, {{
+    ["test:dump-session"] = function()
+        local tree = package.loaded["plugins.treeview"]
+        local line, col = "-", "-"
+        if core.active_view.doc then line, col = core.active_view.doc:get_selection() end
+        local fp = assert(io.open({out:?}, "wb"))
+        fp:write(string.format("%s|%s|%s|%s",
+            core.active_view.doc and core.active_view.doc:get_name() or "none",
+            tostring(line), tostring(col), tostring(tree.visible)))
+        fp:close()
+    end,
+}})
+"#,
+            out = out.display().to_string()
+        ),
+    )
+    .unwrap();
+
+    let boot_there = || {
+        let mut editor = Headless::boot_args(
+            &root.display().to_string(),
+            &[&dir.display().to_string()],
+            900,
+            600,
+            1.0,
+        );
+        editor.run_until_frames(1, 10_000);
+        editor
+    };
+
+    {
+        let mut editor = boot_there();
+        // open a.txt, put the caret on the third line, hide the tree
+        ctrl(&editor, "p");
+        editor.run_steps(200);
+        editor.push_event(Event::TextInput("a.txt".into()));
+        editor.run_steps(200);
+        press(&editor, "return");
+        editor.run_steps(300);
+        assert_eq!(editor.window_title(), "a.txt - wisp");
+        press(&editor, "down");
+        press(&editor, "down");
+        editor.run_steps(200);
+        editor.push_event(Event::KeyPressed("left ctrl".into()));
+        press(&editor, "\\");
+        editor.push_event(Event::KeyReleased("left ctrl".into()));
+        editor.run_steps(200);
+        // let the session thread reach its first tick and write
+        editor.run_steps(4000);
+    }
+
+    // a second editor over the same project, told nothing but the path
+    let mut editor = boot_there();
+    editor.run_steps(300);
+    assert_eq!(
+        editor.window_title(),
+        "a.txt - wisp",
+        "the document did not come back"
+    );
+    palette(&mut editor, "test:dump-session");
+    editor.run_steps(200);
+    assert_eq!(
+        std::fs::read_to_string(&out).expect("the dump never ran"),
+        "a.txt|3|1|false",
+        "the caret or the tree did not come back"
+    );
+}
+
+/// the empty view is a clock everywhere except here: it is the one
+/// surface that reads the wall clock, so headless boots skip it and
+/// every whole-frame test in this file stays reproducible. the test
+/// turns the flag off to prove the drawing path itself works
+#[test]
+fn the_empty_view_is_a_clock_off_the_test_bench() {
+    let _serial = serial();
+    let root = copy_data_root("clockroot");
+    std::fs::write(root.join("data/user/init.lua"), "HEADLESS = false\n").unwrap();
+
+    let mut ticking = Headless::boot_args(
+        &root.display().to_string(),
+        &[&project_dir()],
+        900,
+        600,
+        1.0,
+    );
+    ticking.run_until_frames(1, 10_000);
+    ticking.set_focus(false);
+    ticking.run_steps(200);
+    let with_clock = ticking.last_frame().0;
+    drop(ticking);
+
+    let mut editor = boot();
+    editor.set_focus(false);
+    editor.run_steps(200);
+    let without = editor.last_frame().0;
+
+    assert_ne!(
+        with_clock, without,
+        "the empty view drew the same thing with the clock as without it"
+    );
+
+    // and the clock is text, so the difference is text-colored pixels
+    let count = |frame: &[u32]| frame.iter().filter(|&&p| p & 0xffffff == 0xa6adc8).count();
+    assert!(
+        count(&with_clock) > count(&without),
+        "the clock drew no text"
+    );
 }

@@ -26,20 +26,31 @@ rxi's version is not merely the starting point, it is usually the better
 *fit*, and the cherry-picking runs the other way from what you would
 expect.
 
-## already bundled (38)
+## already bundled (53)
 
-nine of lite's stock plugins, kept byte-faithful except where
-DEVIATIONS.md says otherwise; six of wisp's own; and twenty-three
-language files. nothing is dropped -- the weakest entry is `quote` (28
-lines, holds `ctrl+'`, wraps a selection as an escaped string literal),
-and it stays: harmless, rxi's, and dropping a stock plugin buys nothing.
+**the pass is done.** nine of lite's stock plugins, kept byte-faithful
+except where DEVIATIONS.md says otherwise; twenty-three language files;
+and twenty-one that wisp adds. nothing is dropped -- the weakest entry
+is `quote` (28 lines, holds `ctrl+'`, wraps a selection as an escaped
+string literal), and it stays: harmless, rxi's, and dropping a stock
+plugin buys nothing.
 
     lite's:      autocomplete autoreload macro projectsearch quote
                  reflow tabularize treeview trimwhitespace
-    wisp's:      helix/ hexview/ imageview terminal scale normalize
+    wisp's own:  helix/ hexview/ imageview terminal scale normalize
+    adapted:     autoinsert bracketmatch centerdoc copyfilelocation
+                 detectindent drawwhitespace gitstatus indentguide
+                 linecopypaste lineguide markers motiontrail
+                 selectionhighlight session sort
     languages:   c cmake cpp csharp css diff gitcommit gitignore go
                  html ini java js json lua make md python rust sh toml
                  xml yaml
+
+three more things landed as parts of the editor rather than as plugins,
+because that is what they are: the treeview's **file operations** and
+its **per-filetype icons** (DEVIATIONS §25), and the **clock** on the
+empty view (§27). a fourth, the **todo list**, is one command inside
+`projectsearch` instead of a 740-line tree view.
 
 **done in this pass.** `autocomplete` scanned `while i < #doc.lines` and
 so never read the last line of any document -- a symbol that lived only
@@ -68,94 +79,44 @@ four more have work owed, and it is part of this pass:
 - **projectsearch** -- gains replace, after this pass rather than during
   it (ROADMAP has the design).
 
-## tier 1 -- the editor is incomplete without these
+## what landed, and what each cost
 
-**languages -- done.** this was the largest gap and the least
-defensible: wisp could not syntax-highlight its own source. seven files
-became twenty-three, and DEVIATIONS §24 is the record. what the pass
-actually taught, beyond the list:
+**languages -- done.** wisp could not syntax-highlight its own source;
+seven files became twenty-three, and DEVIATIONS §24 is the record. what
+the pass taught: rxi's repo carried more than expected (cpp, csharp, go,
+java, sh, make and cmake went in as copies), lite-xl supplied html, toml
+and ini, rust was a rewrite, and **five had to be written here** --
+json, yaml, gitignore, gitcommit and diff -- because lite-xl's versions
+need three tokenizer features wisp does not have (pcre, subsyntaxes,
+position captures). the failure mode is silence: an unrunnable rule
+produces no token, and an unknown token type renders *white* rather than
+erroring, so the test asserts token types for every extension.
 
-- **rxi's repo carried more than expected.** cpp, csharp, go, java, sh,
-  make and cmake are all regex-free and went in as copies. lite-xl
-  supplied html, toml and ini. rust was a rewrite -- rxi's was his go
-  file with the keywords swapped, and it never handled a raw string, a
-  lifetime or a macro.
-- **five files had to be written here**: json, yaml, gitignore,
-  gitcommit and diff. json and diff because neither repo has a version
-  wisp can run; yaml because lite-xl's is written against three
-  tokenizer features wisp does not have (subsyntaxes, position
-  captures, `^` anchors); gitignore because lite-xl's is three pcre
-  rules; gitcommit because nobody upstream has one.
-- **the failure mode is silence, not an error.** an unrunnable rule
-  produces no token, and an unknown token type renders **white** --
-  `check_color` defaults a nil color to white rather than raising. so
-  the test asserts the token type of specific text in every one of the
-  twenty-three files, not merely that each loaded.
-- **the second rank is deliberately not here.** `ts` (86), `php` (99)
-  and `psql` (90) are all regex-free in rxi's repo and could land any
-  day. none appears in wisp's own tree, and each is a file to maintain
-  forever, so they wait for someone who wants them.
+**tier 1 -- done.** `detectindent` (a rewrite, not a port: rxi's swaps
+the global config around every command and every draw, which is what §21
+exists to make unnecessary), `autoinsert`, `bracketmatch`, `indentguide`
+(reads `doc:get_indent_info()`), `selectionhighlight`, `lineguide`.
 
-**detectindent** -- the consumer DEVIATIONS §21 was built for, and the
-one entry on this list that is a **rewrite rather than an adaptation**.
-rxi's 64 lines are the global-config swap §21 exists to make impossible,
-so they are obsolete by construction; lite-xl's 395 are a proper
-detector wrapped in settings-gui plumbing wisp has no use for. what is
-left is the honest middle: count the leading-whitespace runs across the
-file, take the mode, write `doc.indent_info`. call it fifty lines.
+**tier 2 -- done.** `gitstatus` (the exec race deleted, not inherited),
+`session` (rxi's structure, wisp's storage and crash-safety), the
+treeview's file operations and icons, `drawwhitespace` (two rules, no
+toggle), `sort`, `linecopypaste` (with the stale-clipboard bug fixed),
+`copyfilelocation`.
 
-**autoinsert** (rxi, 114) -- closing brackets and quotes, and wrapping a
-selection in them. the single largest "this feels finished" item on the
-list. it composes with helix for free: normal mode swallows text input,
-so it only ever fires in insert mode.
+**asked for and added on top.** `centerdoc` as a toggle, `markers`,
+`motiontrail`, the eof mark, the clock, and the todo list.
 
-**bracketmatch** (rxi, 117) -- underlines the match for the bracket at
-the caret. already cached on change id plus cursor and already limited
-to a hundred lines of scan, which is the whole reason to prefer it to
-lite-xl's 278. needs one catppuccin color added by name.
+**the three costs every adaptation paid**, all of them found the hard
+way and all of them in DEVIATIONS §25:
 
-**indentguide** (rxi, 45) -- reads `doc:get_indent_info()` instead of the
-config. one thing to watch rather than a bug: on a blank line it walks
-outward to the nearest non-blank line, so a file with a long run of
-blank lines does that walk per visible line per frame. it is a proper
-tail call, so nothing overflows -- it is a draw-path cost, and the draw
-path is the one that runs outside `core.try`.
-
-**selectionhighlight** (rxi, 37) -- boxes the other occurrences of the
-selection. clean as written; needs a color.
-
-**lineguide** (rxi, 18) -- a rule at `config.line_limit`, which wisp
-already has and already defaults to 80. eighteen lines.
-
-## tier 2 -- real work, small surface
-
-**gitstatus** -- branch and insert/delete counts in the status bar, and
-the clearest showcase of what the rust core bought. rxi's version
-redirects `system.exec` to a temp file and then `coroutine.yield(1)` --
-it *hopes* git finished inside one second. wisp has `system.spawn` with
-real poll semantics, so the adaptation deletes the race rather than
-inheriting it.
-
-**session restore** (rxi's `workspace`, 164) -- structure from rxi,
-storage decision from lite-xl, location from wisp. rxi writes
-`.lite_workspace.lua` **into the project directory**, which is rude;
-this writes to `$XDG_STATE_HOME/wisp` keyed by project path. first
-consumer of `common.serialize`, which is exactly how that function is
-allowed to arrive.
-
-**drawwhitespace** (rxi, 37) -- adopt the idea, not the loop. rxi draws
-one `draw_text` per character with a `get_width` per character, on the
-draw path. lite-xl's 360 lines are mostly the fix for that; wisp wants
-the fix without the settings surface.
-
-**sort** (rxi, 30) -- joins the reflow / tabularize / quote family of
-selection operations lite already shipped.
-
-**linecopypaste** (rxi, 45) -- copy, cut and paste the whole line when
-nothing is selected. already sitting in the roadmap's ideas queue as
-lite pr #209.
-
-**copyfilelocation** (rxi, 17) -- with its strings lowercased per §9.
+1. **the CommandView trap.** `CommandView` extends `DocView`, so every
+   plugin that patches a `DocView` draw method also paints inside the
+   command prompt. upstream ships all of them that way; only
+   `autoinsert` guards itself.
+2. **a color, by name**, from the official catppuccin `palette.json` --
+   never eyeballed. five new names.
+3. **lua 5.5.** `markers` simply failed to load, because it reassigns a
+   `for`-loop variable and those have been const since 5.4.
 
 ## tier 3 -- named so they are not forgotten, not scheduled
 
@@ -164,8 +125,10 @@ lite pr #209.
   `doc:newline` already carries the indent forward.
 - **restoretabs** -- `ctrl+shift+t`. upstream patches `Node.close_view`
   from inside `RootView.update` behind an initialised flag, because
-  `Node` is not exported; wisp should hook the close *command* instead
-  and skip the hack entirely.
+  `Node` is not exported, and keys on `doc.abs_filename`, which is a
+  lite-xl field wisp does not have; wisp should hook the close *command*
+  instead and skip both. **session restore takes most of the sting out
+  of this one**, which is why it stayed here.
 - **colorpreview** -- a swatch under `#ff00ff`. pays off in css work and
   nowhere else.
 - **word wrap** (lite-xl's `linewrapping`, 600) -- material exists, but

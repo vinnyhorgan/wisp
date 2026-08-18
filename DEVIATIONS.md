@@ -1222,6 +1222,83 @@ treeview calls. every codepoint was checked against the shipped font's
 cmap rather than trusted from a table on the internet -- a missing glyph
 renders as `.notdef`, silently, at exactly the same width.
 
+## 26. the session comes back
+
+**files:** `data/plugins/session.lua`, `data/core/common.lua`,
+`data/plugins/treeview.lua`, `data/plugins/markers.lua`
+
+open wisp on a project and it is the way you left it: the split tree
+with its divider positions, the tabs in each split and which one was in
+front, and for every document its selection and its scroll. the
+structure is rxi's `workspace`; three things are wisp's own.
+
+**where it is written.** rxi drops `.lite_workspace.lua` into the
+project directory -- a file you did not create, in a repository you did
+not want it in. wisp writes to `STATEDIR`, keyed by the project's
+absolute path.
+
+**when it is written.** rxi saves by monkeypatching `os.exit`, reads the
+file at startup and *immediately deletes it*, so a crash loses the
+session -- the one time you most wanted it back. wisp writes whenever
+the state has actually changed, on a slow tick as well as at exit, and
+never deletes. the compare against the last write means an idle editor
+never touches the disk.
+
+**what is not restored, and why.**
+
+- **views that are not documents.** rxi reconstructs them by reverse-
+  looking-up their module in `package.loaded` and calling it. reopening
+  a terminal would spawn a shell you did not ask for; reopening a hex
+  or image view costs a file read for something you may not want back.
+  documents are what you meant.
+- **unsaved changes to named files.** vscode's hot exit keeps them;
+  wisp does not, and this is a decision rather than an omission. it is
+  the same reasoning that rejected `autosave` in PLUGINS.md: the dirty
+  flag is honest, quit already asks, and an editor holding a version of
+  your file that the disk does not know about -- silently, across
+  restarts -- is a worse failure than losing an edit you were told
+  about. **unnamed scratch buffers are kept**, because there is no file
+  for them to be lost to.
+- **the window's size and position.** the core can set a window *mode*
+  (`system.set_window_mode`) but cannot report or restore geometry, and
+  the core is frozen. named here so it is not mistaken for an oversight.
+
+`common.serialize` arrives with this, its first consumer, in the same
+commit -- the rule `common.lua` grows by. it sorts keys rather than
+walking `pairs`, because lua 5.5 randomizes the string hash seed per
+state and an unsorted dump of unchanged state would rewrite the file on
+every tick.
+
+the treeview and markers both `return` their state now, because neither
+is reachable from the node tree the session walks: one is a locked view,
+the other a weak table keyed by document.
+
+## 27. the empty view is a clock
+
+**files:** `data/core/rootview.lua`, `data/core/style.lua`,
+`data/plugins/scale.lua`, `src/boot.rs`
+
+lite's `EmptyView` draws the wordmark and two key bindings on an
+otherwise dead screen. wisp puts a clock above them -- the one screen
+you look at without reading anything. the wordmark and the bindings stay
+underneath, dimmer: they are the whole of wisp's onboarding, and the
+readme leans on them out loud ("the rest the editor will tell you
+itself").
+
+**it is skipped in headless boots, and that cost one line of rust.** the
+clock is the only thing the editor draws that is not a function of its
+own state, and every whole-frame test in `tests/boot.rs` stands on
+`boot_is_deterministic`: two boots, same events, same pixels. a wall
+clock in the first frame breaks that property outright rather than
+occasionally. the bootstrap prelude already receives a `headless` flag
+as an argument; it is now also a global, `HEADLESS`, beside `SCALE`,
+`EXEDIR`, `USERDIR` and `PATHSEP`. that is the whole change: a name for
+a value the lua layer was already handed, with its consumer landing in
+the same commit, and it is one line to revert.
+
+`style.clock_font` is the fifth size of the one font, and it joins the
+four `scale.lua` already resizes, so zoom moves it with everything else.
+
 ## kept on purpose
 
 lite behaviors evaluated deliberately and kept, recorded so they are

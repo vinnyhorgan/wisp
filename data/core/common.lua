@@ -141,4 +141,32 @@ function common.bench(name, fn, ...)
     return res
 end
 
+-- a lua literal that `load` reads back. keys are written in a stable
+-- order rather than `pairs` order: lua 5.5 randomizes the string hash
+-- seed per state, so an unsorted dump of unchanged state would produce
+-- different bytes on every run and churn whatever file it is written to
+function common.serialize(val)
+    if type(val) == "string" then
+        return string.format("%q", val)
+    end
+    if type(val) ~= "table" then
+        return tostring(val)
+    end
+    local keys = {}
+    for k in pairs(val) do
+        table.insert(keys, k)
+    end
+    table.sort(keys, function(a, b)
+        if type(a) ~= type(b) then
+            return type(a) < type(b)
+        end
+        return tostring(a) < tostring(b)
+    end)
+    local out = {}
+    for _, k in ipairs(keys) do
+        table.insert(out, "[" .. common.serialize(k) .. "]=" .. common.serialize(val[k]))
+    end
+    return "{" .. table.concat(out, ",") .. "}"
+end
+
 return common

@@ -187,12 +187,22 @@ teaching the tokenizer subsyntaxes is core *lua*, not rust, and would
 buy real html and fenced code blocks in markdown; it is the obvious next
 language-side move and is deliberately not bundled with the port.
 
-the wave, roughly easiest-first: ~~runtime zoom~~ (done, DEVIATIONS
-§15), ~~imageview~~ (done, §20), ~~per-doc indent info~~ (done, §21),
-~~more languages~~ (done, §24), detectindent, auto-close brackets +
-bracketmatch, indent guides, selection highlight, treeview file ops,
-project-wide replace, session restore + project memory (treeview width,
-last query), word wrap (lite #26), multi-cursor last.
+the wave, in the order it actually landed: ~~runtime zoom~~ (§15),
+~~imageview~~ (§20), ~~per-doc indent info~~ (§21), ~~more languages~~
+(§24), ~~detectindent, auto-close brackets + bracketmatch, indent
+guides, selection highlight~~ (§25), ~~treeview file ops and icons,
+gitstatus, drawwhitespace, sort, linecopypaste, copyfilelocation~~
+(§25), ~~session restore~~ (§26), ~~the clock on the empty view~~ (§27).
+**the plugin pass is done at fifty-three bundled plugins.** what is
+left of it: project-wide replace, word wrap (lite #26), multi-cursor
+last.
+
+three things this pass named and did not do, so they are not mistaken
+for oversights: **tokenizer subsyntaxes** (core *lua*, ~30 lines, buys
+real html and fenced markdown code blocks -- the obvious next move),
+**window geometry in the session** (the core can set a window mode but
+cannot report or restore geometry, and the core is frozen), and **hot
+exit**, which is refused on the same grounds `autosave` was.
 
 project-wide replace is wisp's own work, not an adaptation: neither
 lite's nor lite-xl's projectsearch has a replace at all. the cheap shape

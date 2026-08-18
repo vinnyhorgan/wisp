@@ -3,3 +3,6 @@
 /lite-xl/
 /lite-plugins/
 /lite-xl-plugins/
+
+# headless test boots use the repo as their state dir
+/sessions/
