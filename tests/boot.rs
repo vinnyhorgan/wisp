@@ -4677,3 +4677,182 @@ fn the_drawing_plugins_paint_in_their_own_colors() {
         "bracketmatch underlined nothing ({before} -> {after})"
     );
 }
+
+/// copy and cut with nothing selected take the whole line, and pasting
+/// one puts it on a line of its own. the flag upstream keeps for this
+/// goes stale the moment something else writes the clipboard, so the
+/// last assertion is the one that matters
+#[test]
+fn a_line_copied_with_no_selection_pastes_as_a_line() {
+    let _serial = serial();
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("lineclipproj");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("x.txt"), "one\ntwo\nthree\n").unwrap();
+
+    let mut editor = Headless::boot_args(
+        env!("CARGO_MANIFEST_DIR"),
+        &[
+            &dir.display().to_string(),
+            &dir.join("x.txt").display().to_string(),
+        ],
+        900,
+        600,
+        1.0,
+    );
+    editor.run_until_frames(1, 10_000);
+
+    // caret on line one, nothing selected: copy takes the line
+    ctrl(&editor, "c");
+    editor.run_steps(100);
+    press(&editor, "down");
+    editor.run_steps(100);
+    ctrl(&editor, "v");
+    editor.run_steps(200);
+    ctrl(&editor, "s");
+    editor.run_steps(300);
+    assert_eq!(
+        std::fs::read_to_string(dir.join("x.txt")).unwrap(),
+        "one\none\ntwo\nthree\n",
+        "a copied line did not paste as a line"
+    );
+
+    // something else writes the clipboard: the next paste is ordinary,
+    // landing at the caret instead of opening a line for it
+    editor.engine.borrow_mut().platform.set_clipboard("ZZ");
+    ctrl(&editor, "home");
+    editor.run_steps(100);
+    ctrl(&editor, "v");
+    editor.run_steps(200);
+    ctrl(&editor, "s");
+    editor.run_steps(300);
+    assert_eq!(
+        std::fs::read_to_string(dir.join("x.txt")).unwrap(),
+        "ZZone\none\ntwo\nthree\n",
+        "a stale line flag hijacked an ordinary paste"
+    );
+}
+
+/// markers survive the edits above them, which is the whole reason the
+/// plugin hooks raw_insert and raw_remove rather than just keeping a
+/// set of line numbers
+#[test]
+fn a_marker_follows_its_line_and_f2_walks_to_it() {
+    let _serial = serial();
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("markerproj");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("x.txt"), "one\ntwo\nthree\nfour\n").unwrap();
+
+    let mut editor = Headless::boot_args(
+        env!("CARGO_MANIFEST_DIR"),
+        &[
+            &dir.display().to_string(),
+            &dir.join("x.txt").display().to_string(),
+        ],
+        900,
+        600,
+        1.0,
+    );
+    editor.run_until_frames(1, 10_000);
+
+    // mark "three"
+    press(&editor, "down");
+    press(&editor, "down");
+    editor.run_steps(100);
+    editor.push_event(Event::KeyPressed("left ctrl".into()));
+    press(&editor, "f2");
+    editor.push_event(Event::KeyReleased("left ctrl".into()));
+    editor.run_steps(200);
+
+    // push it down by opening a line at the top, then jump to it
+    ctrl(&editor, "home");
+    editor.run_steps(100);
+    press(&editor, "return");
+    editor.run_steps(200);
+    ctrl(&editor, "home");
+    editor.run_steps(100);
+    press(&editor, "f2");
+    editor.run_steps(200);
+    editor.push_event(Event::TextInput("!".into()));
+    editor.run_steps(200);
+    ctrl(&editor, "s");
+    editor.run_steps(300);
+
+    assert_eq!(
+        std::fs::read_to_string(dir.join("x.txt")).unwrap(),
+        "\none\ntwo\n!three\nfour\n",
+        "the marker did not follow its line"
+    );
+}
+
+/// drawwhitespace marks two things and no more: the end of the file,
+/// always, and whitespace inside a selection, where you asked
+#[test]
+fn whitespace_is_marked_in_a_selection_and_at_the_end_of_the_file() {
+    let _serial = serial();
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("wsproj");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("x.txt"), "a b c d e f\nlast line\n").unwrap();
+
+    let mut editor = Headless::boot_args(
+        env!("CARGO_MANIFEST_DIR"),
+        &[
+            &dir.display().to_string(),
+            &dir.join("x.txt").display().to_string(),
+        ],
+        900,
+        600,
+        1.0,
+    );
+    editor.run_until_frames(1, 10_000);
+    editor.set_focus(false);
+    editor.run_steps(200);
+
+    const WHITESPACE: u32 = 0x585b70; // surface2
+    let count = |editor: &Headless| {
+        editor
+            .last_frame()
+            .0
+            .iter()
+            .filter(|&&p| p & 0xffffff == WHITESPACE)
+            .count()
+    };
+
+    let before = count(&editor);
+    assert!(before > 0, "the end of the file was not marked");
+
+    // select the whole first line: its five spaces get dots
+    ctrl(&editor, "l");
+    editor.run_steps(300);
+    let after = count(&editor);
+    assert!(
+        after > before,
+        "a selection's whitespace went unmarked ({before} -> {after})"
+    );
+}
+
+/// centering is a mode, not a setting: the command moves the text and
+/// the same command puts it back
+#[test]
+fn centerdoc_toggles_and_untoggles() {
+    let _serial = serial();
+    // wide enough that eighty columns and a treeview leave room to
+    // center: in a narrow window centerdoc correctly does nothing
+    let mut editor = Headless::boot(&project_dir(), 1600, 600, 1.0);
+    editor.run_until_frames(1, 10_000);
+    editor.set_focus(false);
+    open_hello_via_treeview(&mut editor);
+    editor.run_steps(300);
+
+    let plain = editor.last_frame().0;
+    palette(&mut editor, "center-doc:toggle");
+    editor.run_steps(500);
+    let centered = editor.last_frame().0;
+    assert_ne!(plain, centered, "centering moved nothing");
+
+    palette(&mut editor, "center-doc:toggle");
+    editor.run_steps(500);
+    assert_eq!(plain, editor.last_frame().0, "centering did not come back");
+}

@@ -1109,6 +1109,70 @@ lua 5.5 randomizes the string hash seed per state, so `pairs` order
 changes between boots. an unbroken tie would make a file's indentation
 depend on which run happened to open it.
 
+### drawwhitespace -- two rules, no toggle
+
+upstream draws a mark under every space in the document and hangs three
+commands and a config flag off it. wisp marks whitespace in exactly two
+places: **inside a selection**, where you are looking at it deliberately,
+and **at the end of the file**, always. the second is §23 made visible --
+everything wisp saves ends in exactly one newline, and the mark is the
+editor showing its work. dots under every space are wallpaper, and the
+indent guides already answer the question those dots were being asked.
+
+the draw is rewritten too. rxi's does one `renderer.draw_text` **and**
+one `font:get_width` per character of every visible line, on the draw
+path; lite-xl's 360 lines are mostly the fix for that. wisp draws one
+string per line, a mask built to line up with the text under it. that
+is only correct because of a decision made much earlier: **one font,
+and it is monospaced**, so every glyph advances by exactly one cell and
+a mask of the same length lands where the characters are. the tab is
+the single exception, and the renderer gives it a fixed advance
+(`Font::tab_advance`, set to `space * indent_size`), so the mark plus
+that many spaces less one is exactly a tab wide.
+
+### centerdoc, markers, motiontrail, linecopypaste
+
+- **centerdoc** centers on `config.line_limit`, the same eighty columns
+  the line-limit rule is drawn at, so it and `lineguide` agree without
+  either knowing about the other. it is a **command**, not a config
+  flag: §19 made that call for keymap modes and it holds here. in a
+  window too narrow to fit eighty columns and still center them, it
+  correctly does nothing.
+- **markers** keeps rxi's design, which is right for the reason that is
+  easy to miss: a marker is a line number, and line numbers move when
+  you edit above them, so it hooks `Doc.raw_insert` and `Doc.raw_remove`
+  to carry them along. one lua 5.5 fix was needed on the way in -- it
+  reassigned a `for`-loop variable, which is **const** since 5.4, and the
+  plugin simply failed to load.
+- **motiontrail** asks what shape the caret is instead of assuming.
+  helix's normal mode draws a block on the character under the head, and
+  a block cursor leaving a hairline trail looks broken. it reads
+  `package.loaded["plugins.helix"]` rather than requiring it, because
+  load order between two bundled plugins is directory order and a
+  require at the top would be a coin flip.
+- **linecopypaste** fixes a bug it would otherwise have inherited.
+  upstream remembers "the clipboard holds a whole line" in a boolean,
+  which goes stale the instant another application writes the clipboard:
+  the flag still says line, and your next paste opens a new line for
+  text that never was one. wisp remembers the **text** it wrote and
+  compares. cutting the last line is handled too, since there is no line
+  after it to remove up to.
+
+### a todo list, without the plugin
+
+`todotreeview` is 740 lines and nine config options -- `todo_tags`,
+`tag_colors`, `todo_file_color`, `ignore_paths`, `todo_expanded`,
+`todo_mode`, `todo_separator`, `todo_default_text`, `todo_scope` -- which
+is the settings-surface shape wisp exists to avoid. the same call as the
+treeview icons: adopt the idea, reject the plugin.
+
+what wisp does instead is one command inside the `projectsearch` it
+already ships. that plugin already walks every project file and lists
+what it finds, and its `begin_search` takes an arbitrary matcher, so
+`project-search:find-todos` is a fixed tag list and nothing else. the
+tags are not configurable on purpose: a todo list whose entries mean
+different things in different checkouts is not a list.
+
 ## kept on purpose
 
 lite behaviors evaluated deliberately and kept, recorded so they are

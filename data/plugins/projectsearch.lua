@@ -247,7 +247,25 @@ local function begin_search(text, fn)
     core.root_view:get_active_node_default():add_view(rv)
 end
 
+-- the tags worth stopping for, fixed rather than configured: a todo
+-- list whose entries mean different things in different checkouts is
+-- not a list. upstream's answer to this is a 740-line tree view with
+-- nine settings; this is the same question asked of the search that
+-- already walks every project file
+local TODO_TAGS = { "TODO", "FIXME", "FIX", "BUG", "HACK", "XXX" }
+
 command.add(nil, {
+    ["project-search:find-todos"] = function()
+        begin_search("todo", function(line_text)
+            for _, tag in ipairs(TODO_TAGS) do
+                local s = line_text:find(tag, 1, true)
+                if s then
+                    return s
+                end
+            end
+        end)
+    end,
+
     ["project-search:find"] = function()
         core.command_view:enter("find text in project", function(text)
             text = text:lower()
