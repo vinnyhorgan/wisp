@@ -4657,9 +4657,23 @@ fn the_drawing_plugins_paint_in_their_own_colors() {
             .count()
     };
 
-    // lineguide's rule is already there; indenting a line must add to it
+    // lineguide is a mode, and it starts off: the rule appears when the
+    // command is run and goes away when it is run again
+    let off = count(&editor, GUIDE);
+    palette(&mut editor, "line-guide:toggle");
+    editor.run_steps(300);
+    let on = count(&editor, GUIDE);
+    assert!(on > off, "the line rule did not appear ({off} -> {on})");
+    palette(&mut editor, "line-guide:toggle");
+    editor.run_steps(300);
+    assert_eq!(
+        count(&editor, GUIDE),
+        off,
+        "the line rule would not go away"
+    );
+
+    // indenting a line must add a guide of its own
     let before = count(&editor, GUIDE);
-    assert!(before > 0, "lineguide drew no rule");
     press(&editor, "down");
     editor.run_steps(50);
     press(&editor, "tab");
@@ -4801,10 +4815,12 @@ fn a_marker_follows_its_line_and_f2_walks_to_it() {
     );
 }
 
-/// drawwhitespace marks two things and no more: the end of the file,
-/// always, and whitespace inside a selection, where you asked
+/// drawwhitespace marks one thing: whitespace inside a selection. the
+/// end of the file is *not* marked -- every file wisp writes ends in
+/// exactly one newline (§23), so a mark saying so would be drawn on
+/// every file, always, and would tell you nothing
 #[test]
-fn whitespace_is_marked_in_a_selection_and_at_the_end_of_the_file() {
+fn whitespace_is_marked_in_a_selection_and_nowhere_else() {
     let _serial = serial();
     let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("wsproj");
     let _ = std::fs::remove_dir_all(&dir);
@@ -4835,10 +4851,24 @@ fn whitespace_is_marked_in_a_selection_and_at_the_end_of_the_file() {
             .count()
     };
 
-    let before = count(&editor);
-    assert!(before > 0, "the end of the file was not marked");
+    // an exact color match is not proof on its own: the palette is a
+    // ramp, so text antialiased at ~43% coverage lands on surface2
+    // exactly. a *solid* column of it is proof, and it is what the
+    // end-of-file mark used to be
+    let (pixels, w, _h) = editor.last_frame();
+    let mut columns = std::collections::BTreeMap::new();
+    for (i, p) in pixels.iter().enumerate() {
+        if p & 0xffffff == WHITESPACE {
+            *columns.entry(i % w as usize).or_insert(0) += 1;
+        }
+    }
+    assert!(
+        columns.values().all(|rows| *rows < 15),
+        "something is drawing a solid whitespace-colored bar ({columns:?})"
+    );
 
     // select the whole first line: its five spaces get dots
+    let before = count(&editor);
     ctrl(&editor, "l");
     editor.run_steps(300);
     let after = count(&editor);
@@ -4848,63 +4878,12 @@ fn whitespace_is_marked_in_a_selection_and_at_the_end_of_the_file() {
     );
 }
 
-/// the end-of-file mark is a dimmed caret, not a character. a glyph
-/// sitting in the text flow reads as something the file contains, which
-/// is the one thing it is not, so the mark is drawn as a position: one
-/// bar, the width of the caret, as tall as a line
+/// a search term is at least two characters and not just spaces. rxi's
+/// plugin guards neither, lite-xl's guards the whitespace half, and
+/// neither of them ships a mode that keeps a one-character selection
+/// under the caret at all times. wisp does
 #[test]
-fn the_end_of_file_mark_is_a_bar_and_not_a_glyph() {
-    let _serial = serial();
-    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("eofproj");
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(dir.join("x.txt"), "one\ntwo\n").unwrap();
-
-    let mut editor = Headless::boot_args(
-        env!("CARGO_MANIFEST_DIR"),
-        &[
-            &dir.display().to_string(),
-            &dir.join("x.txt").display().to_string(),
-        ],
-        900,
-        600,
-        1.0,
-    );
-    editor.run_until_frames(1, 10_000);
-    editor.set_focus(false);
-    editor.run_steps(200);
-
-    // an exact color match is not enough on its own: the palette is a
-    // ramp, so text antialiased at ~43% coverage lands on surface2
-    // exactly. the mark is the column that is *solid* -- a glyph never
-    // fills a whole line height of one column, and a caret always does
-    const WHITESPACE: u32 = 0x585b70;
-    let (pixels, w, _h) = editor.last_frame();
-    let mut solid = std::collections::BTreeMap::new();
-    for (i, p) in pixels.iter().enumerate() {
-        if p & 0xffffff == WHITESPACE {
-            *solid.entry(i % w as usize).or_insert(0) += 1;
-        }
-    }
-    let bar: Vec<usize> = solid
-        .iter()
-        .filter(|(_, rows)| **rows >= 15)
-        .map(|(x, _)| *x)
-        .collect();
-
-    assert_eq!(
-        bar.len(),
-        2,
-        "the end of the file is not marked by a caret-wide bar ({solid:?})"
-    );
-    assert_eq!(bar[1], bar[0] + 1, "the bar is not one solid column pair");
-}
-
-/// a selection of nothing but spaces is not a search term. one space
-/// selected by accident -- which is what a stray shift+right is -- used
-/// to box every space on the screen
-#[test]
-fn a_selected_space_is_not_a_search_term() {
+fn one_space_or_one_character_is_not_a_search_term() {
     let _serial = serial();
     let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("spaceproj");
     let _ = std::fs::remove_dir_all(&dir);
@@ -4949,6 +4928,19 @@ fn a_selected_space_is_not_a_search_term() {
         "a selected space boxed the other spaces"
     );
 
+    // and one letter is no better. helix's normal mode keeps a
+    // one-character selection under the head at all times, so this is
+    // not a corner case there, it is every keystroke
+    ctrl(&editor, "home");
+    editor.run_steps(100);
+    shift(&editor, "right");
+    editor.run_steps(300);
+    assert_eq!(
+        count(&editor),
+        quiet,
+        "one selected character boxed every copy of it on screen"
+    );
+
     // and a word still finds its twin, which is the point of the plugin
     ctrl(&editor, "home");
     editor.run_steps(100);
@@ -4961,17 +4953,19 @@ fn a_selected_space_is_not_a_search_term() {
     );
 }
 
-/// the caret trail is horizontal motion blur along one line and nothing
-/// else. lerping both axes dragged a staircase of blocks over every
-/// line a vertical jump passed across, on every arrow press
+/// the caret trail goes wherever the caret went, across lines as
+/// happily as along one -- and it is a *fade*. upstream paints every
+/// step of it in the solid caret color, overlapping itself, which lands
+/// a staircase of opaque green blocks over the text a vertical jump
+/// crossed. the shape was never the problem; the paint was
 #[test]
-fn the_caret_trail_never_crosses_lines() {
+fn the_caret_trail_is_a_fade_and_not_a_staircase() {
     let _serial = serial();
     let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("trailproj");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let line = "x".repeat(40);
-    std::fs::write(dir.join("x.txt"), format!("{line}\n{line}\n")).unwrap();
+    let body = "x".repeat(40) + "\n";
+    std::fs::write(dir.join("x.txt"), body.repeat(12)).unwrap();
 
     let mut editor = Headless::boot_args(
         env!("CARGO_MANIFEST_DIR"),
@@ -4984,46 +4978,63 @@ fn the_caret_trail_never_crosses_lines() {
         1.0,
     );
     editor.run_until_frames(1, 10_000);
-    // an unfocused editor draws no caret, so every green pixel the
-    // frame gains after this is the trail and only the trail
+    // an unfocused editor draws no caret, so every green pixel a frame
+    // gains after this is the trail and only the trail
     editor.set_focus(false);
     editor.run_steps(200);
 
-    const CARET: u32 = 0xa6e3a1; // green
-    let count = |editor: &Headless| {
-        editor
-            .last_frame()
-            .0
-            .iter()
-            .filter(|&&p| p & 0xffffff == CARET)
-            .count()
-    };
-
-    // the trail lives for exactly one frame, so the frames are walked
-    // one step at a time rather than settled and then looked at
-    let peak = |editor: &mut Headless| {
-        let mut peak = 0;
+    // the trail lives for exactly one frame, so the frames are walked a
+    // step at a time rather than settled and then looked at. the
+    // greenest of the twenty is the one that had the trail in it
+    let greenest = |editor: &mut Headless| {
+        let mut best = (0usize, std::collections::BTreeSet::new());
         for _ in 0..20 {
             editor.run_steps(1);
-            peak = peak.max(count(editor));
+            let mut shades = std::collections::BTreeSet::new();
+            let mut n = 0;
+            for p in editor.last_frame().0 {
+                let (r, g, b) = ((p >> 16) & 0xff, (p >> 8) & 0xff, p & 0xff);
+                if g > r + 15 && g > b + 15 {
+                    n += 1;
+                    shades.insert(p & 0xffffff);
+                }
+            }
+            if n > best.0 {
+                best = (n, shades);
+            }
         }
-        peak
+        best
     };
 
-    let quiet = count(&editor);
-    press(&editor, "down");
-    assert_eq!(
-        peak(&mut editor),
-        quiet,
-        "a vertical jump smeared the caret across the lines it crossed"
+    let (quiet, _) = greenest(&mut editor);
+
+    // eight lines down, in one jump
+    press(&editor, "end");
+    editor.run_steps(200);
+    for _ in 0..8 {
+        press(&editor, "down");
+    }
+    let (n, shades) = greenest(&mut editor);
+    assert!(
+        n > quiet,
+        "a jump across lines left no trail at all ({quiet} -> {n})"
+    );
+    assert!(
+        shades.len() >= 8,
+        "the trail is {} solid colour(s), so it is a staircase of blocks and not a fade",
+        shades.len()
     );
 
+    // and sideways, where the effect began
+    press(&editor, "home");
+    editor.run_steps(200);
     press(&editor, "end");
-    let smear = peak(&mut editor);
+    let (n, shades) = greenest(&mut editor);
     assert!(
-        smear > quiet,
-        "a jump along the line left no trail at all ({quiet} -> {smear})"
+        n > quiet,
+        "a jump along the line left no trail at all ({quiet} -> {n})"
     );
+    assert!(shades.len() >= 8, "the sideways trail does not fade");
 }
 
 /// centering is a mode, not a setting: the command moves the text and

@@ -95,16 +95,23 @@ erroring, so the test asserts token types for every extension.
 **tier 1 -- done.** `detectindent` (a rewrite, not a port: rxi's swaps
 the global config around every command and every draw, which is what §21
 exists to make unnecessary), `autoinsert`, `bracketmatch`, `indentguide`
-(reads `doc:get_indent_info()`), `selectionhighlight`, `lineguide`.
+(reads `doc:get_indent_info()`), `selectionhighlight` (two characters
+minimum, and not just spaces), `lineguide` (a mode, off by default).
 
 **tier 2 -- done.** `gitstatus` (the exec race deleted, not inherited),
 `session` (rxi's structure, wisp's storage and crash-safety), the
-treeview's file operations and icons, `drawwhitespace` (two rules, no
+treeview's file operations and icons, `drawwhitespace` (one rule, no
 toggle), `sort`, `linecopypaste` (with the stale-clipboard bug fixed),
 `copyfilelocation`.
 
 **asked for and added on top.** `centerdoc` as a toggle, `markers`,
-`motiontrail`, the eof mark, the clock, and the todo list.
+`motiontrail` (rewritten as a fade), the clock, and the todo list.
+
+**tried and taken back out.** the end-of-file mark, twice: a `¬` glyph
+and then a dimmed caret. §23 guarantees every file wisp writes ends in
+exactly one newline, so the mark is drawn on every file, always -- and a
+mark that is always there says nothing. DEVIATIONS §25 keeps the
+reasoning; this line keeps it from being re-added.
 
 **the three costs every adaptation paid**, all of them found the hard
 way and all of them in DEVIATIONS §25:

@@ -5,10 +5,6 @@ local DocView = require("core.docview")
 
 config.motiontrail_steps = 50
 
-local function lerp(a, b, t)
-    return a + (b - a) * t
-end
-
 -- helix's normal mode draws a block on the character under the head
 -- instead of lite's thin caret, and a block cursor leaving a hairline
 -- trail looks like a bug. the trail asks what shape the caret is rather
@@ -31,22 +27,29 @@ local function get_caret_rect(dv)
     return x + offset, y, w, dv:get_line_height()
 end
 
--- the trail is one frame of motion blur along the line the caret is
--- already on, and nothing else.
+-- the trail goes wherever the caret went, sideways or across lines --
+-- the shape was never the problem, the paint was.
 --
--- upstream lerps both axes, so a jump between lines drags the smear
--- diagonally across the text -- and because each step is a rect as wide
--- as its own horizontal travel, the result is a staircase of blocks
--- over whatever was on the lines in between. it is the worst-looking
--- thing in the editor and it fires on every arrow press.
+-- upstream draws every step of the interpolation in the solid caret
+-- color, on top of itself: fifty opaque rects a full line tall,
+-- overlapping five deep, laid along the path. a jump between lines
+-- lands that as a staircase of green blocks over the text it crossed,
+-- and no amount of interpolation fixes it, because the pixels are
+-- simply painted over.
 --
--- the effect only ever read as motion when the motion was sideways
--- along a line of text, so that is all it does now. vertical movement
--- snaps, which is what every editor that ships a smooth caret does with
--- a line change. the position is remembered as a document position as
--- well as a screen one: a caret that stayed put while the view scrolled
--- under it has not moved, and used to leave a trail saying it had
+-- so the trail is drawn as what it is meant to look like: an
+-- afterimage. one ghost per caret-length of travel along whichever axis
+-- moved most, laid edge to edge rather than on top of each other -- so
+-- every pixel of the path is painted exactly once, at the alpha it has
+-- earned. full under the caret, nothing at the far end. each ghost is
+-- also widened to cover its own sideways travel, so a diagonal is a
+-- ribbon and not a dotted line.
+--
+-- the caret's position is remembered as a document position as well as
+-- a screen one: a caret that held still while the view scrolled under
+-- it has not moved, and used to leave a trail saying it had
 local last
+local ghost = { 0, 0, 0, 0 }
 
 local draw = DocView.draw
 
@@ -59,13 +62,38 @@ function DocView:draw(...)
     local line, col = self.doc:get_selection()
     local x, y, w, h = get_caret_rect(self)
 
-    if last and last.view == self and last.line == line and last.col ~= col and last.y == y then
-        local lx = x
-        for i = 0, 1, 1 / config.motiontrail_steps do
-            local ix = lerp(x, last.x, i)
-            local iw = math.max(w, math.ceil(math.abs(ix - lx)))
-            renderer.draw_rect(ix, y, iw, h, style.caret)
-            lx = ix
+    if last and last.view == self and (last.line ~= line or last.col ~= col) then
+        local dx, dy = last.x - x, last.y - y
+        local vertical = math.abs(dy) > math.abs(dx)
+        -- the ribbon is cut into bands a quarter of the caret's own
+        -- length along the axis that moved most -- fine enough that the
+        -- gradient reads as a gradient rather than a row of tiles --
+        -- and capped, so a jump across the whole window is still one
+        -- loop of fifty
+        local length = vertical and math.abs(dy) or math.abs(dx)
+        local n =
+            math.min(math.ceil(length / ((vertical and h or w) / 4)), config.motiontrail_steps)
+        local caret = style.caret
+        ghost[1], ghost[2], ghost[3] = caret[1], caret[2], caret[3]
+        local alpha = caret[4] or 255
+
+        -- the samples are floored before they are measured against each
+        -- other, so each ghost begins exactly where the last one ended:
+        -- no gaps to show as dark seams, no overlaps to show as bright
+        -- ones. an overlap is what banded the trail when the ghosts were
+        -- drawn as caret rects that each covered their own travel
+        local fx, fy = math.floor(x), math.floor(y)
+        for i = 1, n do
+            local t = i / n
+            local nx, ny = math.floor(x + dx * t), math.floor(y + dy * t)
+            ghost[4] = alpha * (1 - (i - 0.5) / n)
+            if vertical then
+                local rw = math.max(w, math.abs(nx - fx))
+                renderer.draw_rect(math.min(nx, fx), math.min(ny, fy), rw, math.abs(ny - fy), ghost)
+            else
+                renderer.draw_rect(math.min(nx, fx), fy, math.abs(nx - fx), h, ghost)
+            end
+            fx, fy = nx, ny
         end
         core.redraw = true
     end

@@ -2,22 +2,20 @@ local common = require("core.common")
 local style = require("core.style")
 local DocView = require("core.docview")
 
--- whitespace you can see, in the two places it is worth seeing: inside
--- a selection, where you are looking at it on purpose, and at the very
--- end of the file, where the mark is DEVIATIONS §23 made visible --
--- everything wisp saves ends in exactly one newline, and this is the
--- editor showing its work.
+-- whitespace you can see, in the one place it is worth seeing: inside
+-- a selection, where you are looking at it on purpose.
 --
--- that end-of-file mark is a dimmed caret, not a glyph. a `¬` sitting
--- in the text flow reads as a character in the file, which is the one
--- thing it is not, and it moves the eye every time you scroll to the
--- bottom. vscode's `renderFinalNewline = dimmed` draws a faded cursor
--- there instead, and it is right: the mark is a position, so it is
--- drawn like one.
+-- there is no toggle, no whitespace-everywhere mode, and no mark at the
+-- end of the file. that last one was tried twice -- a `¬` glyph, then a
+-- dimmed caret -- and both were wrong for the same reason, which is
+-- clearer now than it was: **every file wisp saves ends in exactly one
+-- newline** (§23), so a mark saying so is drawn on every file, always,
+-- and a mark that is always there carries no information. the dimmed
+-- caret was worse than the glyph, because at the end of a file it sits
+-- exactly where the real caret sits and looks exactly like it.
 --
--- there is no toggle and no whitespace-everywhere mode. dots under
--- every space are wallpaper; the indent guides already answer the
--- question they were being asked to answer.
+-- dots under every space are wallpaper too; the indent guides already
+-- answer the question they were being asked.
 --
 -- upstream draws one `renderer.draw_text` and one `font:get_width` per
 -- character of every visible line, on the draw path -- the cost
@@ -51,20 +49,12 @@ function DocView:draw_line_text(idx, x, y)
         return
     end
 
-    local text = self.doc.lines[idx]
-
-    -- the last line's newline is its last character, so the mark goes
-    -- exactly where that character is. the real caret is drawn after
-    -- this, and over it, so the two never argue about the same pixels
-    if idx == #self.doc.lines then
-        local mx = x + self:get_col_x_offset(idx, #text)
-        renderer.draw_rect(mx, y, style.caret_width, self:get_line_height(), style.whitespace)
-    end
-
     local from, to = selection_range(self.doc, idx)
     if not from then
         return
     end
+
+    local text = self.doc.lines[idx]
 
     local _, indent_size = self.doc:get_indent_info()
     local out, marked, col = {}, false, 1

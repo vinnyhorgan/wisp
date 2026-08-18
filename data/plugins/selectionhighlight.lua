@@ -3,17 +3,27 @@ local DocView = require("core.docview")
 
 -- originally written by luveti, for lite
 
--- the rule for what counts as a search term is vscode's, and it is the
--- right one: a selection of nothing but spaces or tabs is not something
--- you are looking for, it is somewhere the caret happened to stop. one
--- selected space boxing every space on the screen is the single worst
--- thing this plugin can do, and it is what upstream does.
+-- two rules for what counts as something you are looking for, and one
+-- of them is wisp's own:
 --
--- the selection itself is skipped too. it is already drawn -- boxing it
--- as well says "here is another one of these" about the one you are
--- looking at
+-- **at least two characters.** neither upstream has this and both need
+-- it, but wisp needs it more, because wisp bundles helix mode: normal
+-- mode keeps a one-character selection under the head at all times, so
+-- moving the caret across a file made every copy of whatever letter it
+-- was sitting on flash a box, on every keystroke. nobody searches for
+-- one character. counted in codepoints, not bytes -- one CJK character
+-- is one character.
+--
+-- **not just whitespace**, which is lite-xl's guard and vscode's, and
+-- rxi has neither. a selection of spaces is not something you are
+-- looking for, it is somewhere the caret happened to stop, and one
+-- stray shift+right turns the screen into graph paper.
+--
+-- the selection itself is skipped too, as in lite-xl. it is already
+-- drawn -- boxing it as well says "here is another one of these" about
+-- the one you are looking at
 local function is_a_search_term(text)
-    return not text:find("^[ \t]*$")
+    return (utf8.len(text) or #text) >= 2 and not text:find("^[ \t]*$")
 end
 
 local function draw_box(x, y, w, h, color)

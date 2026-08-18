@@ -1072,7 +1072,7 @@ catppuccin mocha color taken by name from the official `palette.json`,
 never eyeballed:
 
     style.guide               surface1   indent guides, line limit rule
-    style.whitespace          surface2   whitespace marks, the eof mark
+    style.whitespace          surface2   whitespace marks in a selection
     style.selectionhighlight  overlay1   the box around other matches
     style.bracketmatch        sky        the same hue as the operators
     style.marker              yellow     the gutter bookmark
@@ -1109,36 +1109,61 @@ lua 5.5 randomizes the string hash seed per state, so `pairs` order
 changes between boots. an unbroken tie would make a file's indentation
 depend on which run happened to open it.
 
-### selectionhighlight -- a space is not a search term
+### selectionhighlight -- two characters, and not just spaces
 
-luveti's plugin, with vscode's rule for what counts as a search bolted
-on, because without it the plugin has one catastrophic failure mode:
-select a single space -- which is what a stray `shift+right` is -- and
-every space on the screen gets boxed. the screen turns into graph paper
-and there is nothing on it you were looking for. vscode's
-`SelectionHighlighter` refuses a selection that is only spaces and tabs,
-and it is right, so wisp does too.
+luveti's plugin has one catastrophic failure mode and both upstreams
+ship some of it. rxi's version guards nothing at all: select a single
+space -- which is what a stray `shift+right` is -- and every space on
+screen gets boxed, so the screen becomes graph paper with nothing on it
+you were looking for. lite-xl's version added the whitespace guard
+(`^%s+$`), which is also vscode's rule, and skips boxing the selection
+itself. wisp takes both.
 
-the selection itself is skipped as well. it is already drawn; boxing it
-says "here is another one of these" about the one under your caret.
+**the two-character minimum is wisp's own, and wisp needs it more than
+either upstream does**, because wisp bundles helix mode: normal mode
+keeps a one-character selection under the head at all times, so moving
+the caret across a file made every copy of whatever letter it was
+sitting on flash a box, on every keystroke. neither upstream has this
+rule and neither ships a mode that makes it necessary. nobody searches
+for one character. it counts codepoints rather than bytes, so one CJK
+character is one character.
 
-### drawwhitespace -- two rules, no toggle
+### lineguide -- a mode, not furniture
+
+the rule sits at `config.line_limit`, the eighty columns centerdoc
+centers on, so the two agree without either being told about the other.
+it is **off until you ask for it**, and `line-guide:toggle`
+(`ctrl+alt+g`) is how you ask. eighty columns is a house style, not a
+fact about the file in front of you; a permanent line down the middle of
+the screen is a ruler held against work that may not be measured that
+way. when you are wrapping prose or lining up a comment block you want
+it, and then you want it gone -- which is the shape of a mode (§19), not
+of a setting.
+
+### drawwhitespace -- one rule, no toggle
 
 upstream draws a mark under every space in the document and hangs three
 commands and a config flag off it. wisp marks whitespace in exactly two
-places: **inside a selection**, where you are looking at it deliberately,
-and **at the end of the file**, always. the second is §23 made visible --
-everything wisp saves ends in exactly one newline, and the mark is the
-editor showing its work. dots under every space are wallpaper, and the
-indent guides already answer the question those dots were being asked.
+place: **inside a selection**, where you are looking at it deliberately.
+dots under every space are wallpaper, and the indent guides already
+answer the question those dots were being asked.
 
-that end-of-file mark is a **dimmed caret, not a glyph**. it began as
-`¬` in the text flow, which was wrong for a reason worth naming: a
-glyph there reads as a character the file contains, and the newline is
-the one character it cannot show you. vscode's `renderFinalNewline =
-dimmed` draws a faded cursor instead, and that is the right shape -- the
-mark is a *position*, so it is drawn like one. the real caret is drawn
-after it and over it, so the two never argue about the same pixels.
+**the end-of-file mark was tried twice and taken back out both times**,
+and the second failure is the one worth recording. it began as `¬` in
+the text flow, which reads as a character the file contains -- and the
+newline is the one character it cannot show you. so it became a dimmed
+caret, vscode's `renderFinalNewline = dimmed`, on the argument that the
+mark is a *position* and should be drawn like one. that was worse: at
+the end of a file it sits exactly where the real caret sits and looks
+exactly like it.
+
+the reason both failed is the same, and it was there from the start.
+§23 guarantees **every file wisp writes ends in exactly one newline**,
+so the mark is drawn on every file, always, in the same place. a mark
+that cannot ever be absent carries no information; it is only decoration
+in the one spot where the eye is already looking for the caret. the
+invariant is real, and the place it is visible is the *absence* of any
+fuss about line endings, not a glyph.
 
 the draw is rewritten too. rxi's does one `renderer.draw_text` **and**
 one `font:get_width` per character of every visible line, on the draw
@@ -1165,18 +1190,25 @@ that many spaces less one is exactly a tab wide.
   to carry them along. one lua 5.5 fix was needed on the way in -- it
   reassigned a `for`-loop variable, which is **const** since 5.4, and the
   plugin simply failed to load.
-- **motiontrail** is **one frame of horizontal motion blur, and nothing
-  else**. upstream lerps both axes, so a jump between lines drags the
-  smear diagonally -- and since each step is a rect as wide as its own
-  horizontal travel, what lands on screen is a staircase of blocks over
-  whatever was on the lines in between, on every arrow press. the effect
-  only ever read as motion when the motion was sideways along a line of
-  text, so that is all it does now; a line change snaps, the way every
-  editor that ships a smooth caret handles one. the caret's position is
-  remembered as a **document** position as well as a screen one, because
-  a caret that held still while the view scrolled under it has not moved
-  and used to leave a trail saying it had. it also asks what shape the
-  caret is instead of assuming: helix's normal mode draws a block on the
+- **motiontrail** is a **fade**, and that is the whole rewrite. upstream
+  draws every step of the interpolation in the solid caret color, on top
+  of itself -- fifty opaque rects a full line tall, overlapping several
+  deep, laid along the path. a jump between lines lands that as a
+  staircase of green blocks over the text it crossed, on every arrow
+  press, and no amount of interpolation fixes it because the pixels are
+  simply painted over. wisp draws the path as an afterimage instead: the
+  ribbon is cut into bands a quarter of the caret's length along
+  whichever axis moved most, laid **edge to edge rather than on top of
+  each other**, so every pixel of the path is painted exactly once at
+  the alpha it has earned -- full under the caret, nothing at the far
+  end. the samples are floored before they are measured against each
+  other, so a band begins exactly where the last one ended: a gap shows
+  as a dark seam and an overlap as a bright one, and the first attempt
+  had the bright ones. the caret's position is remembered as a
+  **document** position as well as a screen one, because a caret that
+  held still while the view scrolled under it has not moved and used to
+  leave a trail saying it had. it also asks what shape the caret is
+  instead of assuming: helix's normal mode draws a block on the
   character under the head, and a block cursor leaving a hairline trail
   looks broken. it reads `package.loaded["plugins.helix"]` rather than
   requiring it, because load order between two bundled plugins is

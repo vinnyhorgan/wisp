@@ -98,7 +98,7 @@ style.scrollbar2 = { common.color("#585b70") } -- surface2
 -- the plugins that draw: each name arrives with the plugin that reads
 -- it, and each is a palette color chosen by name, never eyeballed
 style.guide = { common.color("#45475a") } -- surface1 (indent + line limit)
-style.whitespace = { common.color("#585b70") } -- surface2 (dots, arrows, eof)
+style.whitespace = { common.color("#585b70") } -- surface2 (the marks in a selection)
 style.selectionhighlight = { common.color("#7f849c") } -- overlay1
 style.bracketmatch = { common.color("#89dceb") } -- sky, like the operators it underlines
 style.marker = { common.color("#f9e2af") } -- yellow
