@@ -4848,6 +4848,184 @@ fn whitespace_is_marked_in_a_selection_and_at_the_end_of_the_file() {
     );
 }
 
+/// the end-of-file mark is a dimmed caret, not a character. a glyph
+/// sitting in the text flow reads as something the file contains, which
+/// is the one thing it is not, so the mark is drawn as a position: one
+/// bar, the width of the caret, as tall as a line
+#[test]
+fn the_end_of_file_mark_is_a_bar_and_not_a_glyph() {
+    let _serial = serial();
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("eofproj");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("x.txt"), "one\ntwo\n").unwrap();
+
+    let mut editor = Headless::boot_args(
+        env!("CARGO_MANIFEST_DIR"),
+        &[
+            &dir.display().to_string(),
+            &dir.join("x.txt").display().to_string(),
+        ],
+        900,
+        600,
+        1.0,
+    );
+    editor.run_until_frames(1, 10_000);
+    editor.set_focus(false);
+    editor.run_steps(200);
+
+    // an exact color match is not enough on its own: the palette is a
+    // ramp, so text antialiased at ~43% coverage lands on surface2
+    // exactly. the mark is the column that is *solid* -- a glyph never
+    // fills a whole line height of one column, and a caret always does
+    const WHITESPACE: u32 = 0x585b70;
+    let (pixels, w, _h) = editor.last_frame();
+    let mut solid = std::collections::BTreeMap::new();
+    for (i, p) in pixels.iter().enumerate() {
+        if p & 0xffffff == WHITESPACE {
+            *solid.entry(i % w as usize).or_insert(0) += 1;
+        }
+    }
+    let bar: Vec<usize> = solid
+        .iter()
+        .filter(|(_, rows)| **rows >= 15)
+        .map(|(x, _)| *x)
+        .collect();
+
+    assert_eq!(
+        bar.len(),
+        2,
+        "the end of the file is not marked by a caret-wide bar ({solid:?})"
+    );
+    assert_eq!(bar[1], bar[0] + 1, "the bar is not one solid column pair");
+}
+
+/// a selection of nothing but spaces is not a search term. one space
+/// selected by accident -- which is what a stray shift+right is -- used
+/// to box every space on the screen
+#[test]
+fn a_selected_space_is_not_a_search_term() {
+    let _serial = serial();
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("spaceproj");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("x.txt"), "aaa bbb aaa\nbbb aaa bbb\n").unwrap();
+
+    let mut editor = Headless::boot_args(
+        env!("CARGO_MANIFEST_DIR"),
+        &[
+            &dir.display().to_string(),
+            &dir.join("x.txt").display().to_string(),
+        ],
+        900,
+        600,
+        1.0,
+    );
+    editor.run_until_frames(1, 10_000);
+    editor.set_focus(false);
+    editor.run_steps(200);
+
+    const HIGHLIGHT: u32 = 0x7f849c; // overlay1
+    let count = |editor: &Headless| {
+        editor
+            .last_frame()
+            .0
+            .iter()
+            .filter(|&&p| p & 0xffffff == HIGHLIGHT)
+            .count()
+    };
+
+    let quiet = count(&editor);
+
+    // three rights puts the caret on the space, and shift+right takes it
+    for _ in 0..3 {
+        press(&editor, "right");
+    }
+    shift(&editor, "right");
+    editor.run_steps(300);
+    assert_eq!(
+        count(&editor),
+        quiet,
+        "a selected space boxed the other spaces"
+    );
+
+    // and a word still finds its twin, which is the point of the plugin
+    ctrl(&editor, "home");
+    editor.run_steps(100);
+    ctrl(&editor, "d");
+    editor.run_steps(300);
+    let after = count(&editor);
+    assert!(
+        after > quiet,
+        "selectionhighlight boxed nothing for a real word ({quiet} -> {after})"
+    );
+}
+
+/// the caret trail is horizontal motion blur along one line and nothing
+/// else. lerping both axes dragged a staircase of blocks over every
+/// line a vertical jump passed across, on every arrow press
+#[test]
+fn the_caret_trail_never_crosses_lines() {
+    let _serial = serial();
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("trailproj");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let line = "x".repeat(40);
+    std::fs::write(dir.join("x.txt"), format!("{line}\n{line}\n")).unwrap();
+
+    let mut editor = Headless::boot_args(
+        env!("CARGO_MANIFEST_DIR"),
+        &[
+            &dir.display().to_string(),
+            &dir.join("x.txt").display().to_string(),
+        ],
+        900,
+        600,
+        1.0,
+    );
+    editor.run_until_frames(1, 10_000);
+    // an unfocused editor draws no caret, so every green pixel the
+    // frame gains after this is the trail and only the trail
+    editor.set_focus(false);
+    editor.run_steps(200);
+
+    const CARET: u32 = 0xa6e3a1; // green
+    let count = |editor: &Headless| {
+        editor
+            .last_frame()
+            .0
+            .iter()
+            .filter(|&&p| p & 0xffffff == CARET)
+            .count()
+    };
+
+    // the trail lives for exactly one frame, so the frames are walked
+    // one step at a time rather than settled and then looked at
+    let peak = |editor: &mut Headless| {
+        let mut peak = 0;
+        for _ in 0..20 {
+            editor.run_steps(1);
+            peak = peak.max(count(editor));
+        }
+        peak
+    };
+
+    let quiet = count(&editor);
+    press(&editor, "down");
+    assert_eq!(
+        peak(&mut editor),
+        quiet,
+        "a vertical jump smeared the caret across the lines it crossed"
+    );
+
+    press(&editor, "end");
+    let smear = peak(&mut editor);
+    assert!(
+        smear > quiet,
+        "a jump along the line left no trail at all ({quiet} -> {smear})"
+    );
+}
+
 /// centering is a mode, not a setting: the command moves the text and
 /// the same command puts it back
 #[test]

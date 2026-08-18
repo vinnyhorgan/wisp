@@ -8,16 +8,18 @@ local DocView = require("core.docview")
 
 local EmptyView = View:extend()
 
--- with nothing open, the space is otherwise dead, so it is a clock. the
--- wordmark and the two bindings stay underneath it, dimmer: they are
--- the whole of wisp's onboarding and the readme says so out loud ("the
--- rest the editor will tell you itself").
+-- with nothing open, the space is otherwise dead, so it is a clock, and
+-- a clock is all it is: the time, the date under it, nothing else. the
+-- wordmark and the two key bindings were there first and they made the
+-- screen look like a splash page -- an editor showing you its own name
+-- is telling you the one thing you already know.
 --
--- it is skipped in headless boots. the clock is the only thing the
+-- the clock is skipped in headless boots. it is the only thing the
 -- editor draws that is not a function of its own state, and every
 -- whole-frame test in the suite stands on two boots drawing the same
 -- pixels -- so the one surface that reads the wall clock is the one
--- surface a test can never see
+-- surface a test can never see. the wordmark is what stands in for it
+-- there, which is also what the readme's screenshot wants
 local function clock_text()
     if HEADLESS then
         return nil
@@ -34,7 +36,7 @@ function EmptyView:update()
     end
 end
 
-local function draw_text(x, y, color)
+local function draw_wordmark(x, y, color)
     local th = style.big_font:get_height()
     local dh = th + style.padding.y * 2
     x = renderer.draw_text(style.big_font, "wisp", x, y + (dh - th) / 2, color)
@@ -58,27 +60,26 @@ end
 function EmptyView:draw()
     self:draw_background(style.background)
 
-    -- the wordmark block is measured by drawing it transparent, which
-    -- is lite's own trick and is kept
-    local w, h = draw_text(0, 0, { 0, 0, 0, 0 })
     local time, date = clock_text()
-
-    local ch = time and style.clock_font:get_height() or 0
-    local dh = time and style.font:get_height() + style.padding.y * 2 or 0
-    local y = self.position.y + (self.size.y - h - ch - dh) / 2
-
-    if time then
-        local center = function(font, text, ty, color)
-            local tw = font:get_width(text)
-            renderer.draw_text(font, text, self.position.x + (self.size.x - tw) / 2, ty, color)
-        end
-        center(style.clock_font, time, y, style.text)
-        center(style.font, date, y + ch, style.dim)
-        y = y + ch + dh
+    if not time then
+        -- the wordmark block is measured by drawing it transparent,
+        -- which is lite's own trick and is kept
+        local w, h = draw_wordmark(0, 0, { 0, 0, 0, 0 })
+        local x = self.position.x + math.max(style.padding.x, (self.size.x - w) / 2)
+        draw_wordmark(x, self.position.y + (self.size.y - h) / 2, style.dim)
+        return
     end
 
-    local x = self.position.x + math.max(style.padding.x, (self.size.x - w) / 2)
-    draw_text(x, y, style.dim)
+    local function center(font, text, ty, color)
+        local tw = font:get_width(text)
+        renderer.draw_text(font, text, self.position.x + (self.size.x - tw) / 2, ty, color)
+    end
+
+    local ch = style.clock_font:get_height()
+    local dh = style.font:get_height()
+    local y = self.position.y + (self.size.y - ch - style.padding.y - dh) / 2
+    center(style.clock_font, time, y, style.text)
+    center(style.font, date, y + ch + style.padding.y, style.dim)
 end
 
 local Node = Object:extend()

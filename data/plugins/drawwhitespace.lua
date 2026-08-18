@@ -8,6 +8,13 @@ local DocView = require("core.docview")
 -- everything wisp saves ends in exactly one newline, and this is the
 -- editor showing its work.
 --
+-- that end-of-file mark is a dimmed caret, not a glyph. a `¬` sitting
+-- in the text flow reads as a character in the file, which is the one
+-- thing it is not, and it moves the eye every time you scroll to the
+-- bottom. vscode's `renderFinalNewline = dimmed` draws a faded cursor
+-- there instead, and it is right: the mark is a position, so it is
+-- drawn like one.
+--
 -- there is no toggle and no whitespace-everywhere mode. dots under
 -- every space are wallpaper; the indent guides already answer the
 -- question they were being asked to answer.
@@ -24,7 +31,6 @@ local DocView = require("core.docview")
 -- less one is exactly a tab wide
 local SPACE = "\u{00B7}" -- middle dot
 local TAB = "\u{00BB}" -- right double angle quote
-local EOF = "\u{00AC}" -- not sign
 
 local function selection_range(doc, idx)
     local line1, col1, line2, col2 = doc:get_selection(true)
@@ -46,22 +52,25 @@ function DocView:draw_line_text(idx, x, y)
     end
 
     local text = self.doc.lines[idx]
+
+    -- the last line's newline is its last character, so the mark goes
+    -- exactly where that character is. the real caret is drawn after
+    -- this, and over it, so the two never argue about the same pixels
+    if idx == #self.doc.lines then
+        local mx = x + self:get_col_x_offset(idx, #text)
+        renderer.draw_rect(mx, y, style.caret_width, self:get_line_height(), style.whitespace)
+    end
+
     local from, to = selection_range(self.doc, idx)
-    local last_line = idx == #self.doc.lines
-    if not from and not last_line then
+    if not from then
         return
     end
 
     local _, indent_size = self.doc:get_indent_info()
     local out, marked, col = {}, false, 1
     for chr in common.utf8_chars(text) do
-        local selected = from and col >= from and col < to
-        if chr == "\n" then
-            if last_line then
-                out[#out + 1] = EOF
-                marked = true
-            end
-        elseif selected and chr == " " then
+        local selected = col >= from and col < to
+        if selected and chr == " " then
             out[#out + 1] = SPACE
             marked = true
         elseif selected and chr == "\t" then
@@ -69,7 +78,7 @@ function DocView:draw_line_text(idx, x, y)
             marked = true
         elseif chr == "\t" then
             out[#out + 1] = string.rep(" ", indent_size)
-        else
+        elseif chr ~= "\n" then
             out[#out + 1] = " "
         end
         col = col + #chr

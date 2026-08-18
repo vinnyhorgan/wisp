@@ -31,7 +31,22 @@ local function get_caret_rect(dv)
     return x + offset, y, w, dv:get_line_height()
 end
 
-local last_x, last_y, last_view
+-- the trail is one frame of motion blur along the line the caret is
+-- already on, and nothing else.
+--
+-- upstream lerps both axes, so a jump between lines drags the smear
+-- diagonally across the text -- and because each step is a rect as wide
+-- as its own horizontal travel, the result is a staircase of blocks
+-- over whatever was on the lines in between. it is the worst-looking
+-- thing in the editor and it fires on every arrow press.
+--
+-- the effect only ever read as motion when the motion was sideways
+-- along a line of text, so that is all it does now. vertical movement
+-- snaps, which is what every editor that ships a smooth caret does with
+-- a line change. the position is remembered as a document position as
+-- well as a screen one: a caret that stayed put while the view scrolled
+-- under it has not moved, and used to leave a trail saying it had
+local last
 
 local draw = DocView.draw
 
@@ -41,19 +56,19 @@ function DocView:draw(...)
         return
     end
 
+    local line, col = self.doc:get_selection()
     local x, y, w, h = get_caret_rect(self)
 
-    if last_view == self and (x ~= last_x or y ~= last_y) then
+    if last and last.view == self and last.line == line and last.col ~= col and last.y == y then
         local lx = x
         for i = 0, 1, 1 / config.motiontrail_steps do
-            local ix = lerp(x, last_x, i)
-            local iy = lerp(y, last_y, i)
+            local ix = lerp(x, last.x, i)
             local iw = math.max(w, math.ceil(math.abs(ix - lx)))
-            renderer.draw_rect(ix, iy, iw, h, style.caret)
+            renderer.draw_rect(ix, y, iw, h, style.caret)
             lx = ix
         end
         core.redraw = true
     end
 
-    last_view, last_x, last_y = self, x, y
+    last = { view = self, line = line, col = col, x = x, y = y }
 end

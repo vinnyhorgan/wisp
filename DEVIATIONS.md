@@ -1109,6 +1109,19 @@ lua 5.5 randomizes the string hash seed per state, so `pairs` order
 changes between boots. an unbroken tie would make a file's indentation
 depend on which run happened to open it.
 
+### selectionhighlight -- a space is not a search term
+
+luveti's plugin, with vscode's rule for what counts as a search bolted
+on, because without it the plugin has one catastrophic failure mode:
+select a single space -- which is what a stray `shift+right` is -- and
+every space on the screen gets boxed. the screen turns into graph paper
+and there is nothing on it you were looking for. vscode's
+`SelectionHighlighter` refuses a selection that is only spaces and tabs,
+and it is right, so wisp does too.
+
+the selection itself is skipped as well. it is already drawn; boxing it
+says "here is another one of these" about the one under your caret.
+
 ### drawwhitespace -- two rules, no toggle
 
 upstream draws a mark under every space in the document and hangs three
@@ -1118,6 +1131,14 @@ and **at the end of the file**, always. the second is §23 made visible --
 everything wisp saves ends in exactly one newline, and the mark is the
 editor showing its work. dots under every space are wallpaper, and the
 indent guides already answer the question those dots were being asked.
+
+that end-of-file mark is a **dimmed caret, not a glyph**. it began as
+`¬` in the text flow, which was wrong for a reason worth naming: a
+glyph there reads as a character the file contains, and the newline is
+the one character it cannot show you. vscode's `renderFinalNewline =
+dimmed` draws a faded cursor instead, and that is the right shape -- the
+mark is a *position*, so it is drawn like one. the real caret is drawn
+after it and over it, so the two never argue about the same pixels.
 
 the draw is rewritten too. rxi's does one `renderer.draw_text` **and**
 one `font:get_width` per character of every visible line, on the draw
@@ -1144,12 +1165,22 @@ that many spaces less one is exactly a tab wide.
   to carry them along. one lua 5.5 fix was needed on the way in -- it
   reassigned a `for`-loop variable, which is **const** since 5.4, and the
   plugin simply failed to load.
-- **motiontrail** asks what shape the caret is instead of assuming.
-  helix's normal mode draws a block on the character under the head, and
-  a block cursor leaving a hairline trail looks broken. it reads
-  `package.loaded["plugins.helix"]` rather than requiring it, because
-  load order between two bundled plugins is directory order and a
-  require at the top would be a coin flip.
+- **motiontrail** is **one frame of horizontal motion blur, and nothing
+  else**. upstream lerps both axes, so a jump between lines drags the
+  smear diagonally -- and since each step is a rect as wide as its own
+  horizontal travel, what lands on screen is a staircase of blocks over
+  whatever was on the lines in between, on every arrow press. the effect
+  only ever read as motion when the motion was sideways along a line of
+  text, so that is all it does now; a line change snaps, the way every
+  editor that ships a smooth caret handles one. the caret's position is
+  remembered as a **document** position as well as a screen one, because
+  a caret that held still while the view scrolled under it has not moved
+  and used to leave a trail saying it had. it also asks what shape the
+  caret is instead of assuming: helix's normal mode draws a block on the
+  character under the head, and a block cursor leaving a hairline trail
+  looks broken. it reads `package.loaded["plugins.helix"]` rather than
+  requiring it, because load order between two bundled plugins is
+  directory order and a require at the top would be a coin flip.
 - **linecopypaste** fixes a bug it would otherwise have inherited.
   upstream remembers "the clipboard holds a whole line" in a boolean,
   which goes stale the instant another application writes the clipboard:
@@ -1279,10 +1310,15 @@ the other a weak table keyed by document.
 `data/plugins/scale.lua`, `src/boot.rs`
 
 lite's `EmptyView` draws the wordmark and two key bindings on an
-otherwise dead screen. wisp puts a clock above them -- the one screen
-you look at without reading anything. the wordmark and the bindings stay
-underneath, dimmer: they are the whole of wisp's onboarding, and the
-readme leans on them out loud ("the rest the editor will tell you
+otherwise dead screen. wisp draws a clock instead -- the time, the date
+under it, nothing else. it is the one screen you look at without
+reading anything, so it should be the one screen with nothing to read.
+
+the wordmark and the two bindings were there first, under the clock, and
+they were wrong together: a name and a legend and a clock is a splash
+page, and an editor showing you its own name is telling you the one
+thing you already know. the bindings survive where they belong, in the
+command palette and the readme ("the rest the editor will tell you
 itself").
 
 **it is skipped in headless boots, and that cost one line of rust.** the
@@ -1295,6 +1331,10 @@ as an argument; it is now also a global, `HEADLESS`, beside `SCALE`,
 `EXEDIR`, `USERDIR` and `PATHSEP`. that is the whole change: a name for
 a value the lua layer was already handed, with its consumer landing in
 the same commit, and it is one line to revert.
+
+the wordmark is what the headless boot draws in the clock's place, so
+the empty view is never a blank rectangle and the test has a subject to
+compare against. it is also what the readme's screenshot wants.
 
 `style.clock_font` is the fifth size of the one font, and it joins the
 four `scale.lua` already resizes, so zoom moves it with everything else.
