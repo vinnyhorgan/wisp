@@ -1042,6 +1042,73 @@ but name. `language_gitcommit` registers **two** syntaxes: a commit
 message is prose and only the part git strips is colored, while the
 rebase todo is all markup and gets its verbs.
 
+## 25. the plugins wisp adds
+
+**files:** `data/plugins/*.lua`, `data/core/style.lua`
+
+lite shipped sixteen plugins. the ones below are wisp's additions,
+selected from rxi's `lite-plugins` and lite-xl's two repos against the
+monday morning test and the ledger in PLUGINS.md. bundling is enabling:
+there is no plugin manager and no `config.plugins` switch, so every one
+of these *is* the editor, and each had to earn that.
+
+### the commandview rule
+
+`CommandView` extends `DocView` (`data/core/commandview.lua`). every
+plugin that patches `DocView:draw`, `DocView:draw_line_text` or
+`DocView:draw_line_body` therefore also paints inside the command
+prompt -- indent guides down the middle of a find box, a line-limit
+rule across a one-line input. upstream ships all of them that way and
+only `autoinsert` guards itself. **every drawing plugin wisp bundles
+checks `getmetatable(self) == DocView` first**, and the guard is not
+optional: it is the difference between a plugin and a bug.
+
+### a color, by name
+
+each drawing plugin upstream falls back to whatever is nearest --
+`style.selection`, `style.syntax.comment`, `style.syntax["function"]`.
+wisp gives each its own name in `style.lua`, and every value is a
+catppuccin mocha color taken by name from the official `palette.json`,
+never eyeballed:
+
+    style.guide               surface1   indent guides, line limit rule
+    style.whitespace          surface2   whitespace marks, the eof mark
+    style.selectionhighlight  overlay1   the box around other matches
+    style.bracketmatch        sky        the same hue as the operators
+    style.marker              yellow     the gutter bookmark
+
+three of these deliberately repeat a value used elsewhere in the theme
+(`guide` is the scrollbar's surface1, `bracketmatch` is the operator
+syntax color). that is the design, not an oversight -- chrome should
+look like chrome -- but it does mean a test cannot prove a plugin drew
+by counting one color in one frame. the tests measure the *difference*
+a frame makes instead.
+
+### detectindent -- a rewrite, not a port
+
+the consumer §21 was built for. neither upstream version is used:
+
+- rxi's 64 lines swap `config.tab_type` and `config.indent_size` around
+  every `command.perform` and every `DocView:draw`, restoring them
+  after. that is the global swap §21 exists to make unnecessary, and it
+  is wrong the moment two files with different indentation are open.
+- lite-xl's 395 are a real detector wrapped in settings-gui plumbing
+  wisp has no use for.
+
+what is left is the honest middle. rxi's detector took the **first**
+indented line it found; wisp's counts what the file does when it goes
+one level deeper -- the histogram of positive steps between successive
+non-blank lines -- and takes the mode, falling back to the narrowest
+indent used by a file that only ever has one level. hard indents win by
+count and take no size, because how wide a tab is *drawn* stays a
+preference and `get_indent_info` already falls back to the config for
+it.
+
+the tie-break in that histogram is load-bearing rather than cosmetic:
+lua 5.5 randomizes the string hash seed per state, so `pairs` order
+changes between boots. an unbroken tie would make a file's indentation
+depend on which run happened to open it.
+
 ## kept on purpose
 
 lite behaviors evaluated deliberately and kept, recorded so they are

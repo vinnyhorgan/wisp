@@ -40,6 +40,14 @@ style.line_highlight = { common.color("#313244") } -- surface0
 style.scrollbar = { common.color("#45475a") } -- surface1
 style.scrollbar2 = { common.color("#585b70") } -- surface2
 
+-- the plugins that draw: each name arrives with the plugin that reads
+-- it, and each is a palette color chosen by name, never eyeballed
+style.guide = { common.color("#45475a") } -- surface1 (indent + line limit)
+style.whitespace = { common.color("#585b70") } -- surface2 (dots, arrows, eof)
+style.selectionhighlight = { common.color("#7f849c") } -- overlay1
+style.bracketmatch = { common.color("#89dceb") } -- sky, like the operators it underlines
+style.marker = { common.color("#f9e2af") } -- yellow
+
 style.syntax = {}
 style.syntax["normal"] = { common.color("#cdd6f4") } -- text
 style.syntax["symbol"] = { common.color("#cdd6f4") } -- text

@@ -4546,3 +4546,134 @@ fp:close()
         }
     }
 }
+
+/// detectindent measures the file instead of asking the config: three
+/// documents with three different habits, one editor, three answers.
+/// rxi's version swapped the global config around every command, which
+/// is exactly what DEVIATIONS §21 exists to make unnecessary
+#[test]
+fn detectindent_measures_the_file_rather_than_asking_the_config() {
+    let _serial = serial();
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("detectproj");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let body = |pad: &str| {
+        format!(
+            "local a = {{\n{p}b = 1,\n{p}c = {{\n{p}{p}d = 2,\n{p}}},\n}}\n",
+            p = pad
+        )
+    };
+    std::fs::write(dir.join("two.lua"), body("  ")).unwrap();
+    std::fs::write(dir.join("tabs.lua"), body("\t")).unwrap();
+    std::fs::write(dir.join("eight.lua"), body("        ")).unwrap();
+
+    let mut editor = Headless::boot_args(
+        env!("CARGO_MANIFEST_DIR"),
+        &[
+            &dir.display().to_string(),
+            &dir.join("two.lua").display().to_string(),
+            &dir.join("tabs.lua").display().to_string(),
+            &dir.join("eight.lua").display().to_string(),
+        ],
+        900,
+        600,
+        1.0,
+    );
+    editor.run_until_frames(1, 10_000);
+
+    // the active tab is the last one opened; walk back through them,
+    // indenting line one of each and saving
+    for name in ["eight.lua", "tabs.lua", "two.lua"] {
+        assert_eq!(editor.window_title(), format!("{name} - wisp"));
+        press(&editor, "tab");
+        editor.run_steps(200);
+        ctrl(&editor, "s");
+        editor.run_steps(200);
+        ctrl_shift(&editor, "tab");
+        editor.run_steps(200);
+    }
+
+    let read = |name: &str| std::fs::read_to_string(dir.join(name)).unwrap();
+    assert!(read("two.lua").starts_with("  local"), "two-space file");
+    assert!(read("tabs.lua").starts_with("\tlocal"), "tab file");
+    assert!(
+        read("eight.lua").starts_with("        local"),
+        "eight-space file"
+    );
+}
+
+/// the drawing plugins, each proved by the pixels it adds. the counts
+/// are before-and-after within one editor rather than absolute: these
+/// colors are shared with the chrome (guides with the scrollbar, the
+/// bracket underline with the operator syntax), so only the difference
+/// is evidence
+#[test]
+fn the_drawing_plugins_paint_in_their_own_colors() {
+    let _serial = serial();
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("drawproj");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("code.lua"), "local t = {\naaa = 1,\naaa = 2,\n}\n").unwrap();
+
+    const GUIDE: u32 = 0x45475a; // surface1
+    const HIGHLIGHT: u32 = 0x7f849c; // overlay1
+    const BRACKET: u32 = 0x89dceb; // sky
+
+    let mut editor = Headless::boot_args(
+        env!("CARGO_MANIFEST_DIR"),
+        &[
+            &dir.display().to_string(),
+            &dir.join("code.lua").display().to_string(),
+        ],
+        900,
+        600,
+        1.0,
+    );
+    editor.run_until_frames(1, 10_000);
+    editor.set_focus(false);
+    editor.run_steps(200);
+
+    let count = |editor: &Headless, rgb: u32| {
+        editor
+            .last_frame()
+            .0
+            .iter()
+            .filter(|&&p| p & 0xffffff == rgb)
+            .count()
+    };
+
+    // lineguide's rule is already there; indenting a line must add to it
+    let before = count(&editor, GUIDE);
+    assert!(before > 0, "lineguide drew no rule");
+    press(&editor, "down");
+    editor.run_steps(50);
+    press(&editor, "tab");
+    editor.run_steps(300);
+    let after = count(&editor, GUIDE);
+    assert!(
+        after > before,
+        "indentguide drew nothing for an indented line ({before} -> {after})"
+    );
+
+    // select one `aaa` and the other one gets boxed
+    let before = count(&editor, HIGHLIGHT);
+    ctrl(&editor, "d");
+    editor.run_steps(300);
+    let after = count(&editor, HIGHLIGHT);
+    assert!(
+        after > before,
+        "selectionhighlight boxed nothing ({before} -> {after})"
+    );
+
+    // put the caret past the opening brace and its partner is underlined
+    ctrl(&editor, "home");
+    editor.run_steps(200);
+    let before = count(&editor, BRACKET);
+    press(&editor, "end");
+    editor.run_steps(300);
+    let after = count(&editor, BRACKET);
+    assert!(
+        after > before,
+        "bracketmatch underlined nothing ({before} -> {after})"
+    );
+}
