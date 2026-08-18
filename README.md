@@ -18,6 +18,9 @@ bug-fixed where not. every deliberate difference is written down in
   editable while the editor runs
 - one font (jetbrains mono nerd font), one theme (catppuccin mocha, green
   caret), one binary
+- opinions about the files it writes: everything wisp saves is utf-8, lf,
+  ends in exactly one newline, and carries no trailing whitespace --
+  markdown excepted, where two trailing spaces are a line break
 - a real terminal in a view: alacritty's vt engine on a polled pty, drawn
   through the same renderer as everything else
 - helix mode, opt in: selection-first modal editing built to what
@@ -26,7 +29,7 @@ bug-fixed where not. every deliberate difference is written down in
   hex editor for everything else
 - `unsafe_code = "deny"`, with a single documented exception, and it's lua's
   fault
-- the whole editor boots headless in the test suite: 98 of its 218 tests
+- the whole editor boots headless in the test suite: 102 of its 222 tests
   feed it fake input and read the pixels coming back. the screenshots on
   this page were rendered that way too
 
