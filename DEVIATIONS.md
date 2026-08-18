@@ -42,16 +42,20 @@ override env var is `WISP_SCALE` (was `LITE_SCALE`).
 
 ## 3. one font: jetbrains mono nerd font
 
-**files:** `data/jetbrainsmono.ttf`, `data/core/style.lua`,
+**files:** `data/jetbrainsmono.ttf`,
+`data/jetbrainsmono-license.txt`, `data/core/style.lua`,
 `data/core/init.lua`, `data/core/statusview.lua`,
 `data/plugins/treeview.lua`
 
 lite's three fonts (`font.ttf`, `monospace.ttf`, `icons.ttf`) are replaced by
 a single `jetbrainsmono.ttf`: jetbrains mono regular patched by nerd fonts
 (release v3.5.0, ofl), loaded at different sizes for ui, wordmark, code and
-icons. it is the *mono* flavor of the patch, where icons are drawn to fit
-exactly one cell: their ink matches their advance, so everything the lua
-layer measures with `get_width` is truthful and layouts need no fudge. the
+icons. the license travels with it: `jetbrainsmono-license.txt` sits
+beside the ttf in the same directory, so the font cannot be installed
+anywhere without it. it is the *mono* flavor of the patch, where icons
+are drawn to fit exactly one cell: their ink matches their advance, so
+everything the lua layer measures with `get_width` is truthful and
+layouts need no fudge. the
 icon font is simply loaded bigger (16px vs 14px ui) to keep the icons from
 looking squeezed. the icons are nerd font glyphs living in the font's
 private use area, named once in `style.icons` and referenced by name at

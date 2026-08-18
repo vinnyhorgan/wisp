@@ -71,3 +71,7 @@ rxi, for lite -- go star it first.
 ## license
 
 mit, shared with rxi. see [LICENSE](LICENSE).
+
+the bundled font is jetbrains mono, patched by nerd fonts, under the sil
+open font license 1.1 -- its full text ships beside it in
+[data/jetbrainsmono-license.txt](data/jetbrainsmono-license.txt).
