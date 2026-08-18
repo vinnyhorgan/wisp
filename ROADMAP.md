@@ -175,6 +175,12 @@ two rules settled before the pass, so they are not re-decided per plugin:
   translates rather than dragging multi-root in a plugin at a time. see
   "said no, on the record".
 
+**the decided list lives in PLUGINS.md** -- all ~200 plugins across the
+two repos judged, the bundle set named in tiers, and every no filed
+under the reason it repeats. the headline finding: wisp cannot
+syntax-highlight its own source, and seven language files is rxi's 2020
+set rather than a 2026 editor.
+
 the wave, roughly easiest-first: ~~runtime zoom~~ (done, DEVIATIONS
 §15), ~~imageview~~ (done, §20), ~~per-doc indent info~~ (done, §21),
 detectindent, auto-close brackets + bracketmatch, indent guides,

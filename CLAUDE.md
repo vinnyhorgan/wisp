@@ -20,6 +20,9 @@ way rxi intended.
   lite-xl's fixes cherry-picked) lives in ROADMAP.md.
 - `DEVIATIONS.md` -- the contract: every intentional difference from
   lite's `data/` is documented here, no exceptions.
+- `PLUGINS.md` -- the bundled plugin ledger: what ships, what was
+  rejected and why. bundling is enabling -- there is no plugin manager
+  and no `config.plugins` switch.
 - `tests/boot.rs` -- e2e tests: the real, unmodified editor lua booting on
   the headless core with a virtual clock.
 - `examples/screenshot.rs` -- renders the readme screenshots with the
