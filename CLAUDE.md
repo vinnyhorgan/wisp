@@ -13,6 +13,11 @@ way rxi intended.
   lite's `data/` at master (`38bd9b3`) and evolves from there.
 - `lite/` -- rxi's lite, git-ignored, READ ONLY. the reference for every
   diff. never modify it.
+- `lite-xl/`, `lite-plugins/`, `lite-xl-plugins/` -- the rest of the
+  reference material, same rule: git-ignored, READ ONLY, never modified.
+  lite-xl is the core they grew from lite; the two plugin repos are what
+  the plugin pass ports from. the porting doctrine (rxi's version first,
+  lite-xl's fixes cherry-picked) lives in ROADMAP.md.
 - `DEVIATIONS.md` -- the contract: every intentional difference from
   lite's `data/` is documented here, no exceptions.
 - `tests/boot.rs` -- e2e tests: the real, unmodified editor lua booting on

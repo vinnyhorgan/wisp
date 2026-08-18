@@ -1,7 +1,7 @@
 # roadmap
 
-updated 2026-08-17, after helix mode, the hex editor and the image
-viewer. phases may rot -- git log is the truth.
+updated 2026-08-18, after per-doc indent info and the reference clones.
+phases may rot -- git log is the truth.
 
 ## done
 
@@ -155,15 +155,41 @@ its own core, so the work is adopting their shape, not inventing one.
 the freeze. per-doc indent info (kills detectindent's global config swap,
 which is wrong the moment two files with different indentation are open)
 landed the same way, ahead of its consumer and in lite-xl's exact shape,
-so detectindent adapts instead of being rewritten.
+so detectindent adapts instead of being rewritten. there is no third
+pre-emption of that kind: the obvious candidate was statusview
+extensibility (lite-xl has `StatusView:add_item`, wisp has lite's
+hardcoded `get_items`), and exactly **one** upstream plugin uses it.
+
+two rules settled before the pass, so they are not re-decided per plugin:
+
+- **`common.lua` grows one function at a time.** wisp's is lite's twelve
+  plus `home_expand`; lite-xl added nineteen more, and the adapted
+  plugins reach for `merge`, `basename`, `dirname` and `serialize` often
+  enough to make a bulk import tempting. unlike indent info these are
+  conveniences, not a bug being closed, so the rule the rust core lives
+  by applies here too: the function arrives with its first consumer, in
+  the same commit, and not before.
+- **one project directory, still.** lite-xl grew
+  `core.project_directories`; wisp keeps lite's single chdir. five
+  upstream plugins reference the plural form, and each adaptation
+  translates rather than dragging multi-root in a plugin at a time. see
+  "said no, on the record".
 
 the wave, roughly easiest-first: ~~runtime zoom~~ (done, DEVIATIONS
 §15), ~~imageview~~ (done, §20), ~~per-doc indent info~~ (done, §21),
-detectindent,
-auto-close brackets + bracketmatch, indent guides, selection highlight,
-more languages, treeview file ops, project-wide replace, session restore
-+ project memory (treeview width, last query), word wrap (lite #26),
-multi-cursor last.
+detectindent, auto-close brackets + bracketmatch, indent guides,
+selection highlight, more languages, treeview file ops, project-wide
+replace, session restore + project memory (treeview width, last query),
+word wrap (lite #26), multi-cursor last.
+
+project-wide replace is wisp's own work, not an adaptation: neither
+lite's nor lite-xl's projectsearch has a replace at all. the cheap shape
+is to apply the edits to *open docs* -- every touched file becomes a
+dirty tab, nothing reaches disk, undo is the doc's own stack and the
+review ui is the editor itself. it needs a `doc:save-all` (there is only
+save and save-as) and a cap on how many files one replace may open. it
+goes **after** the pass, since the pass may replace projectsearch
+underneath it.
 
 **treeview file ops is the one to sequence deliberately.** wisp's
 treeview has exactly one command, `toggle`; lite-xl's has delete, rename,
@@ -263,4 +289,12 @@ moved -- a core change, and the core is frozen) - tree-sitter while
 grammars mean compiling c - the js
 division-vs-regex pattern (lite #248) - lite #275 (no effect under
 integer line heights) - full non-utf8 support (replacement chars,
-never hang) - os dialogs, forever
+never hang) - os dialogs, forever - multiple project directories
+(lite-xl's `core.project_directories`; adaptations translate to the
+single chdir, they do not drag multi-root in one plugin at a time) -
+lite-xl-widgets (a ui toolkit, and wisp is an artifact, not a toolkit;
+the four upstream plugins that need it are not adaptable and are not
+meant to be) - pragtical's plugin fork as a standing reference (its
+versions of shared plugins diverge by a hundred-plus lines against a
+core with `core.root_project`, `core.encoding`, `core.nag_view`; worth
+a spot-check for one plugin, not a third variant to carry for all)
