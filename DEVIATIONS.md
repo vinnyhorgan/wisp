@@ -972,6 +972,72 @@ save rule now overwrites, so keeping it would have meant shipping a
 command that silently does nothing. the status bar still reports the
 document's endings, and the load-time log still says when they changed.
 
+## 24. the languages wisp highlights
+
+**files:** `data/plugins/language_*.lua`
+
+lite shipped seven language files -- c, css, js, lua, md, python, xml --
+which was rxi's 2020 set and is not a 2026 editor. wisp could not
+highlight its own source: eighteen rust files, a `Cargo.toml`, a
+workflow `.yml`, and `.json` only by falling through to the javascript
+syntax. the bundle goes to twenty-three.
+
+**where each one comes from.** the porting doctrine holds: rxi's version
+first, lite-xl's cherry-picked, and written by hand only where neither
+has one wisp can run.
+
+    rxi's lite-plugins:   cpp csharp go java sh make cmake
+    lite-xl's:            html toml ini
+    rewritten:            rust
+    written here:         json yaml gitignore gitcommit diff
+
+**why so many were rewritten rather than copied.** wisp's tokenizer is
+lite's, and three things upstream's newer files assume it can do, it
+cannot: **pcre** (lite-xl added a regex module; wisp has lua patterns
+and nothing else), **subsyntaxes** (a rule handing a nested block to
+another syntax), and **position captures** that split one match across
+several token types. a file using any of them does not error -- it
+silently produces nothing, or produces a token type the theme has no
+color for, which `check_color` renders **white**. that failure mode is
+why `every_language_file_highlights_its_own_extension` asserts the token
+type of specific text rather than merely that a file loaded.
+
+one more trap, and it is subtle: the tokenizer anchors every pattern
+itself (`text:find("^" .. pattern, i)`), so a rule that starts with `^`
+becomes a literal caret and never fires. lite-xl's toml header rule was
+written that way. `language_diff` needs line starts too and cannot ask
+for them, so it gets them the only way available: a catch-all `.+` at
+the bottom of the list swallows any line no earlier rule claimed, and
+the tokenizer therefore never tries a later position on that line.
+
+**three stock files gave up claims** so the new ones could take them:
+`language_js` releases `%.json$` (and gains `.mjs`/`.cjs`),
+`language_c` releases `%.cpp$` and `%.hpp$`, and `language_xml`
+releases `%.html?$` (and gains `.svg`, `.xsd`, `.plist`). the c/c++
+overlap that remains -- both claim `%.h$` -- resolves by load order:
+`syntax.get` returns the **last** registered match, and
+`language_cpp.lua` opens by requiring `language_c`, which forces it to
+register first. that line is rxi's, it is load-bearing, and it looks
+like a stray import.
+
+**adaptations worth naming.** `language_rust` is a rewrite, not a port:
+rxi's was his go file with the keywords swapped, so it kept go's
+backtick string, listed `true` twice, and carried a `&str` entry that
+could never match, because `&` is not part of the symbol pattern that
+produces the token a lookup runs on. it now handles raw and byte
+strings, lifetimes (`'a` is not an unterminated char literal, and
+treating it as one paints the rest of the line green), attributes,
+macros, and underscored suffixed numbers. `language_html` is lite-xl's
+with its two subsyntax rules deleted -- kept, they would paint an entire
+`<script>` body as one function-colored span. `language_make`'s
+`variable` type became `keyword2`, because `variable` is not in
+`style.syntax` and would have drawn white. `language_ini` drops
+upstream's PATHSEP guard on `.editorconfig`, which only matches a file
+opened by full path, and adds git's config files, which are ini in all
+but name. `language_gitcommit` registers **two** syntaxes: a commit
+message is prose and only the part git strips is colored, while the
+rebase todo is all markup and gets its verbs.
+
 ## kept on purpose
 
 lite behaviors evaluated deliberately and kept, recorded so they are

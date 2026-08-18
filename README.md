@@ -18,6 +18,8 @@ bug-fixed where not. every deliberate difference is written down in
   editable while the editor runs
 - one font (jetbrains mono nerd font), one theme (catppuccin mocha, green
   caret), one binary
+- twenty-three languages highlighted out of the box, git's own files and
+  the config formats included
 - opinions about the files it writes: everything wisp saves is utf-8, lf,
   ends in exactly one newline, and carries no trailing whitespace --
   markdown excepted, where two trailing spaces are a line break
@@ -29,7 +31,7 @@ bug-fixed where not. every deliberate difference is written down in
   hex editor for everything else
 - `unsafe_code = "deny"`, with a single documented exception, and it's lua's
   fault
-- the whole editor boots headless in the test suite: 102 of its 222 tests
+- the whole editor boots headless in the test suite: 103 of its 223 tests
   feed it fake input and read the pixels coming back. the screenshots on
   this page were rendered that way too
 

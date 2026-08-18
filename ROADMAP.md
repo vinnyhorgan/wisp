@@ -177,16 +177,22 @@ two rules settled before the pass, so they are not re-decided per plugin:
 
 **the decided list lives in PLUGINS.md** -- all ~200 plugins across the
 two repos judged, the bundle set named in tiers, and every no filed
-under the reason it repeats. the headline finding: wisp cannot
-syntax-highlight its own source, and seven language files is rxi's 2020
-set rather than a 2026 editor.
+under the reason it repeats. its headline finding was that wisp could
+not syntax-highlight its own source, seven language files being rxi's
+2020 set rather than a 2026 editor. **that one is done**: twenty-three
+language files, DEVIATIONS §24, and the discovery that lite-xl's newer
+ones need three tokenizer features wisp does not have -- pcre,
+subsyntaxes, and position captures -- so five had to be written here.
+teaching the tokenizer subsyntaxes is core *lua*, not rust, and would
+buy real html and fenced code blocks in markdown; it is the obvious next
+language-side move and is deliberately not bundled with the port.
 
 the wave, roughly easiest-first: ~~runtime zoom~~ (done, DEVIATIONS
 §15), ~~imageview~~ (done, §20), ~~per-doc indent info~~ (done, §21),
-detectindent, auto-close brackets + bracketmatch, indent guides,
-selection highlight, more languages, treeview file ops, project-wide
-replace, session restore + project memory (treeview width, last query),
-word wrap (lite #26), multi-cursor last.
+~~more languages~~ (done, §24), detectindent, auto-close brackets +
+bracketmatch, indent guides, selection highlight, treeview file ops,
+project-wide replace, session restore + project memory (treeview width,
+last query), word wrap (lite #26), multi-cursor last.
 
 project-wide replace is wisp's own work, not an adaptation: neither
 lite's nor lite-xl's projectsearch has a replace at all. the cheap shape

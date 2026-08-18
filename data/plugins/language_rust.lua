@@ -1,0 +1,127 @@
+local syntax = require("core.syntax")
+
+-- rxi's rust file was a copy of his go one with the keywords swapped: it
+-- kept go's backtick string, listed `true` and `false` twice, and its
+-- `&str` entry could never match, because `&` is not part of the symbol
+-- pattern that produces the token a symbol lookup runs on. this is that
+-- file with rust's own literals put back -- raw and byte strings,
+-- lifetimes (which are not unterminated char literals), attributes,
+-- macros and underscored numbers. wisp is written in rust; the file that
+-- highlights its own source should be the best one in the set
+syntax.add({
+    files = { "%.rs$" },
+    comment = "//",
+    patterns = {
+        { pattern = "//.-\n", type = "comment" },
+        { pattern = { "/%*", "%*/" }, type = "comment" },
+
+        -- attributes, before the block-comment-free `#` is anything else
+        { pattern = "#!?%[.-%]", type = "keyword2" },
+
+        -- raw strings first: `r#"..."#` before `r"..."` before `"..."`,
+        -- and no escape character in a raw string by definition
+        { pattern = { 'r##"', '"##' }, type = "string" },
+        { pattern = { 'r#"', '"#' }, type = "string" },
+        { pattern = { 'r"', '"' }, type = "string" },
+        { pattern = { 'b"', '"', "\\" }, type = "string" },
+        { pattern = { '"', '"', "\\" }, type = "string" },
+
+        -- char literals, then lifetimes: `'a` is not a string that
+        -- forgot to close, and treating it as one paints the rest of
+        -- the line green
+        { pattern = "'\\u{%x+}'", type = "string" },
+        { pattern = "'\\x%x%x'", type = "string" },
+        { pattern = "b?'\\.'", type = "string" },
+        { pattern = "b?'.'", type = "string" },
+        { pattern = "'_%f[^%w_]", type = "keyword2" },
+        { pattern = "'[%a_][%w_]*", type = "keyword2" },
+
+        { pattern = "0[xX][%x_]+", type = "number" },
+        { pattern = "0[bB][01_]+", type = "number" },
+        { pattern = "0[oO][0-7_]+", type = "number" },
+        { pattern = "%d[%d_]*%.?[%d_]*[eE][-+]?%d[%d_]*", type = "number" },
+        { pattern = "%d[%d_]*%.?[%d_]*[iuf]%d+", type = "number" },
+        { pattern = "%d[%d_]*[ui]size", type = "number" },
+        { pattern = "%d[%d_]*%.[%d_]*", type = "number" },
+        { pattern = "%d[%d_]*", type = "number" },
+
+        { pattern = "::", type = "operator" },
+        { pattern = "->", type = "operator" },
+        { pattern = "=>", type = "operator" },
+        { pattern = "[%+%-=/%*%^%%<>!~|&%?]", type = "operator" },
+
+        -- a macro call keeps its `!`, so `println!` reads as one name
+        { pattern = "[%a_][%w_]*!", type = "function" },
+        { pattern = "[%a_][%w_]*%f[(]", type = "function" },
+        { pattern = "[%a_][%w_]*", type = "symbol" },
+    },
+    symbols = {
+        ["as"] = "keyword",
+        ["async"] = "keyword",
+        ["await"] = "keyword",
+        ["break"] = "keyword",
+        ["const"] = "keyword",
+        ["continue"] = "keyword",
+        ["crate"] = "keyword",
+        ["dyn"] = "keyword",
+        ["else"] = "keyword",
+        ["enum"] = "keyword",
+        ["extern"] = "keyword",
+        ["fn"] = "keyword",
+        ["for"] = "keyword",
+        ["if"] = "keyword",
+        ["impl"] = "keyword",
+        ["in"] = "keyword",
+        ["let"] = "keyword",
+        ["loop"] = "keyword",
+        ["match"] = "keyword",
+        ["mod"] = "keyword",
+        ["move"] = "keyword",
+        ["mut"] = "keyword",
+        ["pub"] = "keyword",
+        ["ref"] = "keyword",
+        ["return"] = "keyword",
+        ["Self"] = "keyword",
+        ["self"] = "keyword",
+        ["static"] = "keyword",
+        ["struct"] = "keyword",
+        ["super"] = "keyword",
+        ["trait"] = "keyword",
+        ["type"] = "keyword",
+        ["union"] = "keyword",
+        ["unsafe"] = "keyword",
+        ["use"] = "keyword",
+        ["where"] = "keyword",
+        ["while"] = "keyword",
+        ["yield"] = "keyword",
+        ["bool"] = "keyword2",
+        ["char"] = "keyword2",
+        ["f32"] = "keyword2",
+        ["f64"] = "keyword2",
+        ["i8"] = "keyword2",
+        ["i16"] = "keyword2",
+        ["i32"] = "keyword2",
+        ["i64"] = "keyword2",
+        ["i128"] = "keyword2",
+        ["isize"] = "keyword2",
+        ["str"] = "keyword2",
+        ["u8"] = "keyword2",
+        ["u16"] = "keyword2",
+        ["u32"] = "keyword2",
+        ["u64"] = "keyword2",
+        ["u128"] = "keyword2",
+        ["usize"] = "keyword2",
+        ["Box"] = "keyword2",
+        ["Option"] = "keyword2",
+        ["Rc"] = "keyword2",
+        ["Result"] = "keyword2",
+        ["String"] = "keyword2",
+        ["Vec"] = "keyword2",
+        ["Err"] = "literal",
+        ["None"] = "literal",
+        ["Ok"] = "literal",
+        ["Some"] = "literal",
+        ["false"] = "literal",
+        ["true"] = "literal",
+    },
+})

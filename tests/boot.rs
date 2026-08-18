@@ -1473,18 +1473,24 @@ fn logview_scrolling_is_clamped_to_its_content() {
     palette(&mut editor, "core:open-log");
     editor.run_steps(300);
 
-    // the few boot messages fit the view, so wheeling down hard must
-    // change nothing at all
+    // wheel to the end first -- the boot log outgrew a screenful when
+    // the language files landed, so the test must not assume it fits --
+    // and then keep wheeling: past the last line nothing may move
     editor.push_event(Event::MouseMoved(450, 300, 0, 0));
     editor.run_steps(50);
-    let (top, _, _) = editor.last_frame();
+    for _ in 0..60 {
+        editor.push_event(Event::MouseWheel(0.0, -50.0, None));
+        editor.run_steps(50);
+    }
+    editor.run_steps(1000);
+    let (bottom, _, _) = editor.last_frame();
     for _ in 0..10 {
         editor.push_event(Event::MouseWheel(0.0, -50.0, None));
         editor.run_steps(50);
     }
     editor.run_steps(1000);
     assert_eq!(
-        top,
+        bottom,
         editor.last_frame().0,
         "the log scrolled past its content"
     );
@@ -4351,4 +4357,192 @@ fn markdown_keeps_its_hard_line_breaks_on_save() {
     );
     // and everywhere else the rule still applies
     assert_eq!(open_edit_and_save("notes.txt"), "xa line\nnext line\n");
+}
+
+/// every bundled language file, run through the real tokenizer on the
+/// real syntax table: `syntax.get` picks the file, `tokenizer.tokenize`
+/// produces the tokens, and the editor's own module writes them out.
+/// this catches the two ways a ported language file fails silently --
+/// a rule that never fires (a pattern wisp's tokenizer cannot express,
+/// like a leading `^`) and a token type the theme has no color for,
+/// which renders white rather than erroring
+#[test]
+fn every_language_file_highlights_its_own_extension() {
+    let _serial = serial();
+    let root = copy_data_root("syntaxroot");
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("syntaxproj");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("hello.txt"), "hello wisp\n").unwrap();
+    let out = dir.join("tokens.txt");
+
+    std::fs::write(
+        root.join("data/user/init.lua"),
+        format!(
+            r##"
+local syntax = require("core.syntax")
+local tokenizer = require("core.tokenizer")
+
+local samples = {{
+    {{ "a.c", "struct point {{ int x; }};\n" }},
+    {{ "a.cpp", "class A {{ public: virtual int f(); }};\n" }},
+    {{ "a.h", "namespace n {{ }}\n" }},
+    {{ "a.cs", "public class A {{ }}\n" }},
+    {{ "a.go", "func main() {{ s := \"x\" }}\n" }},
+    {{ "a.java", "public class A {{ }}\n" }},
+    {{ "a.rs", "fn main() {{ let c = 'a'; }}\nlet s = r#\"raw\"#;\nfoo::<'static>(1_000u32);\nprintln!(\"hi\");\n" }},
+    {{ ".bashrc", "if [ -n \"$HOME\" ]; then echo hi; fi\n" }},
+    {{ "Makefile", "all:\n\tcc -o x\n" }},
+    {{ "CMakeLists.txt", "add_executable(x ${{SRC}})\n" }},
+    {{ "a.html", "<div class=\"x\">hi</div>\n" }},
+    {{ "a.xml", "<node attr=\"x\"/>\n" }},
+    {{ "a.toml", "[package]\nname = \"wisp\"\nedition = 2024\n" }},
+    {{ ".editorconfig", "[*.lua]\nindent_size = 4\n" }},
+    {{ "a.json", "{{\"key\": \"value\", \"n\": 1, \"b\": true}}\n" }},
+    {{ "a.yml", "key: \"value\"\nlist:\n  - one\n" }},
+    {{ ".gitignore", "# ignore\n/target\n!keep\n" }},
+    {{ "COMMIT_EDITMSG", "subject line\n\n# comment\n" }},
+    {{ "git-rebase-todo", "pick abc1234 message\n" }},
+    {{ "a.diff", "--- a\n+++ b\n@@ -1 +1 @@\n-old\n+new\n context\n" }},
+    {{ "a.js", "const x = 1;\n" }},
+    {{ "a.lua", "local x = 1\n" }},
+    {{ "a.py", "def f(): pass\n" }},
+    {{ "a.css", "a {{ color: red; }}\n" }},
+    {{ "a.md", "# heading\n" }},
+}}
+
+local out = {{}}
+for _, s in ipairs(samples) do
+    local name, text = s[1], s[2]
+    local syn = syntax.get(name, text)
+    local parts, state = {{ name }}, nil
+    for line in text:gmatch("[^\n]*\n") do
+        local res
+        res, state = tokenizer.tokenize(syn, line, state)
+        for _, type, tok in tokenizer.each_token(res) do
+            tok = tok:gsub("^%s+", ""):gsub("%s+$", "")
+            if tok ~= "" then
+                table.insert(parts, type .. ":" .. tok)
+            end
+        end
+    end
+    table.insert(out, table.concat(parts, "\t"))
+end
+
+local fp = assert(io.open("{out}", "wb"))
+fp:write(table.concat(out, "\n"), "\n")
+fp:close()
+"##,
+            out = out.display().to_string().replace('\\', "\\\\"),
+        ),
+    )
+    .unwrap();
+
+    let mut editor = Headless::boot_args(
+        &root.display().to_string(),
+        &[&dir.display().to_string()],
+        900,
+        600,
+        1.0,
+    );
+    editor.run_until_frames(1, 10_000);
+
+    let dump = std::fs::read_to_string(&out).expect("the user module never wrote its tokens");
+    let mut by_file = std::collections::HashMap::new();
+    for line in dump.lines() {
+        let (name, rest) = line.split_once('\t').unwrap_or((line, ""));
+        by_file.insert(name.to_string(), rest.to_string());
+    }
+
+    let expect = |name: &str, want: &str| {
+        let got = by_file
+            .get(name)
+            .unwrap_or_else(|| panic!("no tokens for {name}"));
+        assert!(
+            got.split('\t').any(|t| t == want),
+            "{name}: expected token {want:?}, got {got}"
+        );
+    };
+
+    // the seven lite shipped, still claiming what they always did
+    expect("a.c", "keyword:struct");
+    expect("a.js", "keyword:const");
+    expect("a.lua", "keyword:local");
+    expect("a.py", "keyword:def");
+    expect("a.css", "keyword:color");
+    expect("a.md", "keyword:# heading");
+    expect("a.xml", "function:node");
+
+    // c++ claims the headers and wins the overlap with c, which only
+    // holds because it requires language_c before registering itself
+    expect("a.cpp", "keyword:class");
+    expect("a.h", "keyword:namespace");
+
+    expect("a.cs", "keyword:public");
+    expect("a.go", "keyword:func");
+    expect("a.java", "keyword:class");
+
+    // rust's own literals, none of which rxi's copy-of-go handled: a
+    // raw string, a lifetime that is not an unterminated char, an
+    // underscored suffixed number, and a macro that keeps its `!`
+    expect("a.rs", "keyword:fn");
+    expect("a.rs", "string:r#\"raw\"#");
+    expect("a.rs", "keyword2:'static");
+    expect("a.rs", "number:1_000u32");
+    expect("a.rs", "function:println!");
+    expect("a.rs", "string:'a'");
+
+    // shell by name as well as by shebang
+    expect(".bashrc", "keyword:if");
+
+    expect("Makefile", "function:all:");
+    expect("CMakeLists.txt", "function:add_executable");
+    expect("a.html", "function:div");
+
+    // the toml table header only fires because the `^` was taken out of
+    // it: wisp's tokenizer anchors patterns itself
+    expect("a.toml", "keyword:[package]");
+    expect("a.toml", "function:name");
+    expect("a.toml", "number:2024");
+    expect(".editorconfig", "keyword:[*.lua]");
+
+    // json is its own file now, so a key is not just another string
+    expect("a.json", "function:\"key\"");
+    expect("a.json", "string:\"value\"");
+    expect("a.json", "literal:true");
+
+    expect("a.yml", "function:key");
+    expect("a.yml", "string:\"value\"");
+
+    expect(".gitignore", "comment:# ignore");
+    expect(".gitignore", "keyword:!");
+
+    // a commit message is prose; only the part git strips is colored
+    expect("COMMIT_EDITMSG", "comment:# comment");
+    expect("COMMIT_EDITMSG", "normal:subject line");
+    expect("git-rebase-todo", "keyword:pick");
+    expect("git-rebase-todo", "number:abc1234");
+
+    // a diff is decided by the first character of the line, and the
+    // catch-all is what keeps a `+` in prose from claiming one
+    expect("a.diff", "function:--- a");
+    expect("a.diff", "keyword:@@ -1 +1 @@");
+    expect("a.diff", "number:-old");
+    expect("a.diff", "string:+new");
+    expect("a.diff", "normal:context");
+
+    // and nothing anywhere emitted a type the theme has no color for
+    let known = [
+        "normal", "symbol", "comment", "keyword", "keyword2", "number", "literal", "string",
+        "operator", "function",
+    ];
+    for line in dump.lines() {
+        for tok in line.split('\t').skip(1) {
+            let kind = tok.split_once(':').unwrap().0;
+            assert!(
+                known.contains(&kind),
+                "unknown token type {kind:?} in {line}"
+            );
+        }
+    }
 }

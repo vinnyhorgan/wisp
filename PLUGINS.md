@@ -26,17 +26,20 @@ rxi's version is not merely the starting point, it is usually the better
 *fit*, and the cherry-picking runs the other way from what you would
 expect.
 
-## already bundled (22)
+## already bundled (38)
 
-sixteen are lite's stock set, kept byte-faithful except where
-DEVIATIONS.md says otherwise; six are wisp's own. nothing is dropped --
-the weakest entry is `quote` (28 lines, holds `ctrl+'`, wraps a
-selection as an escaped string literal), and it stays: harmless, rxi's,
-and dropping a stock plugin buys nothing.
+nine of lite's stock plugins, kept byte-faithful except where
+DEVIATIONS.md says otherwise; six of wisp's own; and twenty-three
+language files. nothing is dropped -- the weakest entry is `quote` (28
+lines, holds `ctrl+'`, wraps a selection as an escaped string literal),
+and it stays: harmless, rxi's, and dropping a stock plugin buys nothing.
 
-    lite's:   autocomplete autoreload macro projectsearch quote reflow
-              tabularize treeview trimwhitespace + 7 language files
-    wisp's:   helix/ hexview/ imageview terminal scale normalize
+    lite's:      autocomplete autoreload macro projectsearch quote
+                 reflow tabularize treeview trimwhitespace
+    wisp's:      helix/ hexview/ imageview terminal scale normalize
+    languages:   c cmake cpp csharp css diff gitcommit gitignore go
+                 html ini java js json lua make md python rust sh toml
+                 xml yaml
 
 **done in this pass.** `autocomplete` scanned `while i < #doc.lines` and
 so never read the last line of any document -- a symbol that lived only
@@ -67,27 +70,31 @@ four more have work owed, and it is part of this pass:
 
 ## tier 1 -- the editor is incomplete without these
 
-**languages.** the largest gap and the least defensible: wisp cannot
-syntax-highlight its own source. eighteen `.rs` files, two `.toml`, a
-`.yml` -- none of them highlighted, and `.json` only by falling through
-to the javascript syntax. seven language files is rxi's 2020 set, not a
-2026 editor. the bundle goes to roughly twenty-six, adding, from rxi
-where the file exists and lite-xl otherwise:
+**languages -- done.** this was the largest gap and the least
+defensible: wisp could not syntax-highlight its own source. seven files
+became twenty-three, and DEVIATIONS §24 is the record. what the pass
+actually taught, beyond the list:
 
-    rust toml json sh yaml go cpp diff ini make cmake
-    java ts jsx ruby php psql zig nim
-
-taking `language_json` means `language_js` gives up its `%.json$` claim
--- a DEVIATIONS-worthy edit to a stock file, not a drop-in. the same
-goes for `language_c`, which claims `%.cpp$` and `%.hpp$` while being a
-c syntax; rxi's `language_cpp` needs that claim narrowed first.
-
-**and "lite-xl otherwise" is not safe.** wisp's tokenizer has no regex
-at all -- it is lite's, lua patterns only -- while lite-xl added a pcre
-module and their newer language files use it. seven of the eighteen
-above need it: **rust, json, diff, java, ts, jsx, php**. rxi has
-regex-free rust, java, ts and php; json and diff have no rxi version and
-get written by hand, which is a morning's work each in lua patterns.
+- **rxi's repo carried more than expected.** cpp, csharp, go, java, sh,
+  make and cmake are all regex-free and went in as copies. lite-xl
+  supplied html, toml and ini. rust was a rewrite -- rxi's was his go
+  file with the keywords swapped, and it never handled a raw string, a
+  lifetime or a macro.
+- **five files had to be written here**: json, yaml, gitignore,
+  gitcommit and diff. json and diff because neither repo has a version
+  wisp can run; yaml because lite-xl's is written against three
+  tokenizer features wisp does not have (subsyntaxes, position
+  captures, `^` anchors); gitignore because lite-xl's is three pcre
+  rules; gitcommit because nobody upstream has one.
+- **the failure mode is silence, not an error.** an unrunnable rule
+  produces no token, and an unknown token type renders **white** --
+  `check_color` defaults a nil color to white rather than raising. so
+  the test asserts the token type of specific text in every one of the
+  twenty-three files, not merely that each loaded.
+- **the second rank is deliberately not here.** `ts` (86), `php` (99)
+  and `psql` (90) are all regex-free in rxi's repo and could land any
+  day. none appears in wisp's own tree, and each is a file to maintain
+  forever, so they wait for someone who wants them.
 
 **detectindent** -- the consumer DEVIATIONS §21 was built for, and the
 one entry on this list that is a **rewrite rather than an adaptation**.
