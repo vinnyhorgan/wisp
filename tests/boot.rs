@@ -4856,3 +4856,174 @@ fn centerdoc_toggles_and_untoggles() {
     editor.run_steps(500);
     assert_eq!(plain, editor.last_frame().0, "centering did not come back");
 }
+
+/// gitstatus, and the reason it is the clearest showcase in the plugin
+/// set: rxi's version redirected `system.exec` into a temp file and
+/// yielded for one second, hoping git had finished. this one spawns and
+/// waits for the actual exit, so the branch is either right or absent
+#[test]
+fn gitstatus_reads_the_branch_by_waiting_for_git_to_exit() {
+    let _serial = serial();
+    let root = copy_data_root("gitstatusroot");
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("gitproj");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("a.txt"), "one\n").unwrap();
+
+    let git = |args: &[&str]| {
+        let ok = std::process::Command::new("git")
+            .args(args)
+            .current_dir(&dir)
+            .output()
+            .expect("git must be on PATH for this test")
+            .status
+            .success();
+        assert!(ok, "git {args:?} failed");
+    };
+    git(&["init", "-b", "trunk"]);
+    git(&["add", "a.txt"]);
+    git(&[
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@t",
+        "commit",
+        "-m",
+        "seed",
+    ]);
+    // an edit on disk, so the insert count has something to report
+    std::fs::write(dir.join("a.txt"), "one\ntwo\n").unwrap();
+
+    let out = dir.join("status.txt");
+    std::fs::write(
+        root.join("data/user/init.lua"),
+        format!(
+            r#"
+local core = require("core")
+local command = require("core.command")
+command.add(nil, {{
+    ["test:dump-status"] = function()
+        local _, right = core.status_view:get_items()
+        local t = {{}}
+        for _, item in ipairs(right) do
+            if type(item) == "string" then t[#t + 1] = item end
+        end
+        local fp = assert(io.open({out:?}, "wb"))
+        fp:write(table.concat(t, "|"))
+        fp:close()
+    end,
+}})
+"#,
+            out = out.display().to_string()
+        ),
+    )
+    .unwrap();
+
+    let mut editor = Headless::boot_args(
+        &root.display().to_string(),
+        &[&dir.display().to_string()],
+        900,
+        600,
+        1.0,
+    );
+    editor.run_until_frames(1, 10_000);
+    // the plugin's thread spawns git on its first pass; give both the
+    // process and the thread room to finish
+    editor.run_steps(4000);
+    palette(&mut editor, "test:dump-status");
+    editor.run_steps(200);
+
+    let status = std::fs::read_to_string(&out).expect("the status dump never ran");
+    assert!(
+        status.contains("trunk"),
+        "the branch never reached the status bar: {status}"
+    );
+    assert!(status.contains("+1"), "the insert count is wrong: {status}");
+}
+
+/// the treeview's file operations, every prompt the editor's own: no os
+/// dialogs, ever. each phase gets its own project so that what is under
+/// the mouse is never in question
+#[test]
+fn the_treeview_creates_renames_and_deletes_through_its_own_prompts() {
+    let _serial = serial();
+
+    // hovers and clicks down the rows until the one file opens, leaving
+    // the mouse on that row
+    fn hover_the_only_file(editor: &mut Headless, name: &str) {
+        for row in 0..8 {
+            let y = 8 + row * 12;
+            editor.push_event(Event::MouseMoved(40, y, 0, 0));
+            editor.run_steps(50);
+            editor.push_event(Event::MousePressed("left", 40, y, 1));
+            editor.push_event(Event::MouseReleased("left", 40, y));
+            editor.run_steps(100);
+            if editor.window_title().starts_with(name) {
+                return;
+            }
+        }
+        panic!("never found {name} in the tree");
+    }
+
+    let project = |name: &str, file: &str| {
+        let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(file), "seed\n").unwrap();
+        let mut editor = Headless::boot(&dir.display().to_string(), 900, 600, 1.0);
+        editor.run_until_frames(1, 10_000);
+        (dir, editor)
+    };
+
+    // create
+    {
+        let (dir, mut editor) = project("treemake", "seed.txt");
+        hover_the_only_file(&mut editor, "seed.txt");
+        palette(&mut editor, "treeview:new-file");
+        editor.run_steps(200);
+        editor.push_event(Event::TextInput("made.txt".into()));
+        editor.run_steps(100);
+        press(&editor, "return");
+        editor.run_steps(300);
+        assert!(dir.join("made.txt").is_file(), "new-file made nothing");
+
+        hover_the_only_file(&mut editor, "made.txt");
+        palette(&mut editor, "treeview:new-folder");
+        editor.run_steps(200);
+        editor.push_event(Event::TextInput("sub".into()));
+        editor.run_steps(100);
+        press(&editor, "return");
+        editor.run_steps(300);
+        assert!(dir.join("sub").is_dir(), "new-folder made nothing");
+    }
+
+    // rename
+    {
+        let (dir, mut editor) = project("treerename", "old.txt");
+        hover_the_only_file(&mut editor, "old.txt");
+        palette(&mut editor, "treeview:rename");
+        editor.run_steps(200);
+        editor.push_event(Event::TextInput("new.txt".into()));
+        editor.run_steps(100);
+        press(&editor, "return");
+        editor.run_steps(400);
+        assert!(!dir.join("old.txt").exists(), "the old name survived");
+        assert!(dir.join("new.txt").is_file(), "the new name never appeared");
+        // the open doc followed its file rather than saving to the
+        // path that no longer exists
+        assert_eq!(editor.window_title(), "new.txt - wisp");
+    }
+
+    // delete, which asks first
+    {
+        let (dir, mut editor) = project("treedelete", "doomed.txt");
+        hover_the_only_file(&mut editor, "doomed.txt");
+        palette(&mut editor, "treeview:delete");
+        editor.run_steps(200);
+        editor.push_event(Event::TextInput("y".into()));
+        editor.run_steps(100);
+        press(&editor, "return");
+        editor.run_steps(400);
+        assert!(!dir.join("doomed.txt").exists(), "delete kept the file");
+    }
+}

@@ -253,7 +253,8 @@ function TreeView:draw()
             x = x + icon_width
         else
             x = x + style.padding.x
-            common.draw_text(style.icon_font, color, style.icons.file, nil, x, y, 0, h)
+            local icon = style.icon_for(item.filename) or style.icons.file
+            common.draw_text(style.icon_font, color, icon, nil, x, y, 0, h)
             x = x + icon_width
         end
 
@@ -270,10 +271,118 @@ local view = TreeView()
 local node = core.root_view:get_active_node()
 node:split("left", view, true)
 
--- register commands and keymap
+-- file operations. lite-xl keeps these in its core treeview; here they
+-- are commands on the *hovered* item, which is the only thing a tree
+-- with no selection can mean -- and hovering survives opening the
+-- command palette, since the mouse does not move when you type.
+--
+-- every prompt is the editor's own commandview. no os dialogs, ever.
+
+local function dirname(path)
+    return path:match("^(.*)[/\\]") or "."
+end
+
+local function parent_of(item)
+    return item.type == "dir" and item.filename or dirname(item.filename)
+end
+
+local function join(dir, name)
+    return dir == "." and name or dir .. PATHSEP .. name
+end
+
+local function hovering()
+    return view.visible and view.hovered_item ~= nil
+end
+
 command.add(nil, {
     ["treeview:toggle"] = function()
         view.visible = not view.visible
+    end,
+})
+
+command.add(hovering, {
+    ["treeview:new-file"] = function()
+        local dir = parent_of(view.hovered_item)
+        core.command_view:enter("new file in " .. dir, function(name)
+            if name == "" then
+                return
+            end
+            local path = join(dir, name)
+            -- "wb" and not "ab": refusing to touch a file that is
+            -- already there is the whole difference between creating
+            -- one and silently opening it
+            if system.get_file_info(path) then
+                core.error("%s already exists", path)
+                return
+            end
+            local fp, err = io.open(path, "wb")
+            if not fp then
+                core.error("%s", err)
+                return
+            end
+            fp:close()
+            core.try(core.open_file, path)
+        end)
+    end,
+
+    ["treeview:new-folder"] = function()
+        local dir = parent_of(view.hovered_item)
+        core.command_view:enter("new folder in " .. dir, function(name)
+            if name == "" then
+                return
+            end
+            local path = join(dir, name)
+            local ok, err = system.mkdir(path)
+            if not ok then
+                core.error("%s", err)
+            end
+        end)
+    end,
+
+    ["treeview:rename"] = function()
+        local old = view.hovered_item.filename
+        core.command_view:enter("rename " .. old .. " to", function(name)
+            if name == "" or name == old then
+                return
+            end
+            local new = join(dirname(old), name)
+            if system.get_file_info(new) then
+                core.error("%s already exists", new)
+                return
+            end
+            local ok, err = os.rename(old, new)
+            if not ok then
+                core.error("%s", err)
+                return
+            end
+            -- a doc open on the old path would keep saving there, and
+            -- its syntax was chosen from the name that just changed
+            for _, doc in ipairs(core.docs) do
+                if doc.filename == old then
+                    doc.filename = new
+                    doc:reset_syntax()
+                end
+            end
+        end)
+    end,
+
+    ["treeview:delete"] = function()
+        local item = view.hovered_item
+        local path = item.filename
+        core.command_view:enter("delete " .. path .. "?", function(answer)
+            if not answer:lower():find("^y") then
+                return
+            end
+            -- os.remove takes an empty directory and refuses a full
+            -- one, which is exactly the line wisp wants: nothing here
+            -- deletes a tree you cannot see from one keystroke
+            local ok, err = os.remove(path)
+            if not ok then
+                core.error("%s", err)
+            end
+        end, function(answer)
+            return common.fuzzy_match({ "no", "yes" }, answer)
+        end)
     end,
 })
 

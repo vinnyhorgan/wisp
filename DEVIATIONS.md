@@ -1173,6 +1173,55 @@ what it finds, and its `begin_search` takes an arbitrary matcher, so
 tags are not configurable on purpose: a todo list whose entries mean
 different things in different checkouts is not a list.
 
+### gitstatus, and what the rust core bought
+
+rxi's version is the clearest argument in the whole plugin set for
+having rewritten the core. it redirects `system.exec("git ... > tmp")`
+into a temp file, does `coroutine.yield(1)`, and then reads the file --
+it *hopes* git finished inside one second, with no upper bound and no
+error path, and reports whatever is there either way.
+
+wisp's `system.spawn` polls: reads return `""` for nothing-buffered and
+`nil` for end-of-stream, and `running()` answers honestly. so the
+adaptation **deletes the race** rather than inheriting it -- read to
+eof, wait for the exit, check the return code, and show nothing at all
+if git failed. it also asks for `git diff --shortstat` instead of
+`--stat`, which is the same number without the per-file body.
+
+### the treeview grows file operations
+
+delete, rename, new file, new folder -- adapted from lite-xl, where
+they live in their core treeview. two decisions of wisp's own:
+
+- **every prompt is the commandview.** no os dialogs, ever (CLAUDE.md).
+  delete asks yes/no through the same idiom `core:quit` uses for unsaved
+  changes.
+- **delete uses `os.remove`, which takes a file or an empty directory
+  and refuses a full one.** that is the line, and it is deliberate:
+  nothing in wisp recursively deletes a tree you cannot see, from one
+  keystroke, with no trash to recover it from.
+
+the commands act on the **hovered** item, because a tree with no
+selection has nothing else to mean -- and hovering survives opening the
+command palette, since typing does not move the mouse. `new-folder` is
+the first and only consumer of `system.mkdir`, which is why that
+function was allowed into the core at the freeze.
+
+renaming carries the open document with it: the doc's `filename` moves
+and its syntax is re-picked, because the syntax was chosen from the name
+that just changed.
+
+### per-filetype icons, without the icon font
+
+upstream's answer to this is to ship a font -- `nerdicons`, `nonicons`,
+`devicons`. wisp already **is** a nerd font build (DEVIATIONS §2), so
+the idea is adopted and the plugin rejected: `style.file_icons` is one
+more table of named codepoints beside `style.icons`, matched against the
+filename in order, and `style.icon_for` is the two-line lookup the
+treeview calls. every codepoint was checked against the shipped font's
+cmap rather than trusted from a table on the internet -- a missing glyph
+renders as `.notdef`, silently, at exactly the same width.
+
 ## kept on purpose
 
 lite behaviors evaluated deliberately and kept, recorded so they are

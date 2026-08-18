@@ -22,7 +22,61 @@ style.icons = {
     gear = "\xEF\x80\x93", -- U+F013 cog
     info = "\xEF\x81\x9A", -- U+F05A info circle
     warn = "\xEF\x81\xB1", -- U+F071 warning triangle
+    branch = "\xEF\x90\x98", -- U+F418 git branch (octicons)
 }
+
+-- per-filetype icons for the tree. upstream ships a *font* for this --
+-- nerdicons, nonicons, devicons -- and wisp already is a nerd font
+-- build, so the idea is adopted and the plugin rejected: this is one
+-- more table of named codepoints, not a dependency. keys are matched
+-- against the filename, longest pattern first, and anything unmatched
+-- keeps `icons.file`
+style.file_icons = {
+    { "%.lua$", "\xEE\x98\xA0" }, -- U+E620
+    { "%.rs$", "\xEE\x9E\xA8" }, -- U+E7A8
+    { "%.py[wi]?$", "\xEE\x9C\xBC" }, -- U+E73C
+    { "%.[mc]?js$", "\xEE\x9E\x81" }, -- U+E781
+    { "%.tsx?$", "\xEE\x98\xA8" }, -- U+E628
+    { "%.jsonc?$", "\xEE\x98\x8B" }, -- U+E60B
+    { "%.toml$", "\xEE\x9A\xB2" }, -- U+E6B2
+    { "%.ya?ml$", "\xEE\x9A\xA8" }, -- U+E6A8
+    { "%.mark?down$", "\xEE\x9C\xBE" }, -- U+E73E
+    { "%.md$", "\xEE\x9C\xBE" }, -- U+E73E
+    { "%.html?$", "\xEE\x9C\xB6" }, -- U+E736
+    { "%.css$", "\xEE\x9D\x89" }, -- U+E749
+    { "%.[ch]$", "\xEE\x98\x9E" }, -- U+E61E
+    { "%.[ch]pp$", "\xEE\x98\x9D" }, -- U+E61D
+    { "%.cc$", "\xEE\x98\x9D" }, -- U+E61D
+    { "%.go$", "\xEE\x98\xA7" }, -- U+E627
+    { "%.java$", "\xEE\x9C\xB8" }, -- U+E738
+    { "%.cs$", "\xEE\x9C\xB8" }, -- U+E738
+    { "%.[bz]?a?sh$", "\xEE\x9E\x95" }, -- U+E795
+    { "%.xml$", "\xEE\x98\x99" }, -- U+E619
+    { "%.svg$", "\xEF\x87\x85" }, -- U+F1C5
+    { "%.png$", "\xEF\x87\x85" }, -- U+F1C5
+    { "%.jpe?g$", "\xEF\x87\x85" }, -- U+F1C5
+    { "%.ttf$", "\xEF\x87\x85" }, -- U+F1C5
+    { "%.zip$", "\xEF\x87\x86" }, -- U+F1C6
+    { "%.tar$", "\xEF\x87\x86" }, -- U+F1C6
+    { "%.gz$", "\xEF\x87\x86" }, -- U+F1C6
+    { "%.txt$", "\xEF\x85\x9C" }, -- U+F15C
+    { "%.lock$", "\xEF\x80\xA3" }, -- U+F023
+    { "%.git", "\xEE\x9C\x82" }, -- U+E702
+    { "LICENSE", "\xEF\x80\xAD" }, -- U+F02D
+    { "[Mm]akefile$", "\xEE\x98\x95" }, -- U+E615
+    { "%.editorconfig$", "\xEE\x98\x95" }, -- U+E615
+    { "%.ini$", "\xEE\x98\x95" }, -- U+E615
+    { "%.cfg$", "\xEE\x98\x95" }, -- U+E615
+}
+
+-- the icon for a filename, or nil to use the plain file icon
+function style.icon_for(filename)
+    for _, rule in ipairs(style.file_icons) do
+        if filename:find(rule[1]) then
+            return rule[2]
+        end
+    end
+end
 
 -- catppuccin mocha (official palette), green as the accent
 style.background = { common.color("#1e1e2e") } -- base
