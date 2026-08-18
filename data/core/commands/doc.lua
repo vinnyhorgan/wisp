@@ -306,10 +306,6 @@ local commands = {
             end
         end)
     end,
-
-    ["doc:toggle-line-ending"] = function()
-        doc().crlf = not doc().crlf
-    end,
 }
 
 -- saving and renaming act on the file behind the doc. the command view

@@ -26,8 +26,20 @@ command.add("core.docview", {
     end,
 })
 
+-- markdown is the one place trailing whitespace carries meaning: two
+-- spaces at the end of a line are a hard line break. every other format
+-- wisp is likely to open treats them as lint, so the rule is trim on
+-- save, except here. the command still trims markdown when asked for by
+-- name -- an explicit request beats a house rule
+local function is_markdown(doc)
+    local name = doc.filename or ""
+    return name:find("%.md$") ~= nil or name:find("%.markdown$") ~= nil
+end
+
 local save = Doc.save
 Doc.save = function(self, ...)
-    trim_trailing_whitespace(self)
+    if not is_markdown(self) then
+        trim_trailing_whitespace(self)
+    end
     save(self, ...)
 end

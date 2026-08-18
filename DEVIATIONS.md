@@ -917,6 +917,46 @@ rewrite. until then every document answers exactly what the config says,
 which is what lite did, and `data/user/init.lua` can already say
 otherwise per file.
 
+## 22. the house rules for what wisp writes
+
+**files:** `data/plugins/normalize.lua`, `data/plugins/trimwhitespace.lua`,
+`data/core/commands/doc.lua`
+
+lite round-tripped whatever it found. crlf in, crlf out; invalid bytes
+in, invalid bytes out; five blank lines at the end, five blank lines
+back. that is the polite answer and the wrong one for an editor that is
+supposed to have opinions, because none of those three is a preference
+-- they are what the rest of the toolchain already assumes, and a file
+that disagrees bites someone downstream who did not choose it.
+
+so wisp fixes them on the way out. every file it saves is **utf-8**, has
+**lf line endings**, ends in **exactly one newline**, and carries **no
+trailing whitespace**. four rules, no settings, and `plugins/normalize.lua`
+is where the first three live.
+
+the fourth is lite's own `trimwhitespace`, with one exception hardcoded
+into it: **markdown**. two trailing spaces are a hard line break there,
+which makes it the one format where that whitespace is content rather
+than lint. the command still trims markdown when it is asked for by name
+-- an explicit request beats a house rule. lite-xl reached the same
+conclusion about trim-on-save from the other direction and made it a
+setting defaulting to *off*; wisp keeps the default and carves out the
+one place it is wrong.
+
+**the two lossy rules announce themselves at open, not at save.** crlf
+is logged and invalid utf-8 is an error, both the moment the file loads,
+because by the time you press ctrl+s the decision was made minutes ago
+and a warning then is an ambush. the encoding rule replaces bad bytes
+with `u+fffd`, which is precisely what the renderer has been drawing for
+them all along (`String::from_utf8_lossy` on both `draw_text` and
+`get_width`), so normalizing makes the file agree with what you were
+looking at rather than changing it behind you.
+
+`doc:toggle-line-ending` is **removed**. it flipped `doc.crlf`, which the
+save rule now overwrites, so keeping it would have meant shipping a
+command that silently does nothing. the status bar still reports the
+document's endings, and the load-time log still says when they changed.
+
 ## kept on purpose
 
 lite behaviors evaluated deliberately and kept, recorded so they are

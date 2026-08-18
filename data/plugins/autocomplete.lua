@@ -34,7 +34,11 @@ core.add_thread(function()
     local function get_symbols(doc)
         local i = 1
         local s = {}
-        while i < #doc.lines do
+        -- `<` skipped the last line of every document, so a symbol that
+        -- appeared only there was never suggested. a doc always ends in
+        -- a newline and never has a trailing empty line, so the last
+        -- line carries content like any other
+        while i <= #doc.lines do
             for sym in doc.lines[i]:gmatch(config.symbol_pattern) do
                 s[sym] = true
             end

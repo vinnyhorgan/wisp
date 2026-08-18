@@ -26,16 +26,32 @@ rxi's version is not merely the starting point, it is usually the better
 *fit*, and the cherry-picking runs the other way from what you would
 expect.
 
-## already bundled (21)
+## already bundled (22)
 
 sixteen are lite's stock set, kept byte-faithful except where
-DEVIATIONS.md says otherwise; five are wisp's own. nothing is dropped.
+DEVIATIONS.md says otherwise; six are wisp's own. nothing is dropped --
+the weakest entry is `quote` (28 lines, holds `ctrl+'`, wraps a
+selection as an escaped string literal), and it stays: harmless, rxi's,
+and dropping a stock plugin buys nothing.
 
     lite's:   autocomplete autoreload macro projectsearch quote reflow
               tabularize treeview trimwhitespace + 7 language files
-    wisp's:   helix/ hexview/ imageview terminal scale
+    wisp's:   helix/ hexview/ imageview terminal scale normalize
 
-four of them have work owed, and it is part of this pass:
+**done in this pass.** `autocomplete` scanned `while i < #doc.lines` and
+so never read the last line of any document -- a symbol that lived only
+there was never suggested. rxi's off-by-one, which lite-xl had already
+fixed; the first time the porting doctrine paid off on a plugin wisp
+already shipped. `normalize` and `trimwhitespace`'s markdown exception
+are the house rules, DEVIATIONS §22.
+
+**owed, and untested.** `macro` replaces `core.on_event` globally and
+replays by calling it in a loop, bypassing `core.step`'s event drain and
+with it the `did_keymap` handling that helix's argument-taking commands
+depend on. it has **zero tests**, and both the modal layer and the
+terminal now live on that path. tests first, fixes only if they fail.
+
+four more have work owed, and it is part of this pass:
 
 - **treeview** -- file ops (delete, rename, new file, new folder),
   adapted from lite-xl's treeview where they live as core commands.
@@ -62,7 +78,16 @@ where the file exists and lite-xl otherwise:
     java ts jsx ruby php psql zig nim
 
 taking `language_json` means `language_js` gives up its `%.json$` claim
--- a DEVIATIONS-worthy edit to a stock file, not a drop-in.
+-- a DEVIATIONS-worthy edit to a stock file, not a drop-in. the same
+goes for `language_c`, which claims `%.cpp$` and `%.hpp$` while being a
+c syntax; rxi's `language_cpp` needs that claim narrowed first.
+
+**and "lite-xl otherwise" is not safe.** wisp's tokenizer has no regex
+at all -- it is lite's, lua patterns only -- while lite-xl added a pcre
+module and their newer language files use it. seven of the eighteen
+above need it: **rust, json, diff, java, ts, jsx, php**. rxi has
+regex-free rust, java, ts and php; json and diff have no rxi version and
+get written by hand, which is a morning's work each in lua patterns.
 
 **detectindent** -- the consumer DEVIATIONS §21 was built for, and the
 one entry on this list that is a **rewrite rather than an adaptation**.

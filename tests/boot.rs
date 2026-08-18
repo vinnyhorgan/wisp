@@ -4189,3 +4189,166 @@ end
         "backspace unindented by the config's size instead of the document's"
     );
 }
+
+/// autocomplete's symbol scanner walked `while i < #doc.lines`, so the
+/// last line of every document was never read and a symbol that lived
+/// only there was never suggested. lite-xl fixed the same off-by-one
+#[test]
+fn autocomplete_sees_symbols_on_the_last_line() {
+    let _serial = serial();
+    let root = copy_data_root("aclastroot");
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("aclastproj");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    // the symbol under test exists only on the final line
+    std::fs::write(
+        dir.join("syms.txt"),
+        "firstlinesymbol = 1\nxylophonecase = 2\n",
+    )
+    .unwrap();
+
+    let mut editor = Headless::boot_args(
+        &root.display().to_string(),
+        &[
+            &dir.display().to_string(),
+            &dir.join("syms.txt").display().to_string(),
+        ],
+        900,
+        600,
+        1.0,
+    );
+    editor.run_until_frames(1, 10_000);
+    // let the symbol thread walk the open docs at least once
+    editor.run_steps(2000);
+
+    // type the prefix in a scratch doc, then collect what each of the
+    // offered suggestions completes to. the scratch doc contributes the
+    // partial itself as a symbol, so membership is the honest assertion
+    ctrl(&editor, "n");
+    editor.run_steps(50);
+    editor.push_event(Event::TextInput("xylo".into()));
+    editor.run_steps(50);
+
+    let mut completions = Vec::new();
+    for n in 1..=3 {
+        for _ in 1..n {
+            press(&editor, "down");
+            editor.run_steps(5);
+        }
+        press(&editor, "tab");
+        editor.run_steps(50);
+        ctrl(&editor, "a");
+        ctrl(&editor, "c");
+        editor.run_steps(100);
+        completions.push(
+            editor
+                .engine
+                .borrow_mut()
+                .platform
+                .get_clipboard()
+                .unwrap_or_default(),
+        );
+        // back to the same starting point for the next walk
+        ctrl(&editor, "a");
+        editor.run_steps(20);
+        editor.push_event(Event::TextInput("xylo".into()));
+        editor.run_steps(50);
+    }
+
+    assert!(
+        completions.iter().any(|c| c == "xylophonecase"),
+        "the last line's symbol was never suggested: {completions:?}"
+    );
+}
+
+/// the house rules: whatever comes in, what wisp writes out is utf-8,
+/// lf, ends in exactly one newline, and has no trailing whitespace --
+/// except in markdown, where two trailing spaces are a hard line break
+#[test]
+fn saving_normalizes_line_endings_encoding_and_the_end_of_file() {
+    let _serial = serial();
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("normproj");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+
+    // crlf endings, a latin-1 byte, trailing spaces, three blank lines
+    std::fs::write(
+        dir.join("messy.txt"),
+        b"one   \r\ntwo \xe9 end\r\n\r\n\r\n".as_slice(),
+    )
+    .unwrap();
+
+    let mut editor = Headless::boot_args(
+        env!("CARGO_MANIFEST_DIR"),
+        &[
+            &dir.display().to_string(),
+            &dir.join("messy.txt").display().to_string(),
+        ],
+        900,
+        600,
+        1.0,
+    );
+    editor.run_until_frames(1, 10_000);
+    assert_eq!(editor.window_title(), "messy.txt - wisp");
+
+    // an edit, so there is something to save
+    editor.push_event(Event::TextInput("x".into()));
+    editor.run_steps(100);
+    ctrl(&editor, "s");
+    editor.run_steps(300);
+
+    let out = std::fs::read(dir.join("messy.txt")).unwrap();
+    let text = String::from_utf8(out).expect("wisp wrote bytes that are not utf-8");
+    assert!(!text.contains('\r'), "crlf survived the save: {text:?}");
+    assert!(
+        text.ends_with("end\n"),
+        "the trailing blank lines were not collapsed to one newline: {text:?}"
+    );
+    assert!(
+        !text.contains("one   \n") && text.contains("xone\n"),
+        "trailing whitespace survived the save: {text:?}"
+    );
+    assert!(
+        text.contains('\u{FFFD}'),
+        "the invalid byte was not replaced: {text:?}"
+    );
+}
+
+/// two trailing spaces are a hard line break in markdown, so it is the
+/// one format the trim-on-save rule leaves alone
+#[test]
+fn markdown_keeps_its_hard_line_breaks_on_save() {
+    let _serial = serial();
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("mdproj");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("notes.md"), "a line  \nnext line\n").unwrap();
+    std::fs::write(dir.join("notes.txt"), "a line  \nnext line\n").unwrap();
+
+    let open_edit_and_save = |name: &str| -> String {
+        let mut editor = Headless::boot_args(
+            env!("CARGO_MANIFEST_DIR"),
+            &[
+                &dir.display().to_string(),
+                &dir.join(name).display().to_string(),
+            ],
+            900,
+            600,
+            1.0,
+        );
+        editor.run_until_frames(1, 10_000);
+        editor.push_event(Event::TextInput("x".into()));
+        editor.run_steps(100);
+        ctrl(&editor, "s");
+        editor.run_steps(300);
+        std::fs::read_to_string(dir.join(name)).unwrap()
+    };
+
+    assert_eq!(
+        open_edit_and_save("notes.md"),
+        "xa line  \nnext line\n",
+        "markdown lost a hard line break"
+    );
+    // and everywhere else the rule still applies
+    assert_eq!(open_edit_and_save("notes.txt"), "xa line\nnext line\n");
+}
