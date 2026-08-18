@@ -917,7 +917,22 @@ rewrite. until then every document answers exactly what the config says,
 which is what lite did, and `data/user/init.lua` can already say
 otherwise per file.
 
-## 22. the house rules for what wisp writes
+## 22. four spaces
+
+**file:** `data/core/config.lua`
+
+lite defaulted to `config.indent_size = 2`. wisp uses four, soft, and the
+argument is the codebase it ships in: `stylua.toml` sets `indent_width =
+4` to mirror rustfmt, so the rust and lua halves of wisp read the same,
+and an editor whose default disagrees with its own source is an editor
+that has not decided anything. two is a fine width; the point is to pick
+one and stop asking.
+
+this is only ever the fallback now. §21 made indentation a property of
+the document, so the config answers for a file nobody has measured and
+for nothing else.
+
+## 23. the house rules for what wisp writes
 
 **files:** `data/plugins/normalize.lua`, `data/plugins/trimwhitespace.lua`,
 `data/core/commands/doc.lua`

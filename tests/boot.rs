@@ -4126,7 +4126,7 @@ function Doc:load(...)
     if self.filename and self.filename:find("hard") then
         self.indent_info = { type = "hard", size = 4, confirmed = true }
     elseif self.filename and self.filename:find("wide") then
-        self.indent_info = { type = "soft", size = 4, confirmed = true }
+        self.indent_info = { type = "soft", size = 2, confirmed = true }
     end
 end
 "#,
@@ -4149,14 +4149,14 @@ end
     editor.run_until_frames(1, 10_000);
     assert_eq!(editor.window_title(), "soft.txt - wisp");
 
-    // the document nobody measured falls back to the config: two spaces
+    // the document nobody measured falls back to the config: four spaces
     press(&editor, "tab");
     editor.run_steps(200);
     ctrl(&editor, "s");
     editor.run_steps(200);
     assert_eq!(
         std::fs::read_to_string(dir.join("soft.txt")).unwrap(),
-        "  \n"
+        "    \n"
     );
 
     // and the one the detector spoke for gets a tab, in the same editor
@@ -4173,7 +4173,7 @@ end
     );
 
     // size is per-document too, and it is what backspace unindents by: a
-    // soft-4 document loses all four spaces, not the config's two
+    // soft-2 document loses both spaces, not the config's four
     ctrl_shift(&editor, "tab");
     editor.run_steps(200);
     assert_eq!(editor.window_title(), "wide.txt - wisp");

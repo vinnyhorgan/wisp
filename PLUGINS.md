@@ -43,7 +43,7 @@ so never read the last line of any document -- a symbol that lived only
 there was never suggested. rxi's off-by-one, which lite-xl had already
 fixed; the first time the porting doctrine paid off on a plugin wisp
 already shipped. `normalize` and `trimwhitespace`'s markdown exception
-are the house rules, DEVIATIONS §22.
+are the house rules, DEVIATIONS §23.
 
 **owed, and untested.** `macro` replaces `core.on_event` globally and
 replays by calling it in a loop, bypassing `core.step`'s event drain and
